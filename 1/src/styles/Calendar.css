@@ -1,0 +1,111 @@
+.calendar-container {
+  font-family: inherit;
+}
+
+.calendar-container .fc-toolbar-title {
+  font-size: 1.2em;
+  font-weight: 500;
+}
+
+.calendar-container .fc-button {
+  text-transform: capitalize;
+  font-weight: normal;
+  box-shadow: none;
+  padding: 6px 16px;
+}
+
+.calendar-container .fc-button:focus {
+  box-shadow: none;
+}
+
+.calendar-container .fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.calendar-container .fc-event:hover {
+  opacity: 0.9;
+}
+
+.calendar-container .fc-today {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+.calendar-container .fc-highlight {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+.calendar-container .fc-daygrid-event {
+  white-space: normal;
+  overflow: visible;
+}
+
+.calendar-container .fc-timegrid-event {
+  min-height: 24px;
+}
+
+.calendar-container .fc-timegrid-slot {
+  height: 2.5em;
+}
+
+.calendar-container .fc-timegrid-slot-label {
+  font-size: 0.85em;
+}
+
+.calendar-container .fc-timegrid-axis {
+  padding: 0 8px;
+}
+
+.calendar-container .fc-timegrid-slot-minor {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.calendar-container .fc-timegrid-slot-major {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.calendar-container .fc-timegrid-divider {
+  display: none;
+}
+
+.calendar-container .fc-timegrid-col-bg {
+  background: none;
+}
+
+.calendar-container .fc-timegrid-col-events {
+  margin: 0;
+}
+
+.calendar-container .fc-timegrid-event-harness {
+  margin-top: 2px;
+}
+
+.calendar-container .fc-timegrid-event {
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.calendar-container .fc-timegrid-event-title {
+  font-size: 0.85em;
+}
+
+.calendar-container .fc-timegrid-event-time {
+  font-size: 0.85em;
+}
+
+.calendar-container .fc-timegrid-more-link {
+  color: #1976d2;
+}
+
+.calendar-container .fc-timegrid-more-link:hover {
+  color: #1565c0;
+}
+
+.calendar-container .fc-timegrid-now-indicator-line {
+  border-color: #f44336;
+}
+
+.calendar-container .fc-timegrid-now-indicator-arrow {
+  border-color: #f44336;
+}
