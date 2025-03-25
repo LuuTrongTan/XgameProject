@@ -15,6 +15,7 @@ import {
   updateEstimatedTime,
   getTaskTimeStats,
   updateProgress,
+  getUpcomingTasks,
 } from "../controllers/task.controller.js";
 import { addTaskComment } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
@@ -66,7 +67,7 @@ const upload = multer({ dest: "uploads/" });
  *               items:
  *                 $ref: '#/components/schemas/Task'
  */
-router.get("/", getTasks);
+router.get("/", protect, getTasks);
 
 /**
  * @swagger
@@ -90,7 +91,7 @@ router.get("/", getTasks);
  *             schema:
  *               $ref: '#/components/schemas/Task'
  */
-router.get("/:id", getTaskById);
+router.get("/:id", protect, getTaskById);
 
 /**
  * @swagger
@@ -148,7 +149,7 @@ router.get("/:id", getTaskById);
  *             schema:
  *               $ref: '#/components/schemas/Task'
  */
-router.post("/", createTask);
+router.post("/", protect, createTask);
 
 /**
  * @swagger
@@ -191,7 +192,7 @@ router.post("/", createTask);
  *                 type: string
  *                 format: date
  */
-router.put("/:id", updateTask);
+router.put("/:id", protect, updateTask);
 
 /**
  * @swagger
@@ -221,7 +222,7 @@ router.put("/:id", updateTask);
  *                 items:
  *                   type: string
  */
-router.post("/:id/assign", assignTask);
+router.post("/:id/assign", protect, assignTask);
 
 /**
  * @swagger
@@ -253,7 +254,7 @@ router.post("/:id/assign", assignTask);
  *                 items:
  *                   type: string
  */
-router.post("/:id/comments", addTaskComment);
+router.post("/:id/comments", protect, addTaskComment);
 
 /**
  * @swagger
@@ -280,7 +281,12 @@ router.post("/:id/comments", addTaskComment);
  *                 type: string
  *                 format: binary
  */
-router.post("/:id/attachments", upload.single("file"), uploadAttachment);
+router.post(
+  "/:id/attachments",
+  protect,
+  upload.single("file"),
+  uploadAttachment
+);
 /**
  * @swagger
  * /tasks/{id}:
@@ -338,7 +344,7 @@ router.post("/:id/attachments", upload.single("file"), uploadAttachment);
  *                   type: string
  *                   example: "Lỗi khi xóa công việc"
  */
-router.delete("/:id", deleteTask);
+router.delete("/:id", protect, deleteTask);
 
 /**
  * @swagger
@@ -367,7 +373,7 @@ router.delete("/:id", deleteTask);
  *                 type: string
  *                 enum: [todo, in_progress, review, done]
  */
-router.put("/:id/status", updateStatus);
+router.put("/:id/status", protect, updateStatus);
 
 /**
  * @swagger
@@ -395,7 +401,7 @@ router.put("/:id/status", updateStatus);
  *               tag:
  *                 type: string
  */
-router.post("/:id/tags", addTag);
+router.post("/:id/tags", protect, addTag);
 
 /**
  * @swagger
@@ -417,7 +423,7 @@ router.post("/:id/tags", addTag);
  *         schema:
  *           type: string
  */
-router.delete("/:id/tags/:tag", removeTag);
+router.delete("/:id/tags/:tag", protect, removeTag);
 
 /**
  * @swagger
@@ -446,7 +452,7 @@ router.delete("/:id/tags/:tag", removeTag);
  *                 type: string
  *                 enum: [google, outlook]
  */
-router.post("/:id/sync-calendar", syncWithGoogleCalendar);
+router.post("/:id/sync-calendar", protect, syncWithGoogleCalendar);
 
 /**
  * @swagger
@@ -482,7 +488,7 @@ router.post("/:id/sync-calendar", syncWithGoogleCalendar);
  *       403:
  *         description: Không có quyền cập nhật
  */
-router.put("/:id/estimated-time", updateEstimatedTime);
+router.put("/:id/estimated-time", protect, updateEstimatedTime);
 
 /**
  * @swagger
@@ -506,7 +512,7 @@ router.put("/:id/estimated-time", updateEstimatedTime);
  *       404:
  *         description: Không tìm thấy task
  */
-router.get("/:id/time-stats", getTaskTimeStats);
+router.get("/:id/time-stats", protect, getTaskTimeStats);
 
 /**
  * @swagger
@@ -543,6 +549,26 @@ router.get("/:id/time-stats", getTaskTimeStats);
  *       403:
  *         description: Không có quyền cập nhật
  */
-router.put("/:id/progress", updateProgress);
+router.put("/:id/progress", protect, updateProgress);
+
+/**
+ * @swagger
+ * /tasks/upcoming:
+ *   get:
+ *     summary: Lấy danh sách công việc sắp tới
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách công việc sắp tới
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Task'
+ */
+router.get("/upcoming", protect, getUpcomingTasks);
 
 export default router;

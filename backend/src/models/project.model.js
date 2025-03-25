@@ -13,13 +13,13 @@ const ProjectSchema = new mongoose.Schema(
     description: {
       type: String,
       required: true,
-      minlength: 10,
+      minlength: 5,
       maxlength: 2000,
     },
     status: {
       type: String,
-      enum: ["Active", "Completed", "Archived", "On Hold", "Cancelled"],
-      default: "Active",
+      enum: ["Đang hoạt động", "Hoàn thành", "Đóng"],
+      default: "Đang hoạt động",
     },
     avatar: {
       type: String,

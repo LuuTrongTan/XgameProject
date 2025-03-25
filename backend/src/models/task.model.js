@@ -28,12 +28,12 @@ const TaskSchema = new mongoose.Schema(
     ],
     status: {
       type: String,
-      enum: ["todo", "in_progress", "review", "done"],
+      enum: ["todo", "inProgress", "review", "done"],
       default: "todo",
     },
     priority: {
       type: String,
-      enum: ["low", "medium", "high", "critical"],
+      enum: ["low", "medium", "high"],
       default: "medium",
     },
     tags: [String],
@@ -181,11 +181,11 @@ TaskSchema.pre("save", async function (next) {
         case "todo":
           this.progress = 0;
           break;
-        case "in_progress":
+        case "inProgress":
           this.progress = 50;
           break;
         case "review":
-          this.progress = 80;
+          this.progress = 75;
           break;
         case "done":
           this.progress = 100;

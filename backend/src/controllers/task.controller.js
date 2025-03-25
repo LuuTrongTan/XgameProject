@@ -25,16 +25,13 @@ const validateTaskData = (data) => {
     errors.push("Mô tả công việc phải từ 10-2000 ký tự");
   }
 
-  if (
-    data.priority &&
-    !["low", "medium", "high", "critical"].includes(data.priority)
-  ) {
+  if (data.priority && !["low", "medium", "high"].includes(data.priority)) {
     errors.push("Độ ưu tiên không hợp lệ");
   }
 
   if (
     data.status &&
-    !["todo", "in_progress", "review", "done"].includes(data.status)
+    !["todo", "inProgress", "review", "done"].includes(data.status)
   ) {
     errors.push("Trạng thái không hợp lệ");
   }
@@ -322,15 +319,57 @@ export const createTask = async (req, res) => {
 // Cập nhật công việc
 export const updateTask = async (req, res) => {
   try {
-    const { task, error } = await checkTaskPermission(
-      req.params.id,
-      req.user.id,
-      ["Admin", "Project Manager"]
+    console.log("=== DEBUG UPDATE TASK ===");
+    console.log("Request params:", req.params);
+    console.log("Request user:", req.user);
+    console.log("Request body:", req.body);
+
+    // Kiểm tra task tồn tại
+    const task = await Task.findById(req.params.id);
+    console.log("Found task:", task);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Công việc không tồn tại",
+      });
+    }
+
+    // Kiểm tra quyền truy cập
+    const project = await Project.findById(task.project).populate("members");
+    console.log("Found project:", {
+      id: project?._id,
+      owner: project?.owner,
+      membersCount: project?.members?.length,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Dự án không tồn tại",
+      });
+    }
+
+    // Kiểm tra quyền
+    const isOwner = project.owner.toString() === req.user._id.toString();
+    const isMember = project.members.some(
+      (m) => m.user.toString() === req.user._id.toString()
     );
-    if (error) {
+    const isAssignee = task.assignees.some(
+      (a) => a.toString() === req.user._id.toString()
+    );
+
+    console.log("Permission check:", {
+      userId: req.user._id,
+      isOwner,
+      isMember,
+      isAssignee,
+    });
+
+    if (!isOwner && !isMember && !isAssignee) {
       return res.status(403).json({
         success: false,
-        message: error,
+        message: "Bạn không có quyền cập nhật công việc này",
       });
     }
 
@@ -365,7 +404,7 @@ export const updateTask = async (req, res) => {
       }
     });
 
-    // Nếu thay đổi trạng thái thành done, cập nhật completedAt
+    // Nếu thay đổi trạng thái thành Hoàn thành, cập nhật completedAt
     if (req.body.status === "done" && !task.completedAt) {
       task.completedAt = new Date();
     }
@@ -385,7 +424,7 @@ export const updateTask = async (req, res) => {
     global.io.emit("task_updated", {
       task: populatedTask,
       updater: {
-        id: req.user.id,
+        id: req.user._id,
         name: req.user.name,
       },
     });
@@ -420,23 +459,21 @@ export const updateStatus = async (req, res) => {
     }
 
     const { status } = req.body;
-    if (
-      !status ||
-      !["todo", "in_progress", "review", "done"].includes(status)
-    ) {
+    if (!status || !["todo", "inProgress", "review", "done"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Trạng thái không hợp lệ",
       });
     }
 
-    // Kiểm tra dependencies nếu chuyển sang in_progress
-    if (status === "in_progress") {
+    // Kiểm tra dependencies nếu chuyển sang đang thực hiện
+    if (status === "inProgress") {
       const { canStart, pendingBlockers } = await task.checkDependencies();
       if (!canStart) {
         return res.status(400).json({
           success: false,
-          message: "Không thể bắt đầu do còn công việc chặn chưa hoàn thành",
+          message:
+            "Không thể bắt đầu công việc do còn phụ thuộc vào các công việc chưa hoàn thành",
           pendingBlockers,
         });
       }
@@ -807,7 +844,7 @@ export const updateProgress = async (req, res) => {
       task.status = "done";
       task.completedAt = new Date();
     } else if (progress >= 80) task.status = "review";
-    else task.status = "in_progress";
+    else task.status = "inProgress";
 
     await task.save();
 
@@ -1170,6 +1207,58 @@ export const uploadAttachment = async (req, res) => {
   }
 };
 
+export const getUpcomingTasks = async (req, res) => {
+  try {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    // Tìm các task có dueDate trong vòng 7 ngày tới và chưa hoàn thành
+    const tasks = await Task.find({
+      assignees: req.user.id,
+      dueDate: {
+        $gte: today,
+        $lte: nextWeek,
+      },
+      status: { $ne: "done" },
+    })
+      .populate("project", "name status")
+      .populate("assignees", "name email avatar")
+      .populate("createdBy", "name email avatar")
+      .sort({ dueDate: 1 });
+
+    // Thêm thống kê cho mỗi task
+    const tasksWithStats = await Promise.all(
+      tasks.map(async (task) => {
+        const stats = {
+          totalComments: await Comment.countDocuments({ task: task.id }),
+          totalAttachments: task.attachments.length,
+          totalTimelogs: await Timelog.countDocuments({ task: task.id }),
+          timeRemaining: task.dueDate
+            ? Math.ceil((task.dueDate - today) / (1000 * 60 * 60 * 24))
+            : null,
+        };
+        return {
+          ...task.toObject(),
+          stats,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: tasksWithStats,
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách công việc sắp đến hạn:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy danh sách công việc sắp đến hạn",
+      error: error.message,
+    });
+  }
+};
+
 export default {
   getTasks,
   getTaskById,
@@ -1187,4 +1276,5 @@ export default {
   updateProgress,
   toggleWatcher,
   toggleDependency,
+  getUpcomingTasks,
 };
