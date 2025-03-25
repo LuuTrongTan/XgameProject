@@ -10,34 +10,45 @@ import crypto from "crypto";
 const validateProjectData = (data) => {
   const errors = [];
 
-  if (!data.name || data.name.length < 3 || data.name.length > 100) {
+  // Log dữ liệu đầu vào
+  console.log("Validating project data:", data);
+
+  // Validate name
+  if (!data.name || typeof data.name !== "string") {
+    errors.push("Tên dự án là bắt buộc");
+  } else if (data.name.trim().length < 3 || data.name.trim().length > 100) {
     errors.push("Tên dự án phải từ 3-100 ký tự");
   }
 
-  if (
-    !data.description ||
-    data.description.length < 10 ||
-    data.description.length > 2000
+  // Validate description
+  if (!data.description || typeof data.description !== "string") {
+    errors.push("Mô tả dự án là bắt buộc");
+  } else if (
+    data.description.trim().length < 5 ||
+    data.description.trim().length > 2000
   ) {
-    errors.push("Mô tả dự án phải từ 10-2000 ký tự");
+    errors.push("Mô tả dự án phải từ 5-2000 ký tự");
   }
 
-  if (
-    data.status &&
-    !["Active", "Completed", "Archived", "On Hold", "Cancelled"].includes(
-      data.status
-    )
-  ) {
+  // Validate status
+  const validStatuses = ["Đang hoạt động", "Hoàn thành", "Đóng"];
+  if (data.status && !validStatuses.includes(data.status)) {
     errors.push("Trạng thái dự án không hợp lệ");
   }
-  if (
-    data.startDate &&
-    data.endDate &&
-    new Date(data.startDate) > new Date(data.endDate)
-  ) {
-    errors.push("Ngày bắt đầu phải trước ngày kết thúc");
+
+  // Validate dates
+  if (data.startDate && data.dueDate) {
+    const start = new Date(data.startDate);
+    const due = new Date(data.dueDate);
+    if (isNaN(start.getTime()) || isNaN(due.getTime())) {
+      errors.push("Ngày không hợp lệ");
+    } else if (start > due) {
+      errors.push("Ngày bắt đầu phải trước ngày kết thúc");
+    }
   }
 
+  // Log kết quả validation
+  console.log("Validation errors:", errors);
   return errors;
 };
 
@@ -177,7 +188,40 @@ export const getProjectById = async (req, res) => {
 // Tạo mới một dự án
 export const createProject = async (req, res) => {
   try {
-    const errors = validateProjectData(req.body);
+    console.log("Received project data:", req.body);
+    console.log("Request headers:", req.headers);
+    console.log("User data:", req.user);
+
+    // Kiểm tra xem user có tồn tại không
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Không tìm thấy thông tin người dùng",
+      });
+    }
+
+    // Kiểm tra xem dữ liệu có phải là FormData không
+    const isFormData = req.headers["content-type"]?.includes(
+      "multipart/form-data"
+    );
+    let projectData;
+
+    if (isFormData) {
+      // Xử lý dữ liệu từ FormData
+      projectData = {
+        name: req.body.name,
+        description: req.body.description,
+        status: req.body.status || "Đang hoạt động",
+        members: req.body.members ? JSON.parse(req.body.members) : [],
+      };
+    } else {
+      // Xử lý dữ liệu JSON
+      projectData = req.body;
+    }
+
+    console.log("Processed project data:", projectData);
+
+    const errors = validateProjectData(projectData);
     if (errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -186,26 +230,55 @@ export const createProject = async (req, res) => {
       });
     }
 
-    const { name, description, startDate, endDate, members = [] } = req.body;
+    const { name, description, members = [], status } = projectData;
+
     // Xác định vai trò của người tạo dự án
     const creatorRole =
-      req.user.role === "admin" ? ROLES.ADMIN : ROLES.PROJECT_MANAGER;
+      req.user?.role === "admin" ? ROLES.ADMIN : ROLES.PROJECT_MANAGER;
 
+    // Tạo danh sách thành viên với người tạo dự án
     const projectMembers = [
-      { user: req.user.id, role: creatorRole },
-      ...members,
+      { user: req.user._id, role: creatorRole },
+      ...members.map((member) => ({
+        user: member.user,
+        role: member.role || ROLES.MEMBER,
+        joinedAt: member.joinedAt || new Date(),
+      })),
     ];
+
+    console.log("Creating project with data:", {
+      name,
+      description,
+      owner: req.user._id,
+      members: projectMembers,
+      status: status || "Đang hoạt động",
+    });
 
     const project = new Project({
       name,
       description,
-      startDate,
-      endDate,
-      owner: req.user.id,
+      owner: req.user._id,
       members: projectMembers,
+      status: status || "Đang hoạt động",
     });
 
     await project.save();
+
+    // Gửi email mời cho các thành viên mới
+    for (const member of members) {
+      try {
+        await sendEmail(
+          member.email,
+          "Lời mời tham gia dự án",
+          `Bạn được mời tham gia dự án "${name}" với vai trò ${
+            member.role || ROLES.MEMBER
+          }. 
+          Vui lòng đăng nhập vào hệ thống để xem chi tiết dự án.`
+        );
+      } catch (emailError) {
+        console.error("Lỗi khi gửi email:", emailError);
+      }
+    }
 
     const populatedProject = await Project.findById(project._id)
       .populate("owner", "name email avatar")
@@ -215,7 +288,7 @@ export const createProject = async (req, res) => {
     global.io.emit("project_created", {
       project: populatedProject,
       creator: {
-        id: req.user.id,
+        id: req.user._id,
         name: req.user.name,
       },
     });
@@ -227,6 +300,14 @@ export const createProject = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi khi tạo dự án:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      body: req.body,
+      headers: req.headers,
+      user: req.user,
+    });
     res.status(500).json({
       success: false,
       message: "Lỗi khi tạo dự án",
@@ -238,6 +319,10 @@ export const createProject = async (req, res) => {
 // Cập nhật thông tin dự án
 export const updateProject = async (req, res) => {
   try {
+    console.log("Received update request with body:", req.body);
+    console.log("Request headers:", req.headers);
+    console.log("Content-Type:", req.headers["content-type"]);
+
     const project = await Project.findById(req.params.id);
     if (!project) {
       return res.status(404).json({
@@ -253,7 +338,46 @@ export const updateProject = async (req, res) => {
       });
     }
 
-    const errors = validateProjectData(req.body);
+    // Kiểm tra xem dữ liệu có phải là FormData không
+    const isFormData = req.headers["content-type"]?.includes(
+      "multipart/form-data"
+    );
+    let projectData;
+
+    if (isFormData) {
+      // Xử lý dữ liệu từ FormData
+      projectData = {
+        name: req.body.name?.trim(),
+        description: req.body.description?.trim(),
+        status: req.body.status || project.status,
+        startDate: req.body.startDate || project.startDate,
+        dueDate: req.body.dueDate || project.dueDate,
+        members: req.body.members
+          ? JSON.parse(req.body.members)
+          : project.members,
+      };
+
+      // Log chi tiết dữ liệu nhận được
+      console.log("FormData received:", {
+        name: req.body.name,
+        description: req.body.description,
+        status: req.body.status,
+        startDate: req.body.startDate,
+        dueDate: req.body.dueDate,
+        members: req.body.members,
+      });
+
+      // Log dữ liệu đã xử lý
+      console.log("Processed FormData:", projectData);
+    } else {
+      // Xử lý dữ liệu JSON
+      projectData = req.body;
+    }
+
+    // Validate dữ liệu
+    const errors = validateProjectData(projectData);
+    console.log("Validation errors:", errors);
+
     if (errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -268,21 +392,42 @@ export const updateProject = async (req, res) => {
       "description",
       "status",
       "startDate",
-      "endDate",
+      "dueDate",
+      "members",
     ];
 
+    console.log("Current project:", {
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      startDate: project.startDate,
+      dueDate: project.dueDate,
+      members: project.members,
+    });
+
     updatedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        project[field] = req.body[field];
+      if (projectData[field] !== undefined) {
+        if (field === "members") {
+          // Xử lý đặc biệt cho trường members
+          project.members = projectData.members.map((member) => ({
+            user: member.user,
+            role: member.role || ROLES.MEMBER,
+            joinedAt: member.joinedAt || new Date(),
+          }));
+        } else {
+          project[field] = projectData[field];
+        }
       }
     });
 
     // Nếu dự án hoàn thành, cập nhật completedAt
-    if (req.body.status === "Completed" && !project.completedAt) {
+    if (projectData.status === "Hoàn thành" && !project.completedAt) {
       project.completedAt = new Date();
     }
 
+    console.log("Project before save:", project);
     await project.save();
+    console.log("Project after save:", project);
 
     const populatedProject = await Project.findById(project._id)
       .populate("owner", "name email avatar")
@@ -304,6 +449,13 @@ export const updateProject = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi khi cập nhật dự án:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      body: req.body,
+      headers: req.headers,
+    });
     res.status(500).json({
       success: false,
       message: "Lỗi khi cập nhật dự án",

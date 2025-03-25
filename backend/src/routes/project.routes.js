@@ -16,6 +16,9 @@ import { protect } from "../middlewares/auth.middleware.js";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
+// Áp dụng middleware xác thực cho tất cả các routes
+router.use(protect);
+
 /**
  * @swagger
  * tags:
