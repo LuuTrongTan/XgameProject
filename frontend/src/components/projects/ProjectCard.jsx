@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Card,
   CardContent,
@@ -11,9 +11,27 @@ import {
   AvatarGroup,
   LinearProgress,
   Grid,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
 } from "@mui/material";
-import { AccessTime as TimeIcon, Flag as FlagIcon } from "@mui/icons-material";
+import {
+  AccessTime as TimeIcon,
+  Flag as FlagIcon,
+  MoreVert as MoreVertIcon,
+} from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import { useSnackbar } from "notistack";
+import axios from "axios";
+import {
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Archive as ArchiveIcon,
+  Unarchive as UnarchiveIcon,
+  Visibility as VisibilityIcon,
+} from "@mui/icons-material";
 
 const statusColors = {
   active: "success",
@@ -29,8 +47,58 @@ const statusLabels = {
   archived: "Đã lưu trữ",
 };
 
-const ProjectCard = ({ project }) => {
+const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
+  const [anchorEl, setAnchorEl] = useState(null);
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
+
+  const handleMenuClick = (event) => {
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleArchive = async () => {
+    try {
+      const response = await axios.post(`/api/projects/${project._id}/archive`);
+      if (response.data.success) {
+        enqueueSnackbar("Dự án đã được archive", { variant: "success" });
+        // Refresh project list
+        window.location.reload();
+      }
+    } catch (error) {
+      enqueueSnackbar(
+        error.response?.data?.message || "Lỗi khi archive dự án",
+        {
+          variant: "error",
+        }
+      );
+    }
+    handleMenuClose();
+  };
+
+  const handleRestore = async () => {
+    try {
+      const response = await axios.post(`/api/projects/${project._id}/restore`);
+      if (response.data.success) {
+        enqueueSnackbar("Dự án đã được restore", { variant: "success" });
+        // Refresh project list
+        window.location.reload();
+      }
+    } catch (error) {
+      enqueueSnackbar(
+        error.response?.data?.message || "Lỗi khi restore dự án",
+        {
+          variant: "error",
+        }
+      );
+    }
+    handleMenuClose();
+  };
 
   // Fallback data for preview
   const fallbackProject = {
@@ -52,8 +120,10 @@ const ProjectCard = ({ project }) => {
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        position: "relative",
+        opacity: p.isArchived ? 0.7 : 1,
         "&:hover": {
-          boxShadow: 6,
+          boxShadow: 3,
         },
       }}
     >
@@ -141,20 +211,75 @@ const ProjectCard = ({ project }) => {
         </Grid>
       </CardContent>
 
-      <CardActions>
-        <Button size="small" onClick={() => navigate(`/projects/${p._id}`)}>
-          Xem chi tiết
-        </Button>
-        <Button
+      <CardActions sx={{ justifyContent: "flex-end", p: 1 }}>
+        <IconButton
+          onClick={handleMenuClick}
           size="small"
-          onClick={() => {
-            if (p && p._id) {
-              navigate(`/projects/${p._id}/tasks`);
-            }
+          sx={{
+            "&:hover": {
+              backgroundColor: "rgba(0,0,0,0.04)",
+            },
           }}
         >
-          Công việc
-        </Button>
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MenuItem onClick={onViewDetails}>
+            <ListItemIcon>
+              <VisibilityIcon fontSize="small" />
+            </ListItemIcon>
+            Xem chi tiết
+          </MenuItem>
+          {!p.isArchived &&
+            (user?.role === "admin" ||
+              p.members?.some(
+                (m) => m.user === user?._id && m.role === "Project Manager"
+              )) && (
+              <MenuItem onClick={onEdit}>
+                <ListItemIcon>
+                  <EditIcon fontSize="small" />
+                </ListItemIcon>
+                Chỉnh sửa
+              </MenuItem>
+            )}
+          {!p.isArchived && user?.role === "admin" && (
+            <MenuItem onClick={onDelete}>
+              <ListItemIcon>
+                <DeleteIcon fontSize="small" />
+              </ListItemIcon>
+              Xóa
+            </MenuItem>
+          )}
+          {!p.isArchived &&
+            (user?.role === "admin" ||
+              p.members?.some(
+                (m) => m.user === user?._id && m.role === "Project Manager"
+              )) && (
+              <MenuItem onClick={handleArchive}>
+                <ListItemIcon>
+                  <ArchiveIcon fontSize="small" />
+                </ListItemIcon>
+                Archive
+              </MenuItem>
+            )}
+          {p.isArchived &&
+            (user?.role === "admin" ||
+              p.members?.some(
+                (m) => m.user === user?._id && m.role === "Project Manager"
+              )) && (
+              <MenuItem onClick={handleRestore}>
+                <ListItemIcon>
+                  <UnarchiveIcon fontSize="small" />
+                </ListItemIcon>
+                Restore
+              </MenuItem>
+            )}
+        </Menu>
       </CardActions>
     </Card>
   );

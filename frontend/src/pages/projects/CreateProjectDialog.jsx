@@ -30,8 +30,22 @@ import { createProject } from "../../api/projectApi";
 import FileUpload from "../../components/common/FileUpload";
 
 const ROLES = {
-  PROJECT_MANAGER: "Project Manager",
-  MEMBER: "Member",
+  ADMIN: "admin",
+  PROJECT_MANAGER: "project_manager",
+  MEMBER: "member",
+};
+
+const getRoleName = (roleValue) => {
+  switch (roleValue) {
+    case ROLES.ADMIN:
+      return "Admin";
+    case ROLES.PROJECT_MANAGER:
+      return "Project Manager";
+    case ROLES.MEMBER:
+      return "Member";
+    default:
+      return roleValue;
+  }
 };
 
 const PROJECT_STATUS = {
@@ -110,7 +124,7 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
     setSuccessMessage(
       newMember.inviteMethod === "direct"
         ? "Đã thêm thành viên vào dự án"
-        : "Đã gửi lời mời qua email"
+        : "Đã thêm email để gửi lời mời"
     );
 
     // Clear success message after 3 seconds
@@ -365,7 +379,7 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
                 >
                   {Object.values(ROLES).map((role) => (
                     <MenuItem key={role} value={role}>
-                      {role}
+                      {getRoleName(role)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -389,7 +403,7 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
               {members.map((member) => (
                 <Chip
                   key={member.email}
-                  label={`${member.email} (${member.role}) - ${
+                  label={`${member.email} (${getRoleName(member.role)}) - ${
                     member.status === "pending" ? "Đang chờ" : "Đã thêm"
                   }`}
                   onDelete={() => handleRemoveMember(member.email)}

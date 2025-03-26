@@ -10,6 +10,8 @@ import {
   removeMember,
   inviteMember,
   updateMemberRole,
+  archiveProject,
+  restoreProject,
 } from "../controllers/project.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 
@@ -184,7 +186,7 @@ router.delete("/:id", deleteProject);
  * @swagger
  * /projects/{id}/members:
  *   post:
- *     summary: Thêm thành viên vào dự án
+ *     summary: Thêm thành viên trực tiếp vào dự án
  *     tags: [Projects]
  *     security:
  *       - bearerAuth: []
@@ -201,30 +203,72 @@ router.delete("/:id", deleteProject);
  *           schema:
  *             type: object
  *             required:
- *               - userId
+ *               - email
  *               - role
  *             properties:
- *               userId:
+ *               email:
  *                 type: string
- *                 example: "507f1f77bcf86cd799439011"
+ *                 description: Email của người dùng cần thêm
  *               role:
  *                 type: string
- *                 enum: ["Admin", "Project Manager", "Member"]
+ *                 enum: [Admin, Project Manager, Member]
+ *                 description: Vai trò của thành viên trong dự án
  *     responses:
  *       200:
- *         description: Thành viên đã được thêm
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Project'
+ *         description: Thêm thành viên thành công
  *       400:
  *         description: Dữ liệu không hợp lệ
- *       401:
- *         description: Không có quyền truy cập
+ *       403:
+ *         description: Không có quyền thêm thành viên
  *       404:
  *         description: Không tìm thấy dự án hoặc người dùng
  */
 router.post("/:id/members", addMember);
+
+/**
+ * @swagger
+ * /projects/{id}/invite:
+ *   post:
+ *     summary: Gửi lời mời tham gia dự án qua email
+ *     tags: [Projects]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - role
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 description: Email của người dùng cần mời
+ *               role:
+ *                 type: string
+ *                 enum: [Admin, Project Manager, Member]
+ *                 description: Vai trò của thành viên trong dự án
+ *     responses:
+ *       200:
+ *         description: Đã gửi lời mời thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       403:
+ *         description: Không có quyền gửi lời mời
+ *       404:
+ *         description: Không tìm thấy dự án
+ *       500:
+ *         description: Lỗi khi gửi email
+ */
+router.post("/:id/invite", inviteMember);
 
 /**
  * @swagger
@@ -300,28 +344,50 @@ router.put("/:id/members/:userId", updateMemberRole);
 
 /**
  * @swagger
- * /projects/{id}/invite:
+ * /projects/{id}/archive:
  *   post:
- *     summary: Gửi lời mời tham gia dự án qua email
+ *     summary: Archive dự án
  *     tags: [Projects]
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - role
- *             properties:
- *               email:
- *                 type: string
- *               role:
- *                 type: string
- *                 enum: [Admin, Project Manager, Member]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dự án đã được archive
+ *       403:
+ *         description: Không có quyền archive dự án
+ *       404:
+ *         description: Không tìm thấy dự án
  */
-router.post("/:id/invite", inviteMember);
+router.post("/:id/archive", archiveProject);
+
+/**
+ * @swagger
+ * /projects/{id}/restore:
+ *   post:
+ *     summary: Restore dự án
+ *     tags: [Projects]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dự án đã được restore
+ *       403:
+ *         description: Không có quyền restore dự án
+ *       404:
+ *         description: Không tìm thấy dự án
+ */
+router.post("/:id/restore", restoreProject);
 
 export default router;

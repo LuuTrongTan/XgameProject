@@ -1,4 +1,6 @@
 import API from "./api";
+import axios from "axios";
+import { getToken } from "../utils/auth";
 
 // Lấy danh sách projects
 export const getProjects = async () => {
@@ -50,8 +52,22 @@ export const deleteProject = async (projectId) => {
   }
 };
 
-// Thêm thành viên vào project
+// Mời thành viên vào dự án qua email
 export const inviteMember = async (projectId, email, role) => {
+  try {
+    const response = await API.post(`/projects/${projectId}/invite`, {
+      email,
+      role,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error inviting member:", error);
+    throw error;
+  }
+};
+
+// Thêm thành viên trực tiếp vào dự án
+export const addMember = async (projectId, email, role) => {
   try {
     const response = await API.post(`/projects/${projectId}/members`, {
       email,
@@ -59,7 +75,7 @@ export const inviteMember = async (projectId, email, role) => {
     });
     return response.data;
   } catch (error) {
-    throw error;
+    throw error.response?.data || error.message;
   }
 };
 

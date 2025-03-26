@@ -21,6 +21,8 @@ import {
   AvatarGroup,
   Tooltip,
   Alert,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
   Edit as EditIcon,
@@ -31,6 +33,8 @@ import {
   Description as DescriptionIcon,
   Group as GroupIcon,
   Timeline as TimelineIcon,
+  Email as EmailIcon,
+  PersonAdd as PersonAddIcon,
 } from "@mui/icons-material";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -38,11 +42,26 @@ import {
   updateProject,
   deleteProject,
   inviteMember,
+  addMember,
 } from "../../api/projectApi";
 
 const ROLES = {
-  PROJECT_MANAGER: "Project Manager",
-  MEMBER: "Member",
+  ADMIN: "admin",
+  PROJECT_MANAGER: "project_manager",
+  MEMBER: "member",
+};
+
+const getRoleName = (roleValue) => {
+  switch (roleValue) {
+    case ROLES.ADMIN:
+      return "Admin";
+    case ROLES.PROJECT_MANAGER:
+      return "Project Manager";
+    case ROLES.MEMBER:
+      return "Member";
+    default:
+      return roleValue;
+  }
 };
 
 const ProjectDetails = () => {
@@ -57,6 +76,7 @@ const ProjectDetails = () => {
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: ROLES.MEMBER,
+    method: "direct", // "direct" or "email"
   });
   const [editForm, setEditForm] = useState({
     name: "",
@@ -109,13 +129,46 @@ const ProjectDetails = () => {
     }
   };
 
+  const handleInviteMethodChange = (event, newMethod) => {
+    if (newMethod !== null) {
+      setInviteForm((prev) => ({
+        ...prev,
+        method: newMethod,
+      }));
+    }
+  };
+
   const handleInviteMember = async () => {
     try {
-      const response = await inviteMember(projectId, inviteForm);
+      let response;
+
+      if (inviteForm.method === "direct") {
+        // Thêm thành viên trực tiếp
+        response = await addMember(
+          projectId,
+          inviteForm.email,
+          inviteForm.role
+        );
+      } else {
+        // Gửi lời mời qua email
+        response = await inviteMember(
+          projectId,
+          inviteForm.email,
+          inviteForm.role
+        );
+      }
+
       if (response?.success) {
-        setProject(response.data);
+        // Nếu thêm trực tiếp thì cập nhật dự án
+        if (inviteForm.method === "direct" && response.data) {
+          setProject(response.data);
+        }
         setInviteDialogOpen(false);
-        setInviteForm({ email: "", role: ROLES.MEMBER });
+        setInviteForm({
+          email: "",
+          role: ROLES.MEMBER,
+          method: inviteForm.method,
+        });
       }
     } catch (err) {
       console.error("Error inviting member:", err);
@@ -180,6 +233,92 @@ const ProjectDetails = () => {
   }
 
   if (!project) return null;
+
+  const renderInviteDialog = () => (
+    <Dialog
+      open={inviteDialogOpen}
+      onClose={() => setInviteDialogOpen(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>Thêm thành viên</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          <ToggleButtonGroup
+            value={inviteForm.method}
+            exclusive
+            onChange={handleInviteMethodChange}
+            sx={{ mb: 2, width: "100%" }}
+          >
+            <ToggleButton value="direct" sx={{ width: "50%" }}>
+              <PersonAddIcon sx={{ mr: 1 }} />
+              Thêm trực tiếp
+            </ToggleButton>
+            <ToggleButton value="email" sx={{ width: "50%" }}>
+              <EmailIcon sx={{ mr: 1 }} />
+              Gửi lời mời
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <TextField
+            label="Email"
+            fullWidth
+            value={inviteForm.email}
+            onChange={(e) =>
+              setInviteForm({ ...inviteForm, email: e.target.value })
+            }
+            error={Boolean(
+              inviteForm.email && !validateEmail(inviteForm.email)
+            )}
+            helperText={
+              inviteForm.email && !validateEmail(inviteForm.email)
+                ? "Email không hợp lệ"
+                : ""
+            }
+          />
+          <TextField
+            select
+            label="Vai trò"
+            fullWidth
+            value={inviteForm.role}
+            onChange={(e) =>
+              setInviteForm({ ...inviteForm, role: e.target.value })
+            }
+          >
+            {Object.values(ROLES).map((role) => (
+              <MenuItem key={role} value={role}>
+                {getRoleName(role)}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          {inviteForm.method === "direct" && (
+            <Typography variant="body2" color="text.secondary">
+              * Người dùng sẽ được thêm trực tiếp vào dự án nếu đã có tài khoản
+              trong hệ thống.
+            </Typography>
+          )}
+
+          {inviteForm.method === "email" && (
+            <Typography variant="body2" color="text.secondary">
+              * Một email mời sẽ được gửi đến địa chỉ này với liên kết để tham
+              gia dự án.
+            </Typography>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setInviteDialogOpen(false)}>Hủy</Button>
+        <Button
+          variant="contained"
+          onClick={handleInviteMember}
+          disabled={!inviteForm.email || !validateEmail(inviteForm.email)}
+        >
+          {inviteForm.method === "direct" ? "Thêm thành viên" : "Gửi lời mời"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
 
   return (
     <Box sx={{ p: 3 }}>
@@ -393,61 +532,6 @@ const ProjectDetails = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Invite Member Dialog */}
-      <Dialog
-        open={inviteDialogOpen}
-        onClose={() => setInviteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Thêm thành viên</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 2 }}>
-            <TextField
-              label="Email"
-              fullWidth
-              value={inviteForm.email}
-              onChange={(e) =>
-                setInviteForm({ ...inviteForm, email: e.target.value })
-              }
-              error={Boolean(
-                inviteForm.email && !validateEmail(inviteForm.email)
-              )}
-              helperText={
-                inviteForm.email && !validateEmail(inviteForm.email)
-                  ? "Email không hợp lệ"
-                  : ""
-              }
-            />
-            <TextField
-              select
-              label="Vai trò"
-              fullWidth
-              value={inviteForm.role}
-              onChange={(e) =>
-                setInviteForm({ ...inviteForm, role: e.target.value })
-              }
-            >
-              {Object.values(ROLES).map((role) => (
-                <MenuItem key={role} value={role}>
-                  {role}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInviteDialogOpen(false)}>Hủy</Button>
-          <Button
-            variant="contained"
-            onClick={handleInviteMember}
-            disabled={!inviteForm.email || !validateEmail(inviteForm.email)}
-          >
-            Thêm thành viên
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Delete Dialog */}
       <Dialog
         open={deleteDialogOpen}
@@ -471,6 +555,9 @@ const ProjectDetails = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Invite Member Dialog */}
+      {renderInviteDialog()}
     </Box>
   );
 };
