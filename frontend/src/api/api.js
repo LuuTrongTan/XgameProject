@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "/api", // Sử dụng đường dẫn tương đối để Vite proxy có thể hoạt động
+  baseURL: "/api", // Sử dụng đường dẫn proxy tương đối thay vì URL trực tiếp
   headers: {
     "Content-Type": "application/json",
   },

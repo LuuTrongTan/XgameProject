@@ -1,14 +1,16 @@
 import axios from "./axiosClient";
+import API from "./api";
 
 // Get tasks for a specific project
 export const getProjectTasks = async (projectId) => {
   try {
-    const token = localStorage.getItem("token");
-    console.log("Current token:", token ? "Present" : "Missing");
+    console.log("Fetching tasks for project ID:", projectId);
 
-    const response = await axios.get(`/tasks`, {
-      params: { projectId },
+    // Sử dụng API client đã cấu hình đúng
+    const response = await API.get(`/tasks`, {
+      params: { project: projectId },
     });
+
     console.log("Raw API Response:", response.data);
 
     // Kiểm tra cấu trúc response và trả về dữ liệu phù hợp
@@ -29,8 +31,8 @@ export const getProjectTasks = async (projectId) => {
     // Đảm bảo mỗi task có đầy đủ các trường cần thiết
     tasks = tasks.map((task) => ({
       ...task,
-      status: task.status || "TODO",
-      priority: task.priority || "MEDIUM",
+      status: task.status || "todo",
+      priority: task.priority || "medium",
       assignees: task.assignees || [],
       tags: task.tags || [],
       comments: task.comments || [],
@@ -65,7 +67,10 @@ export const getProjectTasks = async (projectId) => {
 // Create a new task for a project
 export const createTask = async (projectId, taskData) => {
   try {
-    const response = await axios.post(`/projects/${projectId}/tasks`, taskData);
+    const response = await API.post(`/tasks`, {
+      ...taskData,
+      project: projectId,
+    });
     return {
       success: true,
       data: response.data.task || response.data,
@@ -86,7 +91,7 @@ export const createTask = async (projectId, taskData) => {
 // Cập nhật thông tin của task
 export const updateTask = async (taskId, taskData) => {
   try {
-    const response = await axios.put(`/tasks/${taskId}`, taskData);
+    const response = await API.put(`/tasks/${taskId}`, taskData);
     return {
       success: true,
       data: response.data.task || response.data,
@@ -107,7 +112,7 @@ export const updateTask = async (taskId, taskData) => {
 // Xóa task
 export const deleteTask = async (taskId) => {
   try {
-    const response = await axios.delete(`/tasks/${taskId}`);
+    const response = await API.delete(`/tasks/${taskId}`);
     return {
       success: true,
       data: response.data,
@@ -128,7 +133,7 @@ export const deleteTask = async (taskId) => {
 // Cập nhật trạng thái của task (di chuyển giữa các cột)
 export const updateTaskStatus = async (taskId, status) => {
   try {
-    const response = await axios.patch(`/tasks/${taskId}/status`, { status });
+    const response = await API.put(`/tasks/${taskId}/status`, { status });
     return {
       success: true,
       data: response.data.task || response.data,
@@ -148,7 +153,7 @@ export const updateTaskStatus = async (taskId, status) => {
 
 export const addTaskComment = async (taskId, comment) => {
   try {
-    const response = await axios.post(`/tasks/${taskId}/comments`, {
+    const response = await API.post(`/tasks/${taskId}/comments`, {
       content: comment,
     });
     return {
@@ -172,15 +177,11 @@ export const addTaskAttachment = async (taskId, file) => {
   try {
     const formData = new FormData();
     formData.append("file", file);
-    const response = await axios.post(
-      `/tasks/${taskId}/attachments`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
-    );
+    const response = await API.post(`/tasks/${taskId}/attachments`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
     return {
       success: true,
       data: response.data.attachment || response.data,
@@ -200,7 +201,7 @@ export const addTaskAttachment = async (taskId, file) => {
 
 export const getTaskComments = async (taskId) => {
   try {
-    const response = await axios.get(`/tasks/${taskId}/comments`);
+    const response = await API.get(`/tasks/${taskId}/comments`);
     return {
       success: true,
       data: response.data.comments || response.data || [],
@@ -221,7 +222,7 @@ export const getTaskComments = async (taskId) => {
 
 export const getTaskAttachments = async (taskId) => {
   try {
-    const response = await axios.get(`/tasks/${taskId}/attachments`);
+    const response = await API.get(`/tasks/${taskId}/attachments`);
     return {
       success: true,
       data: response.data.attachments || response.data || [],
@@ -242,7 +243,7 @@ export const getTaskAttachments = async (taskId) => {
 
 export const deleteTaskAttachment = async (taskId, attachmentId) => {
   try {
-    const response = await axios.delete(
+    const response = await API.delete(
       `/tasks/${taskId}/attachments/${attachmentId}`
     );
     return {
@@ -264,7 +265,7 @@ export const deleteTaskAttachment = async (taskId, attachmentId) => {
 
 export const syncWithCalendar = async (taskId, calendarType) => {
   try {
-    const response = await axios.post(`/tasks/${taskId}/sync-calendar`, {
+    const response = await API.post(`/tasks/${taskId}/sync-calendar`, {
       calendarType,
     });
     return {

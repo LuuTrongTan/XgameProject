@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/projects/Projects";
 import ProjectDetails from "./pages/projects/ProjectDetails";
 import Tasks from "./pages/task/Tasks";
+import TaskDebug from "./pages/task/TaskDebug";
 import Profile from "./pages/profile/Profile";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/common/Layout";
@@ -43,6 +44,7 @@ const App = () => {
         { path: "projects", element: <Projects /> },
         { path: "projects/:projectId", element: <ProjectDetails /> },
         { path: "projects/:projectId/tasks", element: <Tasks /> },
+        { path: "task-debug", element: <TaskDebug /> },
         { path: "profile", element: <Profile /> },
         { path: "*", element: <NotFound /> },
       ],
