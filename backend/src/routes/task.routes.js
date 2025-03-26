@@ -19,6 +19,8 @@ import {
 } from "../controllers/task.controller.js";
 import { addTaskComment } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
+import { checkPermission } from "../middlewares/permission.middleware.js";
+import { PERMISSIONS } from "../config/constants.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -149,7 +151,7 @@ router.get("/:id", protect, getTaskById);
  *             schema:
  *               $ref: '#/components/schemas/Task'
  */
-router.post("/", protect, createTask);
+router.post("/", protect, checkPermission(PERMISSIONS.CREATE_TASK), createTask);
 
 /**
  * @swagger

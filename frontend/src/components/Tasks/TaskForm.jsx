@@ -20,6 +20,7 @@ import {
   Stack,
   IconButton,
   Autocomplete,
+  Tooltip,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -32,6 +33,9 @@ import API from "../../api/api";
 import ActivityService from "../../services/activityService";
 import { useNavigate, useParams } from "react-router-dom";
 import { styled } from "@mui/material/styles";
+import { useAuth } from "../../contexts/AuthContext";
+import { useSnackbar } from "notistack";
+import { ROLES } from "../../config/constants";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -58,6 +62,8 @@ const VisuallyHiddenInput = styled("input")({
 
 const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { enqueueSnackbar } = useSnackbar();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -274,15 +280,89 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
     }
   };
 
+  const canDeleteTask = () => {
+    if (!task || !user) return false;
+
+    console.log("=== DEBUG: DELETE TASK PERMISSION ===");
+    console.log("User data:", {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
+    console.log("Task data:", {
+      id: task._id,
+      title: task.title,
+      createdBy: task.createdBy?._id,
+      assignees: task.assignees?.length || 0,
+    });
+
+    if (user.role === ROLES.ADMIN) {
+      console.log("User is ADMIN - Can delete task");
+      return true;
+    }
+
+    if (
+      task.createdBy?._id === user._id &&
+      (!task.assignees || task.assignees.length === 0)
+    ) {
+      console.log(
+        "User is TASK CREATOR and task has no assignees - Can delete task"
+      );
+      return true;
+    }
+
+    if (project && project.members) {
+      const userMembership = project.members.find(
+        (m) => m.user?._id === user._id
+      );
+      console.log("User membership in project:", userMembership);
+
+      if (userMembership) {
+        console.log("User role in project:", userMembership.role);
+        console.log("Expected PM role:", ROLES.PROJECT_MANAGER);
+        console.log(
+          "Role comparison:",
+          userMembership.role === ROLES.PROJECT_MANAGER
+        );
+
+        if (userMembership.role === ROLES.PROJECT_MANAGER) {
+          console.log("User is PROJECT MANAGER - Can delete task");
+          return true;
+        }
+      }
+    }
+
+    console.log("User does not have permission to delete task");
+    console.log("=== END DEBUG ===");
+    return false;
+  };
+
   const handleDelete = async () => {
+    if (!canDeleteTask()) {
+      enqueueSnackbar(
+        "Bạn không có quyền xóa công việc này. Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa.",
+        { variant: "error", autoHideDuration: 5000 }
+      );
+      return;
+    }
+
     if (window.confirm("Bạn có chắc chắn muốn xóa công việc này?")) {
       setLoading(true);
       try {
         await API.delete(`/tasks/${task._id}`);
         await ActivityService.logTaskDeleted(task.title);
+        enqueueSnackbar("Công việc đã được xóa thành công", {
+          variant: "success",
+          autoHideDuration: 5000,
+        });
         navigate(`/projects/${projectId}`);
       } catch (error) {
         console.error("Error deleting task:", error);
+        enqueueSnackbar(
+          error.response?.data?.message || "Không thể xóa công việc",
+          { variant: "error", autoHideDuration: 5000 }
+        );
       } finally {
         setLoading(false);
       }
@@ -580,14 +660,24 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
             >
               <Box>
                 {task?._id && (
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    onClick={handleDelete}
-                    disabled={loading}
+                  <Tooltip
+                    title={
+                      !canDeleteTask()
+                        ? "Bạn không có quyền xóa công việc này"
+                        : ""
+                    }
                   >
-                    Xóa
-                  </Button>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={handleDelete}
+                        disabled={loading || !canDeleteTask()}
+                      >
+                        Xóa
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
               </Box>
               <Box sx={{ display: "flex", gap: 2 }}>

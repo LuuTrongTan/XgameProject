@@ -169,3 +169,25 @@ export const updateTaskStatus = async (projectId, taskId, status) => {
     throw error;
   }
 };
+
+// Lưu trữ dự án
+export const archiveProject = async (projectId) => {
+  try {
+    const response = await API.post(`/projects/${projectId}/archive`);
+    return response.data;
+  } catch (error) {
+    console.error("Error archiving project:", error);
+    throw error;
+  }
+};
+
+// Khôi phục dự án đã lưu trữ
+export const restoreProject = async (projectId) => {
+  try {
+    const response = await API.post(`/projects/${projectId}/restore`);
+    return response.data;
+  } catch (error) {
+    console.error("Error restoring project:", error);
+    throw error;
+  }
+};

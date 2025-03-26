@@ -216,7 +216,9 @@ export const createProject = async (req, res) => {
       description,
       status: status || "Đang hoạt động",
       owner: req.user.id,
-      members: [{ user: req.user.id, role: "admin", joinedAt: new Date() }],
+      members: [
+        { user: req.user.id, role: "project_manager", joinedAt: new Date() },
+      ],
     });
 
     console.log("Created project object:", project);

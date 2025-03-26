@@ -28,6 +28,11 @@ const rolePermissions = {
     PERMISSIONS.MANAGE_TASK_TAGS,
     PERMISSIONS.SYNC_CALENDAR,
 
+    // Document permissions
+    PERMISSIONS.UPLOAD_DOCUMENT,
+    PERMISSIONS.DELETE_DOCUMENT,
+    PERMISSIONS.VIEW_DOCUMENT,
+
     // Time tracking
     PERMISSIONS.MANAGE_TIME_LOGS,
     PERMISSIONS.VIEW_TIME_REPORTS,
@@ -43,20 +48,26 @@ const rolePermissions = {
     PERMISSIONS.MANAGE_NOTIFICATIONS,
   ],
   [ROLES.MEMBER]: [
-    // Quyền dự án cơ bản
+    // Quyền dự án
     PERMISSIONS.VIEW_PROJECT,
+    PERMISSIONS.CREATE_PROJECT,
 
-    // Quyền công việc cơ bản
+    // Quyền công việc
     PERMISSIONS.VIEW_TASK,
+    PERMISSIONS.CREATE_TASK,
     PERMISSIONS.UPDATE_TASK,
     PERMISSIONS.COMMENT_TASK,
     PERMISSIONS.UPLOAD_TASK_FILE,
+
+    // Quyền document - giống như quyền task
+    PERMISSIONS.VIEW_DOCUMENT,
+    PERMISSIONS.UPLOAD_DOCUMENT,
 
     // Time tracking
     PERMISSIONS.MANAGE_TIME_LOGS,
     PERMISSIONS.VIEW_TIME_REPORTS,
 
-    // Báo cáo
+    // Báo cáo cơ bản
     PERMISSIONS.VIEW_DASHBOARD,
     PERMISSIONS.VIEW_PROJECT_REPORTS,
 
@@ -115,23 +126,36 @@ export const checkProjectPermission = async (req, res, next) => {
 export const checkPermission = (permission) => {
   return async (req, res, next) => {
     try {
-      // Admin có tất cả quyền
+      console.log("=== DEBUG CHECK PERMISSION ===");
+      console.log("User:", req.user.name, req.user.email);
+      console.log("User role:", req.user.role);
+      console.log("Required permission:", permission);
+
+      // Admin luôn có tất cả quyền
       if (req.user.role === ROLES.ADMIN) {
+        console.log("User is ADMIN, access granted");
         return next();
       }
 
+      // Xử lý các quyền
       // Lấy role từ project hoặc user
       const role = req.projectRole || req.user.role;
+      console.log("Effective role for permission check:", role);
 
-      // Kiểm tra quyền
+      // Kiểm tra quyền dựa trên role
       const permissions = rolePermissions[role] || [];
+      console.log("Available permissions for role:", permissions);
+
       if (!permissions.includes(permission)) {
+        console.log("Permission denied:", permission);
         return res.status(403).json({
           success: false,
           message: "Bạn không có quyền thực hiện hành động này",
         });
       }
 
+      console.log("Permission granted:", permission);
+      console.log("=== END DEBUG ===");
       next();
     } catch (error) {
       console.error("Lỗi khi kiểm tra quyền:", error);

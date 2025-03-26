@@ -14,6 +14,8 @@ import {
   restoreProject,
 } from "../controllers/project.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
+import { checkPermission } from "../middlewares/permission.middleware.js";
+import { PERMISSIONS } from "../config/constants.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -108,7 +110,7 @@ router.get("/:id", getProjectById);
  *       401:
  *         description: Không có quyền truy cập
  */
-router.post("/", createProject);
+router.post("/", checkPermission(PERMISSIONS.CREATE_PROJECT), createProject);
 
 /**
  * @swagger

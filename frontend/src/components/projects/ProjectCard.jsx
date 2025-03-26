@@ -24,7 +24,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useSnackbar } from "notistack";
-import axios from "axios";
+import { archiveProject, restoreProject } from "../../api/projectApi";
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -62,38 +62,52 @@ const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
     setAnchorEl(null);
   };
 
-  const handleArchive = async () => {
+  const handleArchive = async (event) => {
+    event.stopPropagation();
     try {
-      const response = await axios.post(`/api/projects/${project._id}/archive`);
-      if (response.data.success) {
-        enqueueSnackbar("Dự án đã được archive", { variant: "success" });
-        // Refresh project list
-        window.location.reload();
+      const response = await archiveProject(project._id);
+      if (response.success) {
+        enqueueSnackbar("Dự án đã được lưu trữ", {
+          variant: "success",
+          autoHideDuration: 10000,
+        });
+        // Trở về trang danh sách dự án
+        setTimeout(() => {
+          navigate("/projects");
+        }, 500);
       }
     } catch (error) {
       enqueueSnackbar(
-        error.response?.data?.message || "Lỗi khi archive dự án",
+        error.response?.data?.message || "Lỗi khi lưu trữ dự án",
         {
           variant: "error",
+          autoHideDuration: 10000,
         }
       );
     }
     handleMenuClose();
   };
 
-  const handleRestore = async () => {
+  const handleRestore = async (event) => {
+    event.stopPropagation();
     try {
-      const response = await axios.post(`/api/projects/${project._id}/restore`);
-      if (response.data.success) {
-        enqueueSnackbar("Dự án đã được restore", { variant: "success" });
-        // Refresh project list
-        window.location.reload();
+      const response = await restoreProject(project._id);
+      if (response.success) {
+        enqueueSnackbar("Dự án đã được khôi phục", {
+          variant: "success",
+          autoHideDuration: 10000,
+        });
+        // Trở về trang danh sách dự án
+        setTimeout(() => {
+          navigate("/projects");
+        }, 500);
       }
     } catch (error) {
       enqueueSnackbar(
-        error.response?.data?.message || "Lỗi khi restore dự án",
+        error.response?.data?.message || "Lỗi khi khôi phục dự án",
         {
           variant: "error",
+          autoHideDuration: 10000,
         }
       );
     }
@@ -122,10 +136,13 @@ const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
         flexDirection: "column",
         position: "relative",
         opacity: p.isArchived ? 0.7 : 1,
+        filter: p.isArchived ? "grayscale(30%)" : "none",
+        borderLeft: p.isArchived ? "4px solid #9e9e9e" : "none",
         "&:hover": {
           boxShadow: 3,
         },
       }}
+      onClick={() => navigate(`/projects/${p._id}`)}
     >
       <CardContent sx={{ flexGrow: 1 }}>
         <Grid container justifyContent="space-between" alignItems="center">
@@ -238,7 +255,9 @@ const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
           {!p.isArchived &&
             (user?.role === "admin" ||
               p.members?.some(
-                (m) => m.user === user?._id && m.role === "Project Manager"
+                (m) =>
+                  m.user._id === user?._id &&
+                  ["admin", "project_manager"].includes(m.role)
               )) && (
               <MenuItem onClick={onEdit}>
                 <ListItemIcon>
@@ -258,25 +277,29 @@ const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
           {!p.isArchived &&
             (user?.role === "admin" ||
               p.members?.some(
-                (m) => m.user === user?._id && m.role === "Project Manager"
+                (m) =>
+                  m.user._id === user?._id &&
+                  ["admin", "project_manager"].includes(m.role)
               )) && (
               <MenuItem onClick={handleArchive}>
                 <ListItemIcon>
                   <ArchiveIcon fontSize="small" />
                 </ListItemIcon>
-                Archive
+                Lưu trữ
               </MenuItem>
             )}
           {p.isArchived &&
             (user?.role === "admin" ||
               p.members?.some(
-                (m) => m.user === user?._id && m.role === "Project Manager"
+                (m) =>
+                  m.user._id === user?._id &&
+                  ["admin", "project_manager"].includes(m.role)
               )) && (
               <MenuItem onClick={handleRestore}>
                 <ListItemIcon>
                   <UnarchiveIcon fontSize="small" />
                 </ListItemIcon>
-                Restore
+                Khôi phục
               </MenuItem>
             )}
         </Menu>

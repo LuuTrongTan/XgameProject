@@ -12,11 +12,13 @@ import {
   Tab,
   Stack,
   CircularProgress,
+  Alert,
 } from "@mui/material";
 import {
   Add as AddIcon,
   Visibility as VisibilityIcon,
   Assignment as AssignmentIcon,
+  Archive as ArchiveIcon,
 } from "@mui/icons-material";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useNavigate } from "react-router-dom";
@@ -148,10 +150,11 @@ const Projects = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     fetchProjects();
-  }, [filter]);
+  }, [filter, showArchived]);
 
   const fetchProjects = async () => {
     try {
@@ -163,6 +166,17 @@ const Projects = () => {
       let projectsData = [];
       if (response?.success && response?.data) {
         projectsData = response.data;
+
+        // Log project statuses to help debug filtering
+        console.log(
+          "Project statuses:",
+          projectsData.map((p) => p.status)
+        );
+
+        // Lọc dự án theo trạng thái archived
+        if (!showArchived) {
+          projectsData = projectsData.filter((project) => !project.isArchived);
+        }
       }
 
       setProjects(projectsData);
@@ -243,6 +257,10 @@ const Projects = () => {
   const filteredProjects = safeProjects.filter((project) => {
     if (!project) return false;
     if (filter === "all") return true;
+    if (filter === "active")
+      return project.status?.toLowerCase() === "đang hoạt động";
+    if (filter === "completed")
+      return project.status?.toLowerCase() === "hoàn thành";
     return project.status?.toLowerCase() === filter.toLowerCase();
   });
 
@@ -256,116 +274,150 @@ const Projects = () => {
           mb: 3,
         }}
       >
-        <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-          Dự án
+        <Typography variant="h5" component="h1">
+          Dự án của bạn
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          Tạo dự án mới
-        </Button>
-      </Box>
-
-      <Box sx={{ mb: 3 }}>
-        <Tabs
-          value={filter}
-          onChange={handleFilterChange}
-          sx={{
-            "& .MuiTab-root": {
-              textTransform: "none",
-              minWidth: "auto",
-              mr: 2,
-            },
-          }}
-        >
-          <Tab label="Tất cả" value="all" />
-          <Tab label="Đang hoạt động" value="đang hoạt động" />
-          <Tab label="Hoàn thành" value="hoàn thành" />
-          <Tab label="Đóng" value="đóng" />
-        </Tabs>
-      </Box>
-
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-          gap: 3,
-        }}
-      >
-        {filteredProjects.map((project) => (
-          <Card
-            key={project._id}
-            sx={{
-              bgcolor: "#F8FAFF",
-              "&:hover": { boxShadow: 3 },
-            }}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Button
+            variant="outlined"
+            color={showArchived ? "primary" : "inherit"}
+            startIcon={<ArchiveIcon />}
+            onClick={() => setShowArchived(!showArchived)}
           >
-            <CardContent>
-              <Chip
-                label={getStatusLabel(project.status)}
-                size="small"
-                sx={{
-                  bgcolor: `${getStatusColor(project.status)}20`,
-                  color: getStatusColor(project.status),
-                  mb: 2,
-                }}
-              />
-              <Typography variant="h6" gutterBottom>
-                {project.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                {project.description}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Tạo {new Date(project.createdAt).toLocaleDateString("vi-VN")}
-              </Typography>
-
-              <Box sx={{ mt: 2, mb: 2 }}>
-                {project.members?.slice(0, 3).map((member, index) => (
-                  <Avatar
-                    key={member.user._id}
-                    sx={{
-                      bgcolor: "#1976D2",
-                      display: "inline-flex",
-                      marginLeft: index > 0 ? -1 : 0,
-                    }}
-                  >
-                    {member.user.name?.[0] || member.user.email?.[0]}
-                  </Avatar>
-                ))}
-                {project.members?.length > 3 && (
-                  <Avatar sx={{ bgcolor: "grey.500", marginLeft: -1 }}>
-                    +{project.members.length - 3}
-                  </Avatar>
-                )}
-              </Box>
-
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  startIcon={<VisibilityIcon />}
-                  size="small"
-                  sx={{ flex: 1 }}
-                  onClick={() => navigate(`/projects/${project._id}`)}
-                >
-                  Xem dự án
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<AssignmentIcon />}
-                  size="small"
-                  sx={{ flex: 1 }}
-                  onClick={() => navigate(`/projects/${project._id}/tasks`)}
-                >
-                  Công việc
-                </Button>
-              </Stack>
-            </CardContent>
-          </Card>
-        ))}
+            {showArchived ? "Ẩn dự án đã lưu trữ" : "Hiện dự án đã lưu trữ"}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            Tạo dự án mới
+          </Button>
+        </Box>
       </Box>
+
+      <Tabs
+        value={filter}
+        onChange={handleFilterChange}
+        sx={{ mb: 3, borderBottom: 1, borderColor: "divider" }}
+        indicatorColor="primary"
+        textColor="primary"
+      >
+        <Tab value="all" label="Tất cả" />
+        <Tab value="active" label="Đang hoạt động" />
+        <Tab value="completed" label="Hoàn thành" />
+      </Tabs>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : projects.length === 0 ? (
+        <Card sx={{ p: 4, textAlign: "center" }}>
+          <Typography variant="h6" color="text.secondary" mb={2}>
+            {showArchived
+              ? "Không có dự án nào đã được lưu trữ"
+              : "Bạn chưa có dự án nào"}
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            Tạo dự án mới
+          </Button>
+        </Card>
+      ) : (
+        <Grid container spacing={3}>
+          {filteredProjects.map((project) => (
+            <Grid item xs={12} sm={6} md={4} key={project._id}>
+              <Card
+                sx={{
+                  bgcolor: "#F8FAFF",
+                  "&:hover": { boxShadow: 3 },
+                }}
+              >
+                <CardContent>
+                  <Chip
+                    label={getStatusLabel(project.status)}
+                    size="small"
+                    sx={{
+                      bgcolor: `${getStatusColor(project.status)}20`,
+                      color: getStatusColor(project.status),
+                      mb: 2,
+                    }}
+                  />
+                  <Typography variant="h6" gutterBottom>
+                    {project.name}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    {project.description}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Tạo{" "}
+                    {new Date(project.createdAt).toLocaleDateString("vi-VN")}
+                  </Typography>
+
+                  <Box sx={{ mt: 2, mb: 2 }}>
+                    {project.members?.slice(0, 3).map((member, index) => (
+                      <Avatar
+                        key={member.user._id}
+                        sx={{
+                          bgcolor: "#1976D2",
+                          display: "inline-flex",
+                          marginLeft: index > 0 ? -1 : 0,
+                        }}
+                      >
+                        {member.user.name?.[0] || member.user.email?.[0]}
+                      </Avatar>
+                    ))}
+                    {project.members?.length > 3 && (
+                      <Avatar sx={{ bgcolor: "grey.500", marginLeft: -1 }}>
+                        +{project.members.length - 3}
+                      </Avatar>
+                    )}
+                  </Box>
+
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      size="small"
+                      sx={{ flex: 1 }}
+                      onClick={() => navigate(`/projects/${project._id}`)}
+                    >
+                      Xem dự án
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<AssignmentIcon />}
+                      size="small"
+                      sx={{ flex: 1 }}
+                      onClick={() => navigate(`/projects/${project._id}/tasks`)}
+                    >
+                      Công việc
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
 
       <CreateProjectDialog
         open={createDialogOpen}

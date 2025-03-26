@@ -1064,15 +1064,49 @@ export const assignTask = async (req, res) => {
 // Xóa công việc
 export const deleteTask = async (req, res) => {
   try {
-    const { task, error } = await checkTaskPermission(
-      req.params.id,
-      req.user.id,
-      ["Admin", "Project Manager"]
+    const taskId = req.params.id;
+    const userId = req.user.id;
+
+    // Lấy thông tin task
+    const task = await Task.findById(taskId).populate({
+      path: "project",
+      populate: { path: "members" },
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Công việc không tồn tại",
+      });
+    }
+
+    const project = task.project;
+
+    // Kiểm tra quyền xóa task
+    // 1. Admin và Project Manager có thể xóa mọi task
+    // 2. Member chỉ có thể xóa task mà họ tạo và chưa được gán cho người khác
+    const isAdmin = req.user.role === ROLES.ADMIN;
+    const isProjectManager = project.members.some(
+      (m) =>
+        m.user.toString() === userId.toString() &&
+        m.role === ROLES.PROJECT_MANAGER
     );
-    if (error) {
+    const isProjectOwner = project.owner.toString() === userId.toString();
+    const isTaskCreator = task.createdBy.toString() === userId.toString();
+    const hasAssignees = task.assignees && task.assignees.length > 0;
+
+    // Nếu là admin, project manager hoặc owner - cho phép xóa
+    const canDelete =
+      isAdmin ||
+      isProjectManager ||
+      isProjectOwner ||
+      // Hoặc là người tạo task và task chưa được gán
+      (isTaskCreator && !hasAssignees);
+
+    if (!canDelete) {
       return res.status(403).json({
         success: false,
-        message: error,
+        message: "Bạn không có quyền xóa công việc này",
       });
     }
 
