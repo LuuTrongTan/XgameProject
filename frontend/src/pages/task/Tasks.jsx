@@ -24,6 +24,7 @@ import {
   Alert,
   Avatar,
   AvatarGroup,
+  Tooltip,
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -59,6 +60,8 @@ import axios from "axios";
 import { useSnackbar } from "notistack";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { useAuth } from "../../contexts/AuthContext";
+import { usePermissions } from "../../hooks/usePermissions";
 
 // Định nghĩa labels và colors cho các mức độ ưu tiên
 const priorityLabels = {
@@ -77,6 +80,8 @@ const Tasks = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
+  const { user } = useAuth();
+  const { canDeleteTask } = usePermissions();
   const [tasks, setTasks] = useState({
     todo: [],
     inProgress: [],
@@ -131,7 +136,10 @@ const Tasks = () => {
         console.log("Project Response:", projectResult);
 
         if (projectResult.success) {
-          setProject(projectResult.data);
+          const projectData = projectResult.data;
+          setProject(projectData);
+          console.log("Project data set:", projectData);
+          console.log("Project members:", projectData.members);
         } else {
           throw new Error(projectResult.message);
         }
@@ -270,6 +278,34 @@ const Tasks = () => {
   };
 
   const handleDeleteTask = async (taskId) => {
+    // Tìm task từ tất cả các danh sách
+    const taskToDelete = [
+      ...tasks.todo,
+      ...tasks.inProgress,
+      ...tasks.review,
+      ...tasks.done,
+    ].find((task) => task._id === taskId);
+
+    if (!taskToDelete) {
+      showSnackbar("Không tìm thấy công việc này", "error");
+      return;
+    }
+
+    console.log("Tasks.jsx - Deleting task:", taskToDelete);
+    console.log("Tasks.jsx - Project data:", project);
+
+    // Kiểm tra quyền xóa task
+    if (!canDeleteTask(taskToDelete, project)) {
+      console.log("Tasks.jsx - Permission denied for deleting task");
+      showSnackbar(
+        "Bạn không có quyền xóa công việc này. Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa.",
+        "error"
+      );
+      return;
+    }
+
+    console.log("Tasks.jsx - Permission granted for deleting task");
+
     try {
       const response = await deleteTask(taskId);
       if (response.success) {
@@ -499,6 +535,24 @@ const Tasks = () => {
     }
   };
 
+  const renderTaskCards = (columnTasks, status) => {
+    return columnTasks.map((task) => (
+      <TaskCard
+        key={task._id}
+        task={task}
+        container={status}
+        project={project}
+        onEdit={(task) => {
+          setSelectedTask(task);
+          setOpenEditDialog(true);
+        }}
+        onDelete={handleDeleteTask}
+        onAddComment={handleAddComment}
+        onAddAttachment={handleAddAttachment}
+      />
+    ));
+  };
+
   if (loading) {
     return (
       <Box
@@ -650,17 +704,7 @@ const Tasks = () => {
                   items={tasks.todo.map((task) => task._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {tasks.todo.map((task) => (
-                    <TaskCard
-                      key={task._id}
-                      task={task}
-                      container="todo"
-                      onEdit={(task) => {
-                        setSelectedTask(task);
-                        setOpenEditDialog(true);
-                      }}
-                    />
-                  ))}
+                  {renderTaskCards(tasks.todo, "todo")}
                 </SortableContext>
               </CardContent>
             </Card>
@@ -721,17 +765,7 @@ const Tasks = () => {
                   items={tasks.inProgress.map((task) => task._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {tasks.inProgress.map((task) => (
-                    <TaskCard
-                      key={task._id}
-                      task={task}
-                      container="inProgress"
-                      onEdit={(task) => {
-                        setSelectedTask(task);
-                        setOpenEditDialog(true);
-                      }}
-                    />
-                  ))}
+                  {renderTaskCards(tasks.inProgress, "inProgress")}
                 </SortableContext>
               </CardContent>
             </Card>
@@ -792,17 +826,7 @@ const Tasks = () => {
                   items={tasks.review.map((task) => task._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {tasks.review.map((task) => (
-                    <TaskCard
-                      key={task._id}
-                      task={task}
-                      container="review"
-                      onEdit={(task) => {
-                        setSelectedTask(task);
-                        setOpenEditDialog(true);
-                      }}
-                    />
-                  ))}
+                  {renderTaskCards(tasks.review, "review")}
                 </SortableContext>
               </CardContent>
             </Card>
@@ -863,17 +887,7 @@ const Tasks = () => {
                   items={tasks.done.map((task) => task._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {tasks.done.map((task) => (
-                    <TaskCard
-                      key={task._id}
-                      task={task}
-                      container="done"
-                      onEdit={(task) => {
-                        setSelectedTask(task);
-                        setOpenEditDialog(true);
-                      }}
-                    />
-                  ))}
+                  {renderTaskCards(tasks.done, "done")}
                 </SortableContext>
               </CardContent>
             </Card>

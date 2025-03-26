@@ -45,6 +45,8 @@ import TaskComments from "./TaskComments";
 import TaskAuditLog from "./TaskAuditLog";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { usePermissions } from "../../hooks/usePermissions";
+import { useAuth } from "../../contexts/AuthContext";
 
 const priorityColors = {
   LOW: "#4caf50",
@@ -89,11 +91,14 @@ const statusLabels = {
 const TaskCard = ({
   task,
   container,
+  project,
   onEdit,
   onDelete,
   onAddComment,
   onAddAttachment,
 }) => {
+  const { user } = useAuth();
+  const { canDeleteTask } = usePermissions();
   const [anchorEl, setAnchorEl] = useState(null);
   const [openCommentDialog, setOpenCommentDialog] = useState(false);
   const [newComment, setNewComment] = useState("");
@@ -180,6 +185,21 @@ const TaskCard = ({
   };
 
   const handleDeleteClick = () => {
+    console.log("TaskCard - Delete attempt:");
+    console.log("- Task:", task);
+    console.log("- Project:", project);
+
+    if (!canDeleteTask(task, project)) {
+      console.log("- Permission check failed: User cannot delete this task");
+      alert(
+        "Bạn không có quyền xóa công việc này. Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa."
+      );
+      handleMenuClose();
+      return;
+    }
+
+    console.log("- Permission check passed: User can delete this task");
+
     if (
       onDelete &&
       window.confirm("Bạn có chắc chắn muốn xóa công việc này?")
@@ -290,13 +310,15 @@ const TaskCard = ({
                   <AttachFileIcon fontSize="small" sx={{ mr: 1 }} />
                   Thêm tệp đính kèm
                 </MenuItem>
-                <MenuItem
-                  onClick={handleDeleteClick}
-                  sx={{ color: "error.main" }}
-                >
-                  <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
-                  Xóa
-                </MenuItem>
+                {canDeleteTask(task, project) && (
+                  <MenuItem
+                    onClick={handleDeleteClick}
+                    sx={{ color: "error.main" }}
+                  >
+                    <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+                    Xóa
+                  </MenuItem>
+                )}
               </Menu>
             </Box>
           </Box>

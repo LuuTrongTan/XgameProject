@@ -37,8 +37,9 @@ import {
   PersonAdd as PersonAddIcon,
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
+  Login as LoginIcon,
 } from "@mui/icons-material";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   getProjectById,
   updateProject,
@@ -50,36 +51,37 @@ import {
 } from "../../api/projectApi";
 import { useSnackbar } from "notistack";
 import { useAuth } from "../../contexts/AuthContext";
-
-const ROLES = {
-  ADMIN: "admin",
-  PROJECT_MANAGER: "project_manager",
-  MEMBER: "member",
-};
-
-const getRoleName = (roleValue) => {
-  switch (roleValue) {
-    case ROLES.ADMIN:
-      return "Admin";
-    case ROLES.PROJECT_MANAGER:
-      return "Project Manager";
-    case ROLES.MEMBER:
-      return "Member";
-    default:
-      return roleValue;
-  }
-};
+import { usePermissions } from "../../hooks/usePermissions";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading, authError, checkAuth } = useAuth();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const { enqueueSnackbar } = useSnackbar();
+
+  // Debug log - Kiểm tra user
+  console.log("ProjectDetails - user từ useAuth:", user);
+  console.log("ProjectDetails - authLoading:", authLoading);
+  console.log("ProjectDetails - authError:", authError);
+
+  // Sử dụng hook usePermissions để kiểm tra quyền
+  const {
+    ROLES,
+    getRoleName,
+    canEditProject,
+    canDeleteProject,
+    canArchiveProject,
+    canAddMembers,
+    toggleDebugMode,
+    debugMode,
+  } = usePermissions();
+
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: ROLES.MEMBER,
@@ -92,11 +94,29 @@ const ProjectDetails = () => {
   });
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
-  const { enqueueSnackbar } = useSnackbar();
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Kiểm tra xác thực khi mount và khi thay đổi user
+  useEffect(() => {
+    if (!user && !authLoading) {
+      // Thử làm mới phiên đăng nhập nếu chưa đăng nhập
+      checkAuth();
+    }
+  }, [user, authLoading]);
 
   useEffect(() => {
-    fetchProjectDetails();
-  }, [projectId]);
+    if (!authLoading) {
+      fetchProjectDetails();
+    }
+  }, [projectId, authLoading, reloadKey]);
+
+  const handleReloadData = () => {
+    setReloadKey((prev) => prev + 1);
+  };
+
+  const handleLogin = () => {
+    navigate("/login", { state: { returnUrl: `/projects/${projectId}` } });
+  };
 
   const fetchProjectDetails = async () => {
     try {
@@ -120,193 +140,44 @@ const ProjectDetails = () => {
 
   const handleEditProject = async () => {
     try {
+      if (!canEditProject(project)) {
+        enqueueSnackbar("Bạn không có quyền chỉnh sửa dự án này", {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
+        setEditDialogOpen(false);
+        return;
+      }
+
       const response = await updateProject(projectId, editForm);
       if (response?.success) {
         setProject(response.data);
         setEditDialogOpen(false);
+        enqueueSnackbar("Cập nhật dự án thành công", {
+          variant: "success",
+          autoHideDuration: 5000,
+        });
       }
     } catch (err) {
       console.error("Error updating project:", err);
-    }
-  };
-
-  const canEditProject = () => {
-    if (!project || !user) {
-      console.log("No project or user data");
-      return false;
-    }
-
-    console.log("=== DEBUG: EDIT PROJECT PERMISSION ===");
-    console.log("User data:", {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    });
-    console.log("Project data:", {
-      id: project._id,
-      name: project.name,
-      owner: project.owner,
-      members: project.members,
-    });
-
-    // Admin có thể sửa bất kỳ dự án nào
-    if (user.role === ROLES.ADMIN) {
-      console.log("User is ADMIN - Can edit project");
-      return true;
-    }
-
-    // Chủ dự án có thể sửa dự án của mình
-    if (project.owner && project.owner._id === user._id) {
-      console.log("User is PROJECT OWNER - Can edit project");
-      return true;
-    }
-
-    // Kiểm tra quyền thành viên trong dự án
-    const userMembership = project.members?.find(
-      (m) => m.user._id === user._id
-    );
-    console.log("User membership found:", userMembership);
-
-    if (userMembership) {
-      console.log("User role in project:", userMembership.role);
-      console.log("Expected PM role:", ROLES.PROJECT_MANAGER);
-      console.log(
-        "Role comparison:",
-        userMembership.role === ROLES.PROJECT_MANAGER
+      enqueueSnackbar(
+        err.response?.data?.message || "Không thể cập nhật dự án",
+        {
+          variant: "error",
+          autoHideDuration: 5000,
+        }
       );
-
-      // Kiểm tra role project manager
-      if (userMembership.role === ROLES.PROJECT_MANAGER) {
-        console.log("User is PROJECT MANAGER - Can edit project");
-        return true;
-      }
     }
-
-    console.log("User does not have permission to edit project");
-    console.log("=== END DEBUG ===");
-    return false;
-  };
-
-  const canArchiveProject = () => {
-    if (!project || !user) {
-      console.log("No project or user data");
-      return false;
-    }
-
-    console.log("=== DEBUG: ARCHIVE PROJECT PERMISSION ===");
-    console.log("User data:", {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    });
-    console.log("Project data:", {
-      id: project._id,
-      name: project.name,
-      owner: project.owner,
-      members: project.members,
-    });
-
-    // Admin có thể lưu trữ bất kỳ dự án nào
-    if (user.role === ROLES.ADMIN) {
-      console.log("User is ADMIN - Can archive project");
-      return true;
-    }
-
-    // Chủ dự án có thể lưu trữ dự án của mình
-    if (project.owner && project.owner._id === user._id) {
-      console.log("User is PROJECT OWNER - Can archive project");
-      return true;
-    }
-
-    // Kiểm tra quyền thành viên trong dự án
-    const userMembership = project.members?.find(
-      (m) => m.user._id === user._id
-    );
-    console.log("User membership found:", userMembership);
-
-    if (userMembership) {
-      console.log("User role in project:", userMembership.role);
-      console.log("Expected PM role:", ROLES.PROJECT_MANAGER);
-      console.log(
-        "Role comparison:",
-        userMembership.role === ROLES.PROJECT_MANAGER
-      );
-
-      // Kiểm tra role project manager
-      if (userMembership.role === ROLES.PROJECT_MANAGER) {
-        console.log("User is PROJECT MANAGER - Can archive project");
-        return true;
-      }
-    }
-
-    console.log("User does not have permission to archive project");
-    console.log("=== END DEBUG ===");
-    return false;
-  };
-
-  const canDeleteProject = () => {
-    if (!project || !user) {
-      console.log("No project or user data");
-      return false;
-    }
-
-    console.log("=== DEBUG: DELETE PROJECT PERMISSION ===");
-    console.log("User data:", {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    });
-    console.log("Project data:", {
-      id: project._id,
-      name: project.name,
-      owner: project.owner,
-      members: project.members,
-    });
-
-    // Admin có thể xóa bất kỳ dự án nào
-    if (user.role === ROLES.ADMIN) {
-      console.log("User is ADMIN - Can delete project");
-      return true;
-    }
-
-    // Chủ dự án có thể xóa dự án của mình
-    if (project.owner && project.owner._id === user._id) {
-      console.log("User is PROJECT OWNER - Can delete project");
-      return true;
-    }
-
-    // Kiểm tra quyền thành viên trong dự án
-    const userMembership = project.members?.find(
-      (m) => m.user._id === user._id
-    );
-    console.log("User membership found:", userMembership);
-
-    if (userMembership) {
-      console.log("User role in project:", userMembership.role);
-      console.log("Expected PM role:", ROLES.PROJECT_MANAGER);
-      console.log(
-        "Role comparison:",
-        userMembership.role === ROLES.PROJECT_MANAGER
-      );
-
-      // Kiểm tra role project manager
-      if (userMembership.role === ROLES.PROJECT_MANAGER) {
-        console.log("User is PROJECT MANAGER - Can delete project");
-        return true;
-      }
-    }
-
-    console.log("User does not have permission to delete project");
-    console.log("=== END DEBUG ===");
-    return false;
   };
 
   const handleDeleteProject = async () => {
     try {
-      if (!canDeleteProject()) {
+      // Log debug info
+      console.log("Deleting project:", project._id);
+      console.log("User:", user);
+      console.log("User permission:", canDeleteProject(project));
+
+      if (!canDeleteProject(project)) {
         enqueueSnackbar("Bạn không có quyền xóa dự án này", {
           variant: "error",
           autoHideDuration: 5000,
@@ -347,6 +218,15 @@ const ProjectDetails = () => {
 
   const handleInviteMember = async () => {
     try {
+      if (!canAddMembers(project)) {
+        enqueueSnackbar("Bạn không có quyền thêm thành viên vào dự án này", {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
+        setInviteDialogOpen(false);
+        return;
+      }
+
       let response;
 
       if (inviteForm.method === "direct") {
@@ -411,7 +291,7 @@ const ProjectDetails = () => {
 
   const handleArchive = async () => {
     try {
-      if (!canArchiveProject()) {
+      if (!canArchiveProject(project)) {
         enqueueSnackbar("Bạn không có quyền lưu trữ dự án này", {
           variant: "error",
           autoHideDuration: 5000,
@@ -452,7 +332,7 @@ const ProjectDetails = () => {
 
   const handleRestore = async () => {
     try {
-      if (!canArchiveProject()) {
+      if (!canArchiveProject(project)) {
         enqueueSnackbar("Bạn không có quyền khôi phục dự án này", {
           variant: "error",
           autoHideDuration: 5000,
@@ -491,7 +371,7 @@ const ProjectDetails = () => {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Box
         sx={{
@@ -506,10 +386,49 @@ const ProjectDetails = () => {
     );
   }
 
+  // Hiển thị thông báo đăng nhập nếu chưa đăng nhập
+  if (!user) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Card sx={{ maxWidth: 600, mx: "auto", p: 3 }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 2, textAlign: "center" }}>
+              Bạn cần đăng nhập để xem chi tiết dự án
+            </Typography>
+
+            {authError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {authError}
+              </Alert>
+            )}
+
+            <Typography sx={{ mb: 3, textAlign: "center" }}>
+              Vui lòng đăng nhập để tiếp tục xem và quản lý dự án.
+            </Typography>
+
+            <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+              <Button
+                variant="contained"
+                startIcon={<LoginIcon />}
+                onClick={handleLogin}
+              >
+                Đăng nhập
+              </Button>
+
+              <Button variant="outlined" onClick={handleReloadData}>
+                Thử lại
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
+
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Typography color="error">{error.message}</Typography>
+        <Typography color="error">{error}</Typography>
         <Button
           variant="contained"
           onClick={fetchProjectDetails}
@@ -601,9 +520,13 @@ const ProjectDetails = () => {
         <Button
           variant="contained"
           onClick={handleInviteMember}
-          disabled={!inviteForm.email || !validateEmail(inviteForm.email)}
+          disabled={
+            !canAddMembers(project) ||
+            !validateEmail(inviteForm.email) ||
+            loading
+          }
         >
-          {inviteForm.method === "direct" ? "Thêm thành viên" : "Gửi lời mời"}
+          {loading ? <CircularProgress size={24} /> : "Thêm thành viên"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -669,7 +592,7 @@ const ProjectDetails = () => {
               </Button>
 
               {!project.isArchived ? (
-                canArchiveProject() ? (
+                canArchiveProject(project) ? (
                   <Button
                     startIcon={<ArchiveIcon />}
                     variant="outlined"
@@ -692,7 +615,7 @@ const ProjectDetails = () => {
                     </span>
                   </Tooltip>
                 )
-              ) : canArchiveProject() ? (
+              ) : canArchiveProject(project) ? (
                 <Button
                   startIcon={<UnarchiveIcon />}
                   variant="outlined"
@@ -716,7 +639,7 @@ const ProjectDetails = () => {
                 </Tooltip>
               )}
 
-              {canEditProject() ? (
+              {canEditProject(project) ? (
                 <Button
                   startIcon={<EditIcon />}
                   variant="outlined"
@@ -738,7 +661,7 @@ const ProjectDetails = () => {
                 </Tooltip>
               )}
 
-              {canDeleteProject() ? (
+              {canDeleteProject(project) ? (
                 <Button
                   variant="outlined"
                   color="error"
@@ -833,13 +756,23 @@ const ProjectDetails = () => {
                     }}
                   >
                     <Typography variant="h6">Thành viên dự án</Typography>
-                    <Button
-                      startIcon={<AddIcon />}
-                      size="small"
-                      onClick={() => setInviteDialogOpen(true)}
-                    >
-                      Thêm thành viên
-                    </Button>
+                    {canAddMembers(project) ? (
+                      <Button
+                        startIcon={<AddIcon />}
+                        size="small"
+                        onClick={() => setInviteDialogOpen(true)}
+                      >
+                        Thêm thành viên
+                      </Button>
+                    ) : (
+                      <Tooltip title="Bạn không có quyền thêm thành viên vào dự án này">
+                        <span>
+                          <Button startIcon={<AddIcon />} size="small" disabled>
+                            Thêm thành viên
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    )}
                   </Box>
                   <Stack spacing={2}>
                     {project.members?.map((member) => (
@@ -925,8 +858,12 @@ const ProjectDetails = () => {
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setEditDialogOpen(false)}>Hủy</Button>
-              <Button variant="contained" onClick={handleEditProject}>
-                Lưu thay đổi
+              <Button
+                variant="contained"
+                onClick={handleEditProject}
+                disabled={!canEditProject(project) || loading}
+              >
+                {loading ? <CircularProgress size={24} /> : "Lưu thay đổi"}
               </Button>
             </DialogActions>
           </Dialog>
@@ -949,7 +886,7 @@ const ProjectDetails = () => {
                 variant="contained"
                 color="error"
                 onClick={handleDeleteProject}
-                disabled={!canDeleteProject()}
+                disabled={!canDeleteProject(project)}
               >
                 {loading ? <CircularProgress size={24} /> : "Xóa dự án"}
               </Button>
@@ -977,7 +914,7 @@ const ProjectDetails = () => {
                 onClick={handleArchive}
                 color="warning"
                 variant="contained"
-                disabled={!canArchiveProject() || loading}
+                disabled={!canArchiveProject(project) || loading}
               >
                 {loading ? <CircularProgress size={24} /> : "Lưu trữ"}
               </Button>
@@ -1002,12 +939,116 @@ const ProjectDetails = () => {
                 onClick={handleRestore}
                 color="success"
                 variant="contained"
-                disabled={!canArchiveProject() || loading}
+                disabled={!canArchiveProject(project) || loading}
               >
                 {loading ? <CircularProgress size={24} /> : "Khôi phục"}
               </Button>
             </DialogActions>
           </Dialog>
+
+          {/* Debug Info */}
+          {debugMode && (
+            <Card sx={{ mb: 3, bgcolor: "#f9f9f9" }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, color: "red" }}>
+                  DEBUG INFO
+                </Typography>
+
+                <Typography variant="subtitle2">
+                  Permission Check Results:
+                </Typography>
+                <ul>
+                  <li>
+                    canEditProject:{" "}
+                    {canEditProject(project) ? "✅ YES" : "❌ NO"}
+                  </li>
+                  <li>
+                    canDeleteProject:{" "}
+                    {canDeleteProject(project) ? "✅ YES" : "❌ NO"}
+                  </li>
+                  <li>
+                    canArchiveProject:{" "}
+                    {canArchiveProject(project) ? "✅ YES" : "❌ NO"}
+                  </li>
+                  <li>
+                    canAddMembers: {canAddMembers(project) ? "✅ YES" : "❌ NO"}
+                  </li>
+                </ul>
+
+                <Typography variant="subtitle2">Current User:</Typography>
+                <pre
+                  style={{
+                    background: "#eee",
+                    padding: "8px",
+                    overflow: "auto",
+                  }}
+                >
+                  {JSON.stringify(
+                    user
+                      ? {
+                          id: user._id,
+                          name: user.name,
+                          email: user.email,
+                          role: user.role,
+                        }
+                      : "Không có user",
+                    null,
+                    2
+                  )}
+                </pre>
+
+                <Typography variant="subtitle2">Auth State:</Typography>
+                <pre
+                  style={{
+                    background: "#eee",
+                    padding: "8px",
+                    overflow: "auto",
+                  }}
+                >
+                  {JSON.stringify(
+                    {
+                      isLoggedIn: !!user,
+                      loading: authLoading,
+                      error: authError,
+                    },
+                    null,
+                    2
+                  )}
+                </pre>
+
+                <Typography variant="subtitle2">Project Members:</Typography>
+                <pre
+                  style={{
+                    background: "#eee",
+                    padding: "8px",
+                    overflow: "auto",
+                  }}
+                >
+                  {JSON.stringify(project?.members, null, 2)}
+                </pre>
+
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={toggleDebugMode}
+                  sx={{ mt: 2 }}
+                >
+                  Hide Debug
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {!debugMode && (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={toggleDebugMode}
+              sx={{ mt: 2 }}
+            >
+              Show Debug
+            </Button>
+          )}
         </>
       )}
     </Box>

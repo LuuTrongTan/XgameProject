@@ -21,6 +21,8 @@ import {
   IconButton,
   Autocomplete,
   Tooltip,
+  CircularProgress,
+  Divider,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -36,6 +38,13 @@ import { styled } from "@mui/material/styles";
 import { useAuth } from "../../contexts/AuthContext";
 import { useSnackbar } from "notistack";
 import { ROLES } from "../../config/constants";
+import { usePermissions } from "../../hooks/usePermissions";
+import {
+  CheckCircle as CheckCircleIcon,
+  ArrowBack as ArrowBackIcon,
+  Add as AddIcon,
+  RemoveCircle as RemoveCircleIcon,
+} from "@mui/icons-material";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -83,6 +92,10 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
   const [project, setProject] = useState(null);
   const [files, setFiles] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [newTag, setNewTag] = useState("");
+
+  const { canDeleteTask } = usePermissions();
 
   useEffect(() => {
     if (task) {
@@ -280,72 +293,21 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
     }
   };
 
-  const canDeleteTask = () => {
-    if (!task || !user) return false;
-
-    console.log("=== DEBUG: DELETE TASK PERMISSION ===");
-    console.log("User data:", {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    });
-    console.log("Task data:", {
-      id: task._id,
-      title: task.title,
-      createdBy: task.createdBy?._id,
-      assignees: task.assignees?.length || 0,
-    });
-
-    if (user.role === ROLES.ADMIN) {
-      console.log("User is ADMIN - Can delete task");
-      return true;
-    }
-
-    if (
-      task.createdBy?._id === user._id &&
-      (!task.assignees || task.assignees.length === 0)
-    ) {
-      console.log(
-        "User is TASK CREATOR and task has no assignees - Can delete task"
-      );
-      return true;
-    }
-
-    if (project && project.members) {
-      const userMembership = project.members.find(
-        (m) => m.user?._id === user._id
-      );
-      console.log("User membership in project:", userMembership);
-
-      if (userMembership) {
-        console.log("User role in project:", userMembership.role);
-        console.log("Expected PM role:", ROLES.PROJECT_MANAGER);
-        console.log(
-          "Role comparison:",
-          userMembership.role === ROLES.PROJECT_MANAGER
-        );
-
-        if (userMembership.role === ROLES.PROJECT_MANAGER) {
-          console.log("User is PROJECT MANAGER - Can delete task");
-          return true;
-        }
-      }
-    }
-
-    console.log("User does not have permission to delete task");
-    console.log("=== END DEBUG ===");
-    return false;
-  };
-
   const handleDelete = async () => {
-    if (!canDeleteTask()) {
+    console.log("TaskForm - Delete attempt");
+    console.log("- Task:", task);
+    console.log("- Project:", project);
+
+    if (!canDeleteTask(task, project)) {
+      console.log("- Permission check failed: User cannot delete this task");
       enqueueSnackbar(
         "Bạn không có quyền xóa công việc này. Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa.",
         { variant: "error", autoHideDuration: 5000 }
       );
       return;
     }
+
+    console.log("- Permission check passed: User can delete this task");
 
     if (window.confirm("Bạn có chắc chắn muốn xóa công việc này?")) {
       setLoading(true);
@@ -383,6 +345,32 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openTagsDialog = () => {
+    setTagsDialogOpen(true);
+  };
+
+  const closeTagsDialog = () => {
+    setTagsDialogOpen(false);
+    setNewTag("");
+  };
+
+  const addTag = () => {
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
+      setFormData((prev) => ({
+        ...prev,
+        tags: [...prev.tags, newTag.trim()],
+      }));
+      setNewTag("");
+    }
+  };
+
+  const removeTag = (tagToRemove) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag !== tagToRemove),
+    }));
   };
 
   return (
@@ -651,62 +639,93 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
           )}
 
           <Grid item xs={12}>
+            <Divider sx={{ my: 2 }} />
             <Box
               sx={{
                 display: "flex",
                 justifyContent: "space-between",
-                mt: 3,
+                alignItems: "center",
+                mt: 2,
               }}
             >
+              <Button
+                type="button"
+                startIcon={<ArrowBackIcon />}
+                onClick={() => (onClose ? onClose() : navigate(-1))}
+              >
+                Hủy
+              </Button>
               <Box>
                 {task?._id && (
                   <Tooltip
                     title={
-                      !canDeleteTask()
-                        ? "Bạn không có quyền xóa công việc này"
-                        : ""
+                      !canDeleteTask(task, project)
+                        ? "Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa"
+                        : "Xóa công việc"
                     }
                   >
                     <span>
                       <Button
-                        variant="outlined"
+                        type="button"
                         color="error"
+                        startIcon={<DeleteIcon />}
                         onClick={handleDelete}
-                        disabled={loading || !canDeleteTask()}
+                        sx={{ mr: 1 }}
+                        disabled={loading || !canDeleteTask(task, project)}
                       >
                         Xóa
                       </Button>
                     </span>
                   </Tooltip>
                 )}
-              </Box>
-              <Box sx={{ display: "flex", gap: 2 }}>
-                <Button variant="outlined" onClick={() => navigate(-1)}>
-                  Hủy
-                </Button>
                 {task?._id && task?.status !== "done" && (
                   <Button
-                    variant="contained"
+                    type="button"
                     color="success"
+                    variant="outlined"
+                    startIcon={<CheckCircleIcon />}
                     onClick={handleComplete}
+                    sx={{ mr: 1 }}
                     disabled={loading}
                   >
                     Hoàn thành
                   </Button>
                 )}
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={loading}
-                >
-                  {loading ? "Đang lưu..." : "Lưu"}
+                <Button type="submit" variant="contained" disabled={loading}>
+                  {loading ? (
+                    <CircularProgress size={24} />
+                  ) : task?._id ? (
+                    "Cập nhật"
+                  ) : (
+                    "Tạo mới"
+                  )}
                 </Button>
               </Box>
             </Box>
           </Grid>
         </Grid>
       </Box>
+
+      <Dialog open={tagsDialogOpen} onClose={closeTagsDialog}>
+        <DialogTitle>Thêm tag mới</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Tên tag"
+            fullWidth
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            variant="outlined"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeTagsDialog}>Hủy</Button>
+          <Button onClick={addTag} variant="contained">
+            Thêm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 };

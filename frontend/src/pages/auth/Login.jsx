@@ -25,8 +25,15 @@ const Login = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [returnUrl, setReturnUrl] = useState("/dashboard");
 
   useEffect(() => {
+    // Lấy returnUrl từ location state nếu có
+    if (location.state?.returnUrl) {
+      setReturnUrl(location.state.returnUrl);
+      console.log("Sẽ chuyển hướng về:", location.state.returnUrl);
+    }
+
     if (location.state?.message) {
       setSuccessMessage(location.state.message);
       // Clear the message from location state
@@ -58,7 +65,9 @@ const Login = () => {
       console.log("Login response:", response);
 
       if (response && response.success) {
-        navigate("/dashboard", {
+        // Chuyển hướng về trang đã lưu hoặc dashboard
+        console.log("Đăng nhập thành công, chuyển hướng về:", returnUrl);
+        navigate(returnUrl, {
           state: {
             message: "Đăng nhập thành công!",
           },
@@ -126,6 +135,12 @@ const Login = () => {
         {successMessage && (
           <Alert severity="success" sx={{ mb: 2 }}>
             {successMessage}
+          </Alert>
+        )}
+
+        {location.state?.returnUrl && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Vui lòng đăng nhập để tiếp tục xem trang đã chọn
           </Alert>
         )}
 
