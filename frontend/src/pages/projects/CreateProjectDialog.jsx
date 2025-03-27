@@ -80,10 +80,42 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
   };
 
   const handleFileSelect = (file) => {
-    setFormData((prev) => ({
-      ...prev,
-      avatar: file,
-    }));
+    if (!file) {
+      console.error("No file selected");
+      setError("Không có file nào được chọn");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      console.error("Invalid file type:", file.type);
+      setError("File không phải là ảnh");
+      return;
+    }
+
+    // Convert File to base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64String = e.target.result;
+      if (
+        typeof base64String === "string" &&
+        base64String.startsWith("data:image/")
+      ) {
+        setFormData((prev) => ({
+          ...prev,
+          avatar: base64String,
+        }));
+        setError(null);
+      } else {
+        console.error("Invalid base64 string:", base64String?.substring(0, 50));
+        setError("Lỗi khi đọc file ảnh");
+      }
+    };
+    reader.onerror = (error) => {
+      console.error("Error reading file:", error);
+      setError("Không thể đọc file. Vui lòng thử lại.");
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleInviteMethodChange = (event, newMethod) => {
@@ -135,102 +167,130 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
     setMembers(members.filter((m) => m.email !== email));
   };
 
-  const handleSubmit = async () => {
+  const compressImage = async (base64String) => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Check if input is valid
+        if (!base64String || typeof base64String !== "string") {
+          console.error("Invalid input:", base64String);
+          reject(new Error("Invalid image data"));
+          return;
+        }
+
+        // Validate base64 string format
+        if (!base64String.startsWith("data:image/")) {
+          console.error("Invalid image format:", base64String.substring(0, 50));
+          reject(new Error("Invalid image format"));
+          return;
+        }
+
+        const img = new Image();
+        img.onerror = () => {
+          console.error("Failed to load image");
+          reject(new Error("Failed to load image"));
+        };
+
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+
+            // Calculate new dimensions
+            let width = img.width;
+            let height = img.height;
+            const maxSize = 800;
+
+            if (width > height && width > maxSize) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else if (height > maxSize) {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+
+            // Draw and compress
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+
+            // Validate output
+            if (
+              !compressedBase64 ||
+              !compressedBase64.startsWith("data:image/")
+            ) {
+              reject(new Error("Failed to compress image"));
+              return;
+            }
+
+            resolve(compressedBase64);
+          } catch (err) {
+            console.error("Error during compression:", err);
+            reject(new Error("Failed to compress image: " + err.message));
+          }
+        };
+
+        img.src = base64String;
+      } catch (err) {
+        console.error("Error in compressImage:", err);
+        reject(new Error("Failed to process image: " + err.message));
+      }
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
       // Validate required fields
-      if (
-        !formData.name.trim() ||
-        formData.name.trim().length < 3 ||
-        formData.name.trim().length > 100
-      ) {
-        setError("Tên dự án phải từ 3-100 ký tự");
-        return;
+      if (!formData.name.trim()) {
+        throw new Error("Tên dự án không được để trống");
       }
 
-      if (
-        !formData.description.trim() ||
-        formData.description.trim().length < 10 ||
-        formData.description.trim().length > 2000
-      ) {
-        setError("Mô tả dự án phải từ 10-2000 ký tự");
-        return;
+      if (!formData.description.trim()) {
+        throw new Error("Mô tả dự án không được để trống");
       }
 
-      const formDataToSend = new FormData();
-
-      // Append basic project data
-      formDataToSend.append("name", formData.name.trim());
-      formDataToSend.append("description", formData.description.trim());
-      formDataToSend.append("status", formData.status);
-
-      // Log the data being sent
-      console.log("Submitting project with data:", {
+      // Create project data object
+      const projectData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         status: formData.status,
-        hasAvatar: !!formData.avatar,
-        membersCount: members.length,
-      });
+      };
 
-      // Append avatar if exists
-      if (formData.avatar) {
-        formDataToSend.append("avatar", formData.avatar);
-        console.log("Avatar details:", {
-          name: formData.avatar.name,
-          type: formData.avatar.type,
-          size: formData.avatar.size,
-        });
-      }
-
-      // Append members if exists
+      // Add members if any
       if (members.length > 0) {
-        const membersData = members.map((m) => ({
-          email: m.email.toLowerCase(),
-          role: m.role || "Member",
-          status: m.status || "pending",
-        }));
-        formDataToSend.append("members", JSON.stringify(membersData));
-        console.log("Members data:", membersData);
+        projectData.members = members;
       }
 
-      // Log FormData contents
-      console.log("FormData contents:");
-      for (let pair of formDataToSend.entries()) {
-        console.log(pair[0] + ":", pair[1]);
+      // Add avatar if exists
+      if (formData.avatar) {
+        try {
+          console.log("Avatar data type:", typeof formData.avatar);
+          console.log("Avatar data preview:", formData.avatar.substring(0, 50));
+
+          const compressedAvatar = await compressImage(formData.avatar);
+          projectData.avatarBase64 = compressedAvatar;
+        } catch (err) {
+          console.error("Error compressing image:", err);
+          throw new Error("Lỗi xử lý ảnh đại diện: " + err.message);
+        }
       }
 
-      const response = await createProject(formDataToSend);
-      console.log("Server response:", response);
+      const response = await createProject(projectData);
 
       if (response.success) {
         onSuccess(response.data);
         onClose();
-        // Reset form data
-        setFormData({
-          name: "",
-          description: "",
-          avatar: null,
-          status: PROJECT_STATUS.ACTIVE,
-        });
-        setMembers([]);
       } else {
-        setError(response.message || "Có lỗi xảy ra khi tạo dự án");
+        throw new Error(response.message || "Có lỗi xảy ra khi tạo dự án");
       }
-    } catch (err) {
-      console.error("Error creating project:", err);
-      console.error("Error details:", {
-        response: err.response?.data,
-        status: err.response?.status,
-        message: err.message,
-      });
-      setError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          "Có lỗi xảy ra khi tạo dự án"
-      );
+    } catch (error) {
+      console.error("Error creating project:", error);
+      setError(error.message || "Có lỗi xảy ra khi tạo dự án");
     } finally {
       setLoading(false);
     }

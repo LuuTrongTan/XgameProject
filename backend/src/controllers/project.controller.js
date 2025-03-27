@@ -67,7 +67,7 @@ const checkPermission = (project, userId, requiredRoles = []) => {
 // Lấy danh sách tất cả dự án mà user có quyền truy cập
 export const getProjects = async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, isArchived } = req.query;
 
     let query = {
       $or: [{ owner: req.user }, { "members.user": req.user }],
@@ -75,6 +75,11 @@ export const getProjects = async (req, res) => {
 
     // Lọc theo trạng thái
     if (status) query.status = status;
+
+    // Lọc theo trạng thái lưu trữ
+    if (isArchived !== undefined) {
+      query.isArchived = isArchived === "true";
+    }
 
     // Tìm kiếm theo tên hoặc mô tả
     if (search) {
@@ -188,15 +193,14 @@ export const getProjectById = async (req, res) => {
 // Tạo dự án mới
 export const createProject = async (req, res) => {
   try {
-    console.log(
-      "==================== DEBUG CREATE PROJECT ===================="
-    );
-    console.log("Request body:", req.body);
-    console.log("Request user:", req.user);
+    console.log("Creating project with data:", {
+      ...req.body,
+      avatarBase64: req.body.avatarBase64 ? "base64_image_data" : null,
+    });
 
-    const { name, description, status, members } = req.body;
+    const { name, description, status, members, avatarBase64 } = req.body;
 
-    // Xác nhận tính hợp lệ của dữ liệu
+    // Validate required fields
     if (!name || !description) {
       return res.status(400).json({
         success: false,
@@ -204,50 +208,38 @@ export const createProject = async (req, res) => {
       });
     }
 
-    console.log("Tạo project mới với thông tin:", {
-      name,
-      description,
-      status,
-    });
-
-    // Tạo dự án mới
+    // Create new project
     const project = new Project({
       name,
       description,
       status: status || "Đang hoạt động",
-      owner: req.user.id,
+      owner: req.user._id,
+      avatarBase64: avatarBase64 || null,
       members: [
-        { user: req.user.id, role: "project_manager", joinedAt: new Date() },
+        { user: req.user._id, role: "project_manager", joinedAt: new Date() },
       ],
     });
 
-    console.log("Created project object:", project);
-
-    // Xử lý danh sách thành viên nếu có
-    if (members && Array.isArray(JSON.parse(members))) {
-      console.log("Processing members:", JSON.parse(members));
-      const memberList = JSON.parse(members);
-
-      // Bỏ qua việc gửi lời mời qua email - chỉ thêm thành viên trực tiếp
-      for (const member of memberList) {
-        // Kiểm tra email hợp lệ
+    // Add members if provided
+    if (members && Array.isArray(members)) {
+      for (const member of members) {
+        // Validate email
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(member.email)) {
           console.log(`Invalid email: ${member.email}`);
-          continue; // Bỏ qua email không hợp lệ
+          continue;
         }
 
-        // Kiểm tra role hợp lệ
+        // Validate role
         if (!Object.values(ROLES).includes(member.role)) {
           console.log(`Invalid role: ${member.role}`);
-          continue; // Bỏ qua role không hợp lệ
+          continue;
         }
 
-        // Thêm thành viên vào dự án
+        // Find user by email
         const user = await User.findOne({ email: member.email });
         if (user) {
-          console.log(`Found user for email ${member.email}: ${user._id}`);
-          // Kiểm tra xem đã là thành viên chưa
+          // Check if user is already a member
           if (
             !project.members.some(
               (m) => m.user.toString() === user._id.toString()
@@ -258,44 +250,45 @@ export const createProject = async (req, res) => {
               role: member.role,
               joinedAt: new Date(),
             });
-            console.log(`Added member ${user._id} with role ${member.role}`);
           }
-        } else {
-          console.log(`User not found for email: ${member.email}`);
         }
       }
     }
 
-    console.log("Final project members:", project.members);
+    // Validate project before saving
+    const validationError = project.validateSync();
+    if (validationError) {
+      console.error("Project validation error:", validationError);
+      return res.status(400).json({
+        success: false,
+        message: "Dữ liệu không hợp lệ",
+        errors: Object.values(validationError.errors).map((err) => err.message),
+      });
+    }
 
-    // Lưu dự án vào database
     await project.save();
-    console.log("Project saved successfully with ID:", project._id);
+    console.log("Project saved successfully:", project._id);
 
-    // Trả về dự án đã tạo
+    // Populate owner and member details
     const populatedProject = await Project.findById(project._id)
       .populate("owner", "name email avatar")
       .populate("members.user", "name email avatar");
 
-    console.log("Returning populated project:", populatedProject._id);
-    console.log("==================== END DEBUG ====================");
-
     res.status(201).json({
       success: true,
-      message: "Dự án đã được tạo thành công",
+      message: "Tạo dự án thành công",
       data: populatedProject,
     });
   } catch (error) {
-    console.error(
-      "==================== ERROR CREATING PROJECT ===================="
-    );
-    console.error("Error details:", error);
-    console.error("Stack trace:", error.stack);
-    console.error("==================== END ERROR ====================");
-
+    console.error("Error creating project:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
     res.status(500).json({
       success: false,
-      message: "Lỗi khi tạo dự án: " + error.message,
+      message: "Có lỗi xảy ra khi tạo dự án",
       error: error.message,
     });
   }

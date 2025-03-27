@@ -25,6 +25,11 @@ const ProjectSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    avatarBase64: {
+      type: String,
+      default: "",
+      maxlength: 10 * 1024 * 1024, // Tăng giới hạn lên 10MB cho chuỗi base64
+    },
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

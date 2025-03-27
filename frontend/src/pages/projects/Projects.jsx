@@ -13,6 +13,7 @@ import {
   Stack,
   CircularProgress,
   Alert,
+  CardMedia,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -24,6 +25,7 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useNavigate } from "react-router-dom";
 import { getProjects } from "../../api/projectApi";
 import CreateProjectDialog from "./CreateProjectDialog";
+import CustomAvatar from "../../components/common/Avatar";
 
 const ProjectColumn = ({ title, tasks, addButton, columnId }) => (
   <Droppable droppableId={columnId}>
@@ -159,7 +161,9 @@ const Projects = () => {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await getProjects();
+      const response = await getProjects({
+        isArchived: showArchived,
+      });
       console.log("API Response:", response);
 
       // Kiểm tra và xử lý dữ liệu từ response
@@ -172,11 +176,6 @@ const Projects = () => {
           "Project statuses:",
           projectsData.map((p) => p.status)
         );
-
-        // Lọc dự án theo trạng thái archived
-        if (!showArchived) {
-          projectsData = projectsData.filter((project) => !project.isArchived);
-        }
       }
 
       setProjects(projectsData);
@@ -225,6 +224,14 @@ const Projects = () => {
     setProjects((prev) => [newProject, ...prev]);
   };
 
+  const getAvatarSrc = (project) => {
+    if (!project) return "/placeholder.png";
+    if (project.avatarBase64) return project.avatarBase64;
+    if (project.avatar && project.avatar.startsWith("http"))
+      return project.avatar;
+    return "/placeholder.png";
+  };
+
   if (loading) {
     return (
       <Box
@@ -261,6 +268,7 @@ const Projects = () => {
       return project.status?.toLowerCase() === "đang hoạt động";
     if (filter === "completed")
       return project.status?.toLowerCase() === "hoàn thành";
+    if (filter === "closed") return project.status?.toLowerCase() === "đóng";
     return project.status?.toLowerCase() === filter.toLowerCase();
   });
 
@@ -277,14 +285,13 @@ const Projects = () => {
         <Typography variant="h5" component="h1">
           Dự án của bạn
         </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: "flex", gap: 2 }}>
           <Button
-            variant="outlined"
-            color={showArchived ? "primary" : "inherit"}
+            variant={showArchived ? "outlined" : "contained"}
             startIcon={<ArchiveIcon />}
             onClick={() => setShowArchived(!showArchived)}
           >
-            {showArchived ? "Ẩn dự án đã lưu trữ" : "Hiện dự án đã lưu trữ"}
+            {showArchived ? "Dự án đang hoạt động" : "Dự án lưu trữ"}
           </Button>
           <Button
             variant="contained"
@@ -296,23 +303,22 @@ const Projects = () => {
         </Box>
       </Box>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
       <Tabs
         value={filter}
         onChange={handleFilterChange}
         sx={{ mb: 3, borderBottom: 1, borderColor: "divider" }}
-        indicatorColor="primary"
-        textColor="primary"
       >
-        <Tab value="all" label="Tất cả" />
-        <Tab value="active" label="Đang hoạt động" />
-        <Tab value="completed" label="Hoàn thành" />
+        <Tab value="all" label="TẤT CẢ" />
+        <Tab value="active" label="ĐANG HOẠT ĐỘNG" />
+        <Tab value="completed" label="HOÀN THÀNH" />
+        <Tab value="closed" label="ĐÓNG" />
       </Tabs>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
 
       {loading ? (
         <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
@@ -339,10 +345,93 @@ const Projects = () => {
             <Grid item xs={12} sm={6} md={4} key={project._id}>
               <Card
                 sx={{
-                  bgcolor: "#F8FAFF",
-                  "&:hover": { boxShadow: 3 },
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  cursor: "pointer",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow:
+                      "0 12px 20px -10px rgba(0,0,0,0.2), 0 4px 20px 0px rgba(0,0,0,0.12), 0 7px 8px -5px rgba(0,0,0,0.1)",
+                    "& .project-image": {
+                      transform: "scale(1.03)",
+                      filter: "contrast(1.05) brightness(1.02)",
+                    },
+                  },
+                  transition:
+                    "transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out",
+                  borderRadius: "8px",
+                  overflow: "hidden",
                 }}
+                onClick={() => navigate(`/projects/${project._id}`)}
               >
+                <CardMedia
+                  component="div"
+                  sx={{
+                    height: project.avatarBase64 ? 250 : 140,
+                    bgcolor: "grey.100",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "height 0.3s ease, box-shadow 0.3s ease",
+                    padding: 0,
+                    margin: 0,
+                    overflow: "hidden",
+                    boxShadow: project.avatarBase64
+                      ? "inset 0 -10px 10px -10px rgba(0,0,0,0.2)"
+                      : "none",
+                    position: "relative",
+                    "&::before": project.avatarBase64
+                      ? {
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundImage:
+                            "linear-gradient(to bottom, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0.05) 100%)",
+                          zIndex: 1,
+                          pointerEvents: "none",
+                        }
+                      : {},
+                  }}
+                >
+                  {project.avatarBase64 ? (
+                    <CustomAvatar
+                      project={project}
+                      className="project-image"
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        maxWidth: "100%",
+                        display: "block",
+                        margin: 0,
+                        padding: 0,
+                        borderRadius: 0,
+                        animation: "fadeInZoom 0.5s ease-out",
+                        "@keyframes fadeInZoom": {
+                          "0%": {
+                            opacity: 0,
+                            transform: "scale(0.95)",
+                          },
+                          "100%": {
+                            opacity: 1,
+                            transform: "scale(1)",
+                          },
+                        },
+                        filter: "contrast(1.03)",
+                        transition: "transform 0.5s ease, filter 0.5s ease",
+                      }}
+                      variant="square"
+                    />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Chưa có ảnh đại diện
+                    </Typography>
+                  )}
+                </CardMedia>
                 <CardContent>
                   <Chip
                     label={getStatusLabel(project.status)}

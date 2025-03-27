@@ -3,9 +3,15 @@ import axios from "axios";
 import { getToken } from "../utils/auth";
 
 // Lấy danh sách projects
-export const getProjects = async () => {
+export const getProjects = async (params = {}) => {
   try {
-    const response = await API.get("/projects");
+    const queryParams = new URLSearchParams();
+    if (params.status) queryParams.append("status", params.status);
+    if (params.search) queryParams.append("search", params.search);
+    if (params.isArchived !== undefined)
+      queryParams.append("isArchived", params.isArchived);
+
+    const response = await API.get(`/projects?${queryParams.toString()}`);
     return response.data;
   } catch (error) {
     throw error;

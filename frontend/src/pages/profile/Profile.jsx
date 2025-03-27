@@ -24,8 +24,11 @@ import {
   BarChart as BarChartIcon,
   PhotoCamera as PhotoCameraIcon,
   Close as CloseIcon,
+  Save as SaveIcon,
 } from "@mui/icons-material";
 import { profileApi } from "../../api";
+import CustomAvatar from "../../components/common/Avatar";
+import FileUpload from "../../components/common/FileUpload";
 
 const Profile = () => {
   const [profileData, setProfileData] = useState({
@@ -42,6 +45,7 @@ const Profile = () => {
     message: "",
     severity: "success",
   });
+  const [formData, setFormData] = useState({});
 
   // Fetch profile data
   useEffect(() => {
@@ -91,20 +95,11 @@ const Profile = () => {
   };
 
   // Handle avatar upload
-  const handleAvatarChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        const formData = new FormData();
-        formData.append("avatar", file);
-        await profileApi.updateAvatar(formData);
-        await fetchProfileData(); // Refresh profile data
-        showSnackbar("Cập nhật ảnh đại diện thành công!");
-      } catch (error) {
-        console.error("Error updating avatar:", error);
-        showSnackbar("Không thể cập nhật ảnh đại diện", "error");
-      }
-    }
+  const handleFileSelect = (base64String) => {
+    setFormData((prev) => ({
+      ...prev,
+      avatar: base64String,
+    }));
   };
 
   // Snackbar
@@ -189,8 +184,8 @@ const Profile = () => {
             <CardContent>
               <Box sx={{ textAlign: "center", position: "relative" }}>
                 <Box sx={{ position: "relative", display: "inline-block" }}>
-                  <Avatar
-                    src={profileData.avatarUrl}
+                  <CustomAvatar
+                    user={profileData}
                     sx={{
                       width: 120,
                       height: 120,
@@ -203,32 +198,12 @@ const Profile = () => {
                     }}
                   >
                     {profileData.fullName?.charAt(0)}
-                  </Avatar>
-                  <IconButton
-                    component="label"
-                    sx={{
-                      position: "absolute",
-                      bottom: 12,
-                      right: -4,
-                      backgroundColor: "white",
-                      boxShadow: "0 2px 8px 0 rgba(0,0,0,0.1)",
-                      "&:hover": {
-                        backgroundColor: "#f5f5f5",
-                      },
-                    }}
-                    size="small"
-                  >
-                    <input
-                      hidden
-                      accept="image/*"
-                      type="file"
-                      onChange={handleAvatarChange}
-                    />
-                    <PhotoCameraIcon
-                      fontSize="small"
-                      sx={{ color: "#1a73e8" }}
-                    />
-                  </IconButton>
+                  </CustomAvatar>
+                  <FileUpload
+                    onFileSelect={handleFileSelect}
+                    acceptedTypes="image/*"
+                    maxSize={5 * 1024 * 1024} // 5MB
+                  />
                 </Box>
                 <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
                   {profileData.fullName}

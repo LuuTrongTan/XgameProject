@@ -38,6 +38,7 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
   Login as LoginIcon,
+  ArrowBack as ArrowBackIcon,
 } from "@mui/icons-material";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
@@ -52,6 +53,7 @@ import {
 import { useSnackbar } from "notistack";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePermissions } from "../../hooks/usePermissions";
+import CustomAvatar from "../../components/common/Avatar";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -493,11 +495,12 @@ const ProjectDetails = () => {
               setInviteForm({ ...inviteForm, role: e.target.value })
             }
           >
-            {Object.values(ROLES).map((role) => (
-              <MenuItem key={role} value={role}>
-                {getRoleName(role)}
-              </MenuItem>
-            ))}
+            <MenuItem value={ROLES.PROJECT_MANAGER}>
+              {getRoleName(ROLES.PROJECT_MANAGER)}
+            </MenuItem>
+            <MenuItem value={ROLES.MEMBER}>
+              {getRoleName(ROLES.MEMBER)}
+            </MenuItem>
           </TextField>
 
           {inviteForm.method === "direct" && (
@@ -546,6 +549,15 @@ const ProjectDetails = () => {
 
       {project && (
         <>
+          {/* Back Button */}
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate("/projects")}
+            sx={{ mb: 2 }}
+          >
+            Quay lại
+          </Button>
+
           {/* Header */}
           <Box
             sx={{
@@ -557,30 +569,58 @@ const ProjectDetails = () => {
           >
             <Box>
               <Box
-                sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}
+                sx={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 3,
+                  mb: 2,
+                }}
               >
-                <Typography variant="h4" sx={{ fontWeight: "bold" }}>
-                  {project.name}
-                </Typography>
-                <Chip
-                  label={getStatusLabel(project.status)}
-                  sx={{
-                    bgcolor: getStatusColor(project.status),
-                    color: "white",
-                    fontWeight: "medium",
-                  }}
-                />
-                {project.isArchived && (
-                  <Chip
-                    label="Đã lưu trữ"
-                    color="default"
-                    icon={<ArchiveIcon fontSize="small" />}
+                {project.avatarBase64 ||
+                (project.avatar && project.avatar.startsWith("http")) ? (
+                  <CustomAvatar
+                    project={project}
+                    sx={{
+                      width: 360,
+                      height: 360,
+                      borderRadius: 2,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                    }}
+                    variant="rounded"
                   />
-                )}
+                ) : null}
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: "bold", mb: 1 }}>
+                    {project.name}
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <Chip
+                      label={getStatusLabel(project.status)}
+                      sx={{
+                        bgcolor: getStatusColor(project.status),
+                        color: "white",
+                        fontWeight: "medium",
+                      }}
+                    />
+                    {project.isArchived && (
+                      <Chip
+                        label="Đã lưu trữ"
+                        color="default"
+                        icon={<ArchiveIcon fontSize="small" />}
+                      />
+                    )}
+                  </Box>
+                  <Typography color="text.secondary" sx={{ mt: 2 }}>
+                    {project.description}
+                  </Typography>
+                </Box>
               </Box>
-              <Typography color="text.secondary" sx={{ mb: 2 }}>
-                {project.description}
-              </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
               <Button
@@ -946,7 +986,7 @@ const ProjectDetails = () => {
             </DialogActions>
           </Dialog>
 
-          {/* Debug Info */}
+          {/* Debug Info Section - Commented out
           {debugMode && (
             <Card sx={{ mb: 3, bgcolor: "#f9f9f9" }}>
               <CardContent>
@@ -1024,20 +1064,21 @@ const ProjectDetails = () => {
                     overflow: "auto",
                   }}
                 >
-                  {JSON.stringify(project?.members, null, 2)}
+                  {JSON.stringify(
+                    project?.members?.map((member) => ({
+                      id: member.user._id,
+                      name: member.user.name,
+                      email: member.user.email,
+                      role: member.role,
+                    })),
+                    null,
+                    2
+                  )}
                 </pre>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={toggleDebugMode}
-                  sx={{ mt: 2 }}
-                >
-                  Hide Debug
-                </Button>
               </CardContent>
             </Card>
           )}
+          */}
 
           {!debugMode && (
             <Button

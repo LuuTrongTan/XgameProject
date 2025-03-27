@@ -12,10 +12,23 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    // Khôi phục user từ localStorage khi khởi tạo
+    const savedUser = localStorage.getItem("user");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [authInitialized, setAuthInitialized] = useState(false);
+
+  // Lưu user vào localStorage mỗi khi thay đổi
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem("user", JSON.stringify(user));
+    } else {
+      localStorage.removeItem("user");
+    }
+  }, [user]);
 
   // Cấu hình interceptor cho axios
   useEffect(() => {
@@ -78,13 +91,20 @@ export const AuthProvider = ({ children }) => {
     try {
       setAuthError(null);
       const token = localStorage.getItem("token");
+      const savedUser = localStorage.getItem("user");
 
-      if (!token) {
-        console.log("Không tìm thấy token, cần đăng nhập");
+      if (!token || !savedUser) {
+        console.log("Không tìm thấy thông tin đăng nhập, cần đăng nhập lại");
         setUser(null);
         setLoading(false);
         setAuthInitialized(true);
         return false;
+      }
+
+      // Sử dụng thông tin user từ localStorage trước
+      if (!forceRefresh && savedUser) {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
       }
 
       // Kiểm tra token với backend
@@ -93,16 +113,22 @@ export const AuthProvider = ({ children }) => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (response.data) {
-        console.log("Đăng nhập thành công với user:", response.data);
-        setUser(response.data);
+      if (response.data?.data) {
+        console.log("Đăng nhập thành công với user:", response.data.data);
+        // Cập nhật user nếu có thông tin mới từ server
+        localStorage.setItem("user", JSON.stringify(response.data.data));
+        setUser(response.data.data);
         setLoading(false);
         setAuthInitialized(true);
         return true;
       } else {
         console.log("API trả về dữ liệu không hợp lệ");
         localStorage.removeItem("token");
+        localStorage.removeItem("user");
         setUser(null);
+        setLoading(false);
+        setAuthInitialized(true);
+        return false;
       }
     } catch (error) {
       console.error("Lỗi kiểm tra phiên đăng nhập:", error);
@@ -110,18 +136,17 @@ export const AuthProvider = ({ children }) => {
       // Xử lý lỗi cụ thể
       if (error.response?.status === 401) {
         localStorage.removeItem("token");
+        localStorage.removeItem("user");
         setAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại");
       } else {
         setAuthError("Không thể kết nối đến máy chủ. Vui lòng thử lại sau.");
       }
 
       setUser(null);
-    } finally {
       setLoading(false);
       setAuthInitialized(true);
+      return false;
     }
-
-    return false;
   };
 
   const login = async (credentials) => {
@@ -144,6 +169,7 @@ export const AuthProvider = ({ children }) => {
       const { token, user } = response.data.data;
 
       localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
       setUser(user);
       return response.data;
     } catch (error) {
@@ -182,6 +208,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     console.log("Đăng xuất người dùng");
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
     setAuthError(null);
   };
