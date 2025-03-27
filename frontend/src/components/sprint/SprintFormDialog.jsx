@@ -120,12 +120,21 @@ const SprintFormDialog = ({
     setLoading(true);
     try {
       if (isEditing && sprint) {
-        await updateSprint(projectId, sprint._id, formData);
+        const response = await updateSprint(projectId, sprint._id, formData);
+        if (!response.success) {
+          throw new Error(response.message || "Không thể cập nhật sprint");
+        }
         enqueueSnackbar("Sprint đã được cập nhật thành công", {
           variant: "success",
         });
       } else {
-        await createSprint(projectId, formData);
+        console.log("Dữ liệu gửi đi:", { projectId, ...formData });
+        const response = await createSprint(projectId, formData);
+        console.log("Kết quả trả về:", response);
+
+        if (!response.success) {
+          throw new Error(response.message || "Không thể tạo sprint");
+        }
         enqueueSnackbar("Sprint đã được tạo thành công", {
           variant: "success",
         });
@@ -133,6 +142,7 @@ const SprintFormDialog = ({
       if (onSuccess) onSuccess();
       onClose();
     } catch (error) {
+      console.error("Lỗi khi thực hiện:", error);
       enqueueSnackbar(error.message || "Có lỗi xảy ra", { variant: "error" });
     } finally {
       setLoading(false);

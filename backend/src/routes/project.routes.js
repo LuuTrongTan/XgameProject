@@ -392,4 +392,64 @@ router.post("/:id/archive", archiveProject);
  */
 router.post("/:id/restore", restoreProject);
 
+// Thêm middleware debug dự án
+const debugProjectMembers = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    if (projectId) {
+      const Project = await import("../models/project.model.js").then(
+        (m) => m.default
+      );
+      const project = await Project.findById(projectId).populate(
+        "members.user",
+        "name email"
+      );
+
+      console.log("\n=== DEBUG PROJECT MEMBERS ===");
+      console.log("Project ID:", projectId);
+      console.log("Project Owner:", project.owner);
+      console.log("Current User ID:", req.user.id);
+      console.log(
+        "Is Owner:",
+        project.owner.toString() === req.user.id.toString()
+      );
+      console.log(
+        "Members:",
+        project.members.map((m) => ({
+          userId: m.user._id,
+          name: m.user.name,
+          email: m.user.email,
+          role: m.role,
+        }))
+      );
+
+      // Tìm role của user hiện tại trong dự án
+      const member = project.members.find(
+        (m) => m.user._id.toString() === req.user.id.toString()
+      );
+      console.log(
+        "Current user's project role:",
+        member ? member.role : "Not a member"
+      );
+
+      console.log("=== END DEBUG PROJECT ===\n");
+    }
+  } catch (error) {
+    console.error("Error in debugProjectMembers middleware:", error);
+  }
+  next();
+};
+
+// Đặt middleware này trước route cần debug
+router.post(
+  "/projects/:projectId/sprints",
+  protect,
+  debugProjectMembers,
+  (req, res, next) => {
+    // Redirect về route sprint tương ứng
+    const { projectId } = req.params;
+    res.redirect(307, `/api/projects/${projectId}/sprints`);
+  }
+);
+
 export default router;

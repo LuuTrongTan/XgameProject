@@ -80,13 +80,19 @@ const TaskSelectionDialog = ({
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      // Sử dụng API từ projectApi
+      // Lấy danh sách task trong project từ API
       const tasks = await getProjectTasks(projectId);
+
+      // Kiểm tra xem tasks có phải là array không
       if (tasks && Array.isArray(tasks)) {
-        // Lọc ra các task chưa được thêm vào sprint
+        // Lọc ra các task không thuộc sprint nào hoặc thuộc sprint khác
         const availableTasks = tasks.filter(
-          (task) => !existingTaskIds.includes(task._id)
+          (task) =>
+            // Task không có sprint hoặc không nằm trong danh sách task đã được thêm
+            (!task.sprint || task.sprint === null) &&
+            !existingTaskIds.includes(task._id)
         );
+
         setTasks(availableTasks);
         setFilteredTasks(availableTasks);
         setSelectedTaskIds([]);

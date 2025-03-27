@@ -10,9 +10,92 @@ import {
 } from "../controllers/sprint.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
-import { PERMISSIONS } from "../config/constants.js";
+import { PERMISSIONS, ROLES } from "../config/constants.js";
+import Project from "../models/project.model.js";
 
 const router = express.Router();
+
+// Middleware debug để check user info và project role
+const debugUserInfo = (req, res, next) => {
+  console.log("\n=== DEBUG USER INFO FOR SPRINT ROUTES ===");
+  console.log("User ID:", req.user.id);
+  console.log("User Name:", req.user.name);
+  console.log("User Email:", req.user.email);
+  console.log("User Role:", req.user.role);
+  console.log("Project Role:", req.projectRole);
+  console.log("Project ID param:", req.params.projectId);
+  console.log("Full params:", req.params);
+  console.log(
+    "Required permissions for createSprint:",
+    PERMISSIONS.CREATE_SPRINT
+  );
+  console.log("=== END DEBUG USER INFO ===\n");
+  next();
+};
+
+// Middleware để kiểm tra và đặt project role
+const setProjectRole = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+
+    // Admin luôn có quyền
+    if (req.user.role === ROLES.ADMIN) {
+      req.projectRole = ROLES.ADMIN;
+      return next();
+    }
+
+    if (!projectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu ID dự án",
+      });
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Dự án không tồn tại",
+      });
+    }
+
+    // Kiểm tra nếu là owner
+    if (project.owner.toString() === req.user.id.toString()) {
+      // Owner có quyền cao nhất trong dự án, set role là PROJECT_MANAGER
+      req.projectRole = ROLES.PROJECT_MANAGER;
+      console.log(
+        "User is project owner - setting projectRole to:",
+        req.projectRole
+      );
+      return next();
+    }
+
+    // Kiểm tra quyền member
+    const member = project.members.find(
+      (m) => m.user.toString() === req.user.id.toString()
+    );
+    if (!member) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không phải thành viên của dự án này",
+      });
+    }
+
+    req.projectRole = member.role;
+    console.log(
+      "User is project member - setting projectRole to:",
+      req.projectRole
+    );
+    next();
+  } catch (error) {
+    console.error("Lỗi khi kiểm tra quyền dự án:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi kiểm tra quyền",
+      error: error.message,
+    });
+  }
+};
 
 /**
  * @swagger
@@ -23,7 +106,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /projects/{projectId}/sprints:
+ * /api/projects/{projectId}/sprints:
  *   get:
  *     summary: Lấy danh sách sprint của dự án
  *     tags: [Sprints]
@@ -39,11 +122,11 @@ const router = express.Router();
  *       200:
  *         description: Danh sách sprint
  */
-router.get("/projects/:projectId/sprints", protect, getSprints);
+router.get("/projects/:projectId/sprints", protect, setProjectRole, getSprints);
 
 /**
  * @swagger
- * /projects/{projectId}/sprints/{sprintId}:
+ * /api/projects/{projectId}/sprints/{sprintId}:
  *   get:
  *     summary: Lấy thông tin chi tiết sprint
  *     tags: [Sprints]
@@ -64,11 +147,16 @@ router.get("/projects/:projectId/sprints", protect, getSprints);
  *       200:
  *         description: Chi tiết sprint và danh sách task
  */
-router.get("/projects/:projectId/sprints/:sprintId", protect, getSprintById);
+router.get(
+  "/projects/:projectId/sprints/:sprintId",
+  protect,
+  setProjectRole,
+  getSprintById
+);
 
 /**
  * @swagger
- * /projects/{projectId}/sprints:
+ * /api/projects/{projectId}/sprints:
  *   post:
  *     summary: Tạo sprint mới
  *     tags: [Sprints]
@@ -114,13 +202,15 @@ router.get("/projects/:projectId/sprints/:sprintId", protect, getSprintById);
 router.post(
   "/projects/:projectId/sprints",
   protect,
+  setProjectRole,
+  debugUserInfo,
   checkPermission(PERMISSIONS.CREATE_SPRINT),
   createSprint
 );
 
 /**
  * @swagger
- * /projects/{projectId}/sprints/{sprintId}:
+ * /api/projects/{projectId}/sprints/{sprintId}:
  *   put:
  *     summary: Cập nhật sprint
  *     tags: [Sprints]
@@ -166,13 +256,14 @@ router.post(
 router.put(
   "/projects/:projectId/sprints/:sprintId",
   protect,
+  setProjectRole,
   checkPermission(PERMISSIONS.UPDATE_SPRINT),
   updateSprint
 );
 
 /**
  * @swagger
- * /projects/{projectId}/sprints/{sprintId}:
+ * /api/projects/{projectId}/sprints/{sprintId}:
  *   delete:
  *     summary: Xóa sprint
  *     tags: [Sprints]
@@ -196,13 +287,14 @@ router.put(
 router.delete(
   "/projects/:projectId/sprints/:sprintId",
   protect,
+  setProjectRole,
   checkPermission(PERMISSIONS.DELETE_SPRINT),
   deleteSprint
 );
 
 /**
  * @swagger
- * /projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
  *   post:
  *     summary: Thêm task vào sprint
  *     tags: [Sprints]
@@ -231,13 +323,14 @@ router.delete(
 router.post(
   "/projects/:projectId/sprints/:sprintId/tasks/:taskId",
   protect,
+  setProjectRole,
   checkPermission(PERMISSIONS.UPDATE_SPRINT),
   addTaskToSprint
 );
 
 /**
  * @swagger
- * /projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
  *   delete:
  *     summary: Gỡ task khỏi sprint
  *     tags: [Sprints]
@@ -266,6 +359,7 @@ router.post(
 router.delete(
   "/projects/:projectId/sprints/:sprintId/tasks/:taskId",
   protect,
+  setProjectRole,
   checkPermission(PERMISSIONS.UPDATE_SPRINT),
   removeTaskFromSprint
 );

@@ -21,6 +21,7 @@ import reportRoutes from "./routes/report.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import settingsRoutes from "./routes/settings.routes.js";
+import sprintRoutes from "./routes/sprint.routes.js";
 import connectDB from "./config/database.js";
 
 const app = express();
@@ -120,6 +121,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api", sprintRoutes);
 
 // ✅ Xử lý lỗi 404 (API không tồn tại)
 app.use((req, res) => {

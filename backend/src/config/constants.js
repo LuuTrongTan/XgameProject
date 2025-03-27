@@ -19,6 +19,12 @@ export const PERMISSIONS = {
   VIEW_TASK: "view_task",
   ASSIGN_TASK: "assign_task",
 
+  // Sprint permissions
+  CREATE_SPRINT: "create_sprint",
+  UPDATE_SPRINT: "update_sprint",
+  DELETE_SPRINT: "delete_sprint",
+  VIEW_SPRINT: "view_sprint",
+
   // Document permissions
   UPLOAD_DOCUMENT: "upload_document",
   DELETE_DOCUMENT: "delete_document",

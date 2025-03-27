@@ -54,14 +54,51 @@ const checkProjectPermission = async (
   const project = await Project.findById(projectId);
   if (!project) return { error: "Dự án không tồn tại" };
 
-  // Kiểm tra quyền trong dự án
-  if (project.owner.toString() === userId.toString()) return { project };
+  // Thêm log debug
+  console.log("=== DEBUG PROJECT PERMISSION ===");
+  console.log("ProjectId:", projectId);
+  console.log("UserId:", userId);
+  console.log("Project owner:", project.owner);
+  console.log("Required roles:", requiredRoles);
 
+  // Tìm người dùng trong danh sách thành viên dự án
   const member = project.members.find(
     (m) => m.user.toString() === userId.toString()
   );
-  if (!member) return { error: "Bạn không phải thành viên của dự án" };
 
+  console.log("Found member:", member ? "yes" : "no");
+  if (member) {
+    console.log("Member role:", member.role);
+    console.log("ROLES.ADMIN:", ROLES.ADMIN);
+    console.log("ROLES.PROJECT_MANAGER:", ROLES.PROJECT_MANAGER);
+    console.log("Is Admin?", member.role === ROLES.ADMIN);
+    console.log("Is Project Manager?", member.role === ROLES.PROJECT_MANAGER);
+    console.log(
+      "Required roles includes member role?",
+      requiredRoles.includes(member.role)
+    );
+  }
+
+  console.log(
+    "All project members:",
+    project.members.map((m) => ({
+      id: m.user.toString(),
+      role: m.role,
+    }))
+  );
+  console.log("=== END DEBUG ===");
+
+  // Nếu không phải thành viên, kiểm tra xem có phải owner không
+  if (!member && project.owner.toString() !== userId.toString()) {
+    return { error: "Bạn không phải thành viên của dự án" };
+  }
+
+  // Nếu là owner, luôn có quyền truy cập
+  if (project.owner.toString() === userId.toString()) {
+    return { project };
+  }
+
+  // Kiểm tra role của member nếu có yêu cầu
   if (requiredRoles.length > 0 && !requiredRoles.includes(member.role)) {
     return { error: "Bạn không có quyền thực hiện hành động này" };
   }
@@ -180,6 +217,16 @@ export const createSprint = async (req, res) => {
   try {
     const { projectId } = req.params;
 
+    console.log("=== DEBUG CREATE SPRINT ===");
+    console.log(
+      "User making request:",
+      req.user.id,
+      req.user.name,
+      req.user.email
+    );
+    console.log("Project ID:", projectId);
+    console.log("=== END DEBUG ===");
+
     if (!projectId) {
       return res.status(400).json({
         success: false,
@@ -196,17 +243,12 @@ export const createSprint = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền trong dự án
-    const { project, error } = await checkProjectPermission(
-      projectId,
-      req.user.id,
-      [ROLES.ADMIN, ROLES.PROJECT_MANAGER]
-    );
-
-    if (error) {
-      return res.status(403).json({
+    // Không cần kiểm tra quyền nữa vì đã được xử lý bởi middleware
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
         success: false,
-        message: error,
+        message: "Dự án không tồn tại",
       });
     }
 
@@ -253,18 +295,7 @@ export const updateSprint = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id, [
-      ROLES.ADMIN,
-      ROLES.PROJECT_MANAGER,
-    ]);
-
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
-    }
+    // Không cần kiểm tra quyền nữa vì đã được xử lý bởi middleware
 
     if (req.body.name) sprint.name = req.body.name;
     if (req.body.description) sprint.description = req.body.description;
@@ -305,18 +336,7 @@ export const deleteSprint = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
 
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id, [
-      ROLES.ADMIN,
-      ROLES.PROJECT_MANAGER,
-    ]);
-
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
-    }
+    // Không cần kiểm tra quyền nữa vì đã được xử lý bởi middleware
 
     const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
     if (!sprint) {
@@ -354,20 +374,9 @@ export const addTaskToSprint = async (req, res) => {
   try {
     const { projectId, sprintId, taskId } = req.params;
 
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id, [
-      ROLES.ADMIN,
-      ROLES.PROJECT_MANAGER,
-    ]);
+    // Không cần kiểm tra quyền nữa vì đã được xử lý bởi middleware
 
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
-    }
-
-    // Kiểm tra sprint tồn tại
+    // Kiểm tra sprint và task tồn tại
     const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
     if (!sprint) {
       return res.status(404).json({
@@ -376,7 +385,6 @@ export const addTaskToSprint = async (req, res) => {
       });
     }
 
-    // Kiểm tra task tồn tại
     const task = await Task.findOne({ _id: taskId, project: projectId });
     if (!task) {
       return res.status(404).json({
@@ -385,7 +393,7 @@ export const addTaskToSprint = async (req, res) => {
       });
     }
 
-    // Thêm task vào sprint
+    // Gán task vào sprint
     task.sprint = sprintId;
     await task.save();
 
@@ -408,20 +416,9 @@ export const removeTaskFromSprint = async (req, res) => {
   try {
     const { projectId, sprintId, taskId } = req.params;
 
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id, [
-      ROLES.ADMIN,
-      ROLES.PROJECT_MANAGER,
-    ]);
+    // Không cần kiểm tra quyền nữa vì đã được xử lý bởi middleware
 
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
-    }
-
-    // Kiểm tra sprint tồn tại
+    // Kiểm tra sprint và task tồn tại
     const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
     if (!sprint) {
       return res.status(404).json({
@@ -430,13 +427,11 @@ export const removeTaskFromSprint = async (req, res) => {
       });
     }
 
-    // Kiểm tra task tồn tại và thuộc sprint
     const task = await Task.findOne({
       _id: taskId,
       project: projectId,
       sprint: sprintId,
     });
-
     if (!task) {
       return res.status(404).json({
         success: false,

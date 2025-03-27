@@ -80,17 +80,31 @@ const SprintList = () => {
       try {
         setLoading(true);
         setError(null);
+        console.log("Fetching sprints for project ID:", projectId);
         const response = await getSprints(projectId);
-        setSprints(response.data);
+        console.log("Sprint list response:", response);
+
+        if (response.success && response.data) {
+          setSprints(response.data);
+        } else {
+          setError(response.message || "Không thể tải danh sách sprint");
+          setSprints([]);
+        }
       } catch (err) {
         console.error("Error fetching sprints:", err);
         setError("Không thể tải danh sách sprint");
+        setSprints([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchSprints();
+    if (projectId) {
+      fetchSprints();
+    } else {
+      setError("ID dự án không hợp lệ");
+      setLoading(false);
+    }
   }, [projectId, refresh]);
 
   const handleOpenCreateDialog = () => {

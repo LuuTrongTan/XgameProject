@@ -625,14 +625,6 @@ const ProjectDetails = () => {
             <Stack direction="row" spacing={1}>
               <Button
                 variant="contained"
-                startIcon={<AssignmentIcon />}
-                onClick={() => navigate(`/projects/${projectId}/tasks`)}
-              >
-                Xem công việc
-              </Button>
-
-              <Button
-                variant="contained"
                 startIcon={<TimelineIcon />}
                 onClick={() => navigate(`/projects/${projectId}/sprints`)}
               >

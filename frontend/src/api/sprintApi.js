@@ -59,18 +59,41 @@ export const createSprint = async (projectId, sprintData) => {
       goal: sprintData.goal?.trim() || "",
     };
 
+    console.log("API createSprint - projectId:", projectId);
+    console.log("API createSprint - cleanedData:", cleanedData);
+    console.log(
+      "API createSprint - endpoint:",
+      `/projects/${projectId}/sprints`
+    );
+
     const response = await API.post(
       `/projects/${projectId}/sprints`,
       cleanedData
     );
 
-    return {
-      success: true,
-      data: response.data.data,
-      message: response.data.message || "Tạo sprint thành công",
-    };
+    console.log("API createSprint - response:", response);
+
+    if (response && response.data) {
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || "Tạo sprint thành công",
+      };
+    } else {
+      return {
+        success: false,
+        message: "Phản hồi không hợp lệ từ server",
+      };
+    }
   } catch (error) {
     console.error("Error creating sprint:", error);
+
+    // Ghi log chi tiết về lỗi
+    if (error.response) {
+      console.error("Error response:", error.response);
+      console.error("Error data:", error.response.data);
+      console.error("Error status:", error.response.status);
+    }
 
     return {
       success: false,

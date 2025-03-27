@@ -17,6 +17,12 @@ const rolePermissions = {
     PERMISSIONS.MANAGE_PROJECT_MEMBERS,
     PERMISSIONS.ARCHIVE_PROJECT,
 
+    // Sprint permissions
+    PERMISSIONS.CREATE_SPRINT,
+    PERMISSIONS.UPDATE_SPRINT,
+    PERMISSIONS.DELETE_SPRINT,
+    PERMISSIONS.VIEW_SPRINT,
+
     // Quản lý công việc
     PERMISSIONS.VIEW_TASK,
     PERMISSIONS.CREATE_TASK,
@@ -51,6 +57,9 @@ const rolePermissions = {
     // Quyền dự án
     PERMISSIONS.VIEW_PROJECT,
     PERMISSIONS.CREATE_PROJECT,
+
+    // Sprint permissions
+    PERMISSIONS.VIEW_SPRINT,
 
     // Quyền công việc
     PERMISSIONS.VIEW_TASK,
