@@ -631,6 +631,14 @@ const ProjectDetails = () => {
                 Xem công việc
               </Button>
 
+              <Button
+                variant="contained"
+                startIcon={<TimelineIcon />}
+                onClick={() => navigate(`/projects/${projectId}/sprints`)}
+              >
+                Quản lý Sprint
+              </Button>
+
               {!project.isArchived ? (
                 canArchiveProject(project) ? (
                   <Button

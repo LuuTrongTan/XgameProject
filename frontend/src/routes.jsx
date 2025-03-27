@@ -16,6 +16,8 @@ import Profile from "./pages/profile/Profile";
 import NotFound from "./pages/NotFound";
 import Layout from "./components/common/Layout";
 import Calendar from "./pages/Calendar";
+import SprintList from "./pages/sprint/SprintList";
+import SprintDetail from "./pages/sprint/SprintDetail";
 
 const LoadingSpinner = () => (
   <Box
@@ -44,6 +46,11 @@ const App = () => {
         { path: "projects", element: <Projects /> },
         { path: "projects/:projectId", element: <ProjectDetails /> },
         { path: "projects/:projectId/tasks", element: <Tasks /> },
+        { path: "projects/:projectId/sprints", element: <SprintList /> },
+        {
+          path: "projects/:projectId/sprints/:sprintId",
+          element: <SprintDetail />,
+        },
         { path: "task-debug", element: <TaskDebug /> },
         { path: "profile", element: <Profile /> },
         { path: "*", element: <NotFound /> },
