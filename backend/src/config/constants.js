@@ -11,6 +11,8 @@ export const PERMISSIONS = {
   UPDATE_PROJECT: "update_project",
   DELETE_PROJECT: "delete_project",
   VIEW_PROJECT: "view_project",
+  ARCHIVE_PROJECT: "archive_project",
+  MANAGE_MEMBERS: "manage_members",
 
   // Task permissions
   CREATE_TASK: "create_task",
@@ -24,6 +26,7 @@ export const PERMISSIONS = {
   UPDATE_SPRINT: "update_sprint",
   DELETE_SPRINT: "delete_sprint",
   VIEW_SPRINT: "view_sprint",
+  MANAGE_SPRINT_MEMBERS: "manage_sprint_members",
 
   // Document permissions
   UPLOAD_DOCUMENT: "upload_document",

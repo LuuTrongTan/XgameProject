@@ -21,6 +21,7 @@ import {
   Select,
   Alert,
   CircularProgress,
+  Tooltip,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -49,7 +50,7 @@ const ProjectSprints = () => {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuth();
-  const { canEditProject, canDeleteProject } = usePermissions();
+  const { canEditProject, canDeleteProject, canViewProject } = usePermissions();
 
   const [sprints, setSprints] = useState([]);
   const [project, setProject] = useState(null);
@@ -75,25 +76,61 @@ const ProjectSprints = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        console.log("=== DEBUG ProjectSprints Component ===");
+        console.log("ProjectId:", projectId);
+        console.log("Current user:", user);
 
         // Lấy thông tin dự án
         const projectResult = await getProjectById(projectId);
+        console.log("Project Result:", projectResult);
+
         if (projectResult.success) {
           setProject(projectResult.data);
+          console.log("Project data:", projectResult.data);
+          console.log("Project members:", projectResult.data.members);
+
+          // Kiểm tra quyền xem dự án
+          const userRole = projectResult.data.members.find(
+            (m) => m.user._id === user.id
+          )?.role;
+          const isOwner = projectResult.data.owner === user.id;
+          console.log("User role in project:", userRole);
+          console.log("Is owner:", isOwner);
+          console.log("User ID:", user.id);
+          console.log("Project owner:", projectResult.data.owner);
+
+          if (!userRole && !isOwner) {
+            setError("Bạn không có quyền truy cập dự án này");
+            return;
+          }
         } else {
           setError(projectResult.message);
+          console.error("Error fetching project:", projectResult.message);
           return;
         }
 
         // Lấy danh sách sprint
         const sprintsResult = await getSprints(projectId);
+        console.log("=== DEBUG Sprint Data ===");
+        console.log("Raw sprints result:", sprintsResult);
+        console.log("Sprints data array:", sprintsResult.data);
+        console.log("Number of sprints:", sprintsResult.data?.length);
+        console.log(
+          "Sprint details:",
+          JSON.stringify(sprintsResult.data, null, 2)
+        );
+
         if (sprintsResult.success) {
+          console.log("Setting sprints state with:", sprintsResult.data);
           setSprints(sprintsResult.data || []);
         } else {
           setError(sprintsResult.message);
+          console.error("Error fetching sprints:", sprintsResult.message);
         }
+
+        console.log("=== END DEBUG ProjectSprints Component ===");
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error in fetchData:", error);
         setError("Không thể tải dữ liệu");
       } finally {
         setLoading(false);
@@ -101,7 +138,7 @@ const ProjectSprints = () => {
     };
 
     fetchData();
-  }, [projectId]);
+  }, [projectId, user]);
 
   // Xử lý thay đổi form
   const handleChange = (e) => {
@@ -350,6 +387,12 @@ const ProjectSprints = () => {
     );
   }
 
+  console.log("=== DEBUG Render ===");
+  console.log("Current sprints state:", sprints);
+  console.log("Current project state:", project);
+  console.log("Is loading:", loading);
+  console.log("Error state:", error);
+
   return (
     <Box p={3}>
       {/* Header */}
@@ -367,15 +410,24 @@ const ProjectSprints = () => {
             Sprint - {project?.name}
           </Typography>
         </Box>
-        {canEditProject(project) && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreateDialog}
-          >
-            Tạo Sprint mới
-          </Button>
-        )}
+        <Tooltip
+          title={
+            project?.projectRole === "member"
+              ? "Bạn không có quyền tạo sprint mới"
+              : ""
+          }
+        >
+          <span>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreateDialog}
+              disabled={project?.projectRole === "member"}
+            >
+              Tạo Sprint mới
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       {/* Danh sách Sprint */}
@@ -384,15 +436,24 @@ const ProjectSprints = () => {
           <Typography variant="h6" color="text.secondary" mb={2}>
             Dự án chưa có sprint nào
           </Typography>
-          {canEditProject(project) && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleOpenCreateDialog}
-            >
-              Tạo Sprint đầu tiên
-            </Button>
-          )}
+          <Tooltip
+            title={
+              project?.projectRole === "member"
+                ? "Bạn không có quyền tạo sprint mới"
+                : ""
+            }
+          >
+            <span>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleOpenCreateDialog}
+                disabled={project?.projectRole === "member"}
+              >
+                Tạo Sprint đầu tiên
+              </Button>
+            </span>
+          </Tooltip>
         </Card>
       ) : (
         <Grid container spacing={3}>

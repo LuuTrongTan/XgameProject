@@ -1,6 +1,7 @@
 import Sprint from "../models/sprint.model.js";
 import Project from "../models/project.model.js";
 import Task from "../models/task.model.js";
+import User from "../models/user.model.js";
 import { ROLES } from "../config/constants.js";
 
 // Validate dữ liệu đầu vào
@@ -79,23 +80,22 @@ const checkProjectPermission = async (
     );
   }
 
-  console.log(
-    "All project members:",
-    project.members.map((m) => ({
-      id: m.user.toString(),
-      role: m.role,
-    }))
-  );
-  console.log("=== END DEBUG ===");
-
-  // Nếu không phải thành viên, kiểm tra xem có phải owner không
-  if (!member && project.owner.toString() !== userId.toString()) {
-    return { error: "Bạn không phải thành viên của dự án" };
+  // Nếu là admin hoặc project manager, luôn có quyền truy cập
+  if (
+    member &&
+    (member.role === ROLES.ADMIN || member.role === ROLES.PROJECT_MANAGER)
+  ) {
+    return { project };
   }
 
   // Nếu là owner, luôn có quyền truy cập
   if (project.owner.toString() === userId.toString()) {
     return { project };
+  }
+
+  // Nếu không phải thành viên
+  if (!member) {
+    return { error: "Bạn không phải thành viên của dự án" };
   }
 
   // Kiểm tra role của member nếu có yêu cầu
@@ -106,10 +106,39 @@ const checkProjectPermission = async (
   return { project };
 };
 
+// Kiểm tra quyền xem sprint
+const canViewSprint = (sprint, userId, projectRole) => {
+  console.log("=== DEBUG canViewSprint ===");
+  console.log("Sprint:", sprint._id);
+  console.log("UserId:", userId);
+  console.log("ProjectRole:", projectRole);
+  console.log("Is Admin?", projectRole === ROLES.ADMIN);
+  console.log("Is Project Manager?", projectRole === ROLES.PROJECT_MANAGER);
+
+  // Admin và Project Manager luôn có quyền xem
+  if (projectRole === ROLES.ADMIN || projectRole === ROLES.PROJECT_MANAGER) {
+    console.log("User is Admin or Project Manager - Access granted");
+    return true;
+  }
+
+  // Kiểm tra xem user có phải là thành viên của sprint không
+  const isMember = sprint.members.some(
+    (member) => member.user.toString() === userId.toString()
+  );
+  console.log("Is Sprint Member?", isMember);
+  console.log("=== END DEBUG canViewSprint ===");
+
+  return isMember;
+};
+
 // Lấy danh sách sprint của dự án
 export const getSprints = async (req, res) => {
   try {
     const { projectId } = req.params;
+    console.log("=== DEBUG getSprints Controller ===");
+    console.log("ProjectId:", projectId);
+    console.log("UserId:", req.user.id);
+
     if (!projectId) {
       return res.status(400).json({
         success: false,
@@ -117,24 +146,65 @@ export const getSprints = async (req, res) => {
       });
     }
 
-    const { project, error } = await checkProjectPermission(
-      projectId,
-      req.user.id
-    );
-    if (error) {
-      return res.status(403).json({
+    // Lấy thông tin project và kiểm tra quyền
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({
         success: false,
-        message: error,
+        message: "Dự án không tồn tại",
       });
     }
 
+    // Tìm role của user trong project
+    const member = project.members.find(
+      (m) => m.user.toString() === req.user.id.toString()
+    );
+    const isOwner = project.owner.toString() === req.user.id.toString();
+    const projectRole = member ? member.role : null;
+
+    console.log("Project Role:", projectRole);
+    console.log("Is Owner:", isOwner);
+
+    // Kiểm tra quyền truy cập
+    const isAdminOrManager =
+      projectRole === ROLES.ADMIN ||
+      projectRole === ROLES.PROJECT_MANAGER ||
+      isOwner;
+    if (!member && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền truy cập dự án này",
+      });
+    }
+
+    // Lấy danh sách sprint
     const sprints = await Sprint.find({ project: projectId })
       .populate("createdBy", "name email avatar")
+      .populate("members.user", "name email avatar")
       .sort({ startDate: 1 });
+
+    console.log("Found Sprints:", sprints.length);
+    console.log(
+      "Sprint IDs:",
+      sprints.map((s) => s._id)
+    );
+
+    // Admin, Project Manager và Owner có thể xem tất cả sprint
+    // Member chỉ có thể xem những sprint mà họ là thành viên
+    const filteredSprints = isAdminOrManager
+      ? sprints
+      : sprints.filter((sprint) =>
+          sprint.members.some(
+            (member) => member.user._id.toString() === req.user.id.toString()
+          )
+        );
+
+    console.log("Filtered Sprints:", filteredSprints.length);
+    console.log("=== END DEBUG getSprints Controller ===");
 
     // Thêm số lượng task cho mỗi sprint
     const sprintsWithTaskCount = await Promise.all(
-      sprints.map(async (sprint) => {
+      filteredSprints.map(async (sprint) => {
         const taskCount = await Task.countDocuments({ sprint: sprint._id });
         const completedTaskCount = await Task.countDocuments({
           sprint: sprint._id,
@@ -150,16 +220,16 @@ export const getSprints = async (req, res) => {
       })
     );
 
-    res.json({
+    return res.json({
       success: true,
       data: sprintsWithTaskCount,
+      message: "Lấy danh sách sprint thành công",
     });
   } catch (error) {
-    console.error("Lỗi khi lấy danh sách sprint:", error);
-    res.status(500).json({
+    console.error("Error in getSprints:", error);
+    return res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy danh sách sprint",
-      error: error.message,
+      message: "Lỗi server",
     });
   }
 };
@@ -168,12 +238,19 @@ export const getSprints = async (req, res) => {
 export const getSprintById = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
+    console.log("=== DEBUG getSprintById ===");
+    console.log("ProjectId:", projectId);
+    console.log("SprintId:", sprintId);
+    console.log("UserId:", req.user.id);
+    console.log("ProjectRole:", req.projectRole);
 
     const sprint = await Sprint.findOne({ _id: sprintId, project: projectId })
       .populate("project", "name")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("members.user", "name email avatar");
 
     if (!sprint) {
+      console.log("Sprint not found");
       return res.status(404).json({
         success: false,
         message: "Sprint không tồn tại",
@@ -183,9 +260,34 @@ export const getSprintById = async (req, res) => {
     // Kiểm tra quyền truy cập dự án
     const { error } = await checkProjectPermission(projectId, req.user.id);
     if (error) {
+      console.log("Project Permission Error:", error);
       return res.status(403).json({
         success: false,
         message: error,
+      });
+    }
+
+    // Admin và Project Manager luôn có quyền xem
+    const isAdminOrManager =
+      req.projectRole === ROLES.ADMIN ||
+      req.projectRole === ROLES.PROJECT_MANAGER;
+
+    console.log("Is Admin or Manager?", isAdminOrManager);
+
+    // Nếu không phải admin/manager, kiểm tra xem có phải thành viên của sprint không
+    const isSprintMember = sprint.members.some(
+      (member) => member.user._id.toString() === req.user.id.toString()
+    );
+
+    console.log("Is Sprint Member?", isSprintMember);
+
+    if (!isAdminOrManager && !isSprintMember) {
+      console.log(
+        "Access Denied: User is neither admin/manager nor sprint member"
+      );
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xem sprint này",
       });
     }
 
@@ -194,6 +296,9 @@ export const getSprintById = async (req, res) => {
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
       .sort({ createdAt: -1 });
+
+    console.log("Tasks found:", tasks.length);
+    console.log("=== END DEBUG getSprintById ===");
 
     res.json({
       success: true,
@@ -452,6 +557,270 @@ export const removeTaskFromSprint = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Lỗi khi gỡ task khỏi sprint",
+      error: error.message,
+    });
+  }
+};
+
+// Lấy danh sách thành viên của sprint
+export const getSprintMembers = async (req, res) => {
+  try {
+    const { projectId, sprintId } = req.params;
+
+    // Kiểm tra quyền truy cập dự án
+    const { error } = await checkProjectPermission(projectId, req.user.id);
+    if (error) {
+      return res.status(403).json({
+        success: false,
+        message: error,
+      });
+    }
+
+    // Kiểm tra xem sprint có tồn tại không
+    const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
+    if (!sprint) {
+      return res.status(404).json({
+        success: false,
+        message: "Sprint không tồn tại",
+      });
+    }
+
+    // Lấy danh sách thành viên và populate thông tin user
+    const sprintWithMembers = await Sprint.findById(sprintId).populate(
+      "members.user",
+      "name email avatar"
+    );
+
+    res.json({
+      success: true,
+      data: sprintWithMembers.members || [],
+      message: "Lấy danh sách thành viên thành công",
+    });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách thành viên sprint:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy danh sách thành viên",
+      error: error.message,
+    });
+  }
+};
+
+// Thêm thành viên vào sprint
+export const addMemberToSprint = async (req, res) => {
+  try {
+    const { projectId, sprintId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "ID người dùng là bắt buộc",
+      });
+    }
+
+    // Kiểm tra quyền quản lý thành viên sprint (cần là owner hoặc project manager)
+    const { project, error } = await checkProjectPermission(
+      projectId,
+      req.user.id,
+      [ROLES.PROJECT_MANAGER, ROLES.ADMIN]
+    );
+    if (error) {
+      return res.status(403).json({
+        success: false,
+        message: error,
+      });
+    }
+
+    // Kiểm tra xem sprint có tồn tại không
+    const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
+    if (!sprint) {
+      return res.status(404).json({
+        success: false,
+        message: "Sprint không tồn tại",
+      });
+    }
+
+    // Kiểm tra xem user có tồn tại không
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Người dùng không tồn tại",
+      });
+    }
+
+    // Kiểm tra xem user đã là thành viên của project chưa
+    const isMemberOfProject = project.members.some(
+      (member) => member.user.toString() === userId.toString()
+    );
+
+    // Nếu chưa là thành viên project, thêm vào project trước
+    if (!isMemberOfProject) {
+      project.members.push({
+        user: userId,
+        role: ROLES.MEMBER,
+        addedBy: req.user.id,
+      });
+      await project.save();
+      console.log(`Đã thêm người dùng ${userId} vào dự án`);
+    }
+
+    // Kiểm tra xem user đã là thành viên của sprint chưa
+    const isMemberOfSprint = sprint.members.some(
+      (member) => member.user.toString() === userId.toString()
+    );
+
+    if (isMemberOfSprint) {
+      return res.status(400).json({
+        success: false,
+        message: "Người dùng đã là thành viên của sprint",
+      });
+    }
+
+    // Thêm user vào sprint
+    sprint.members.push({
+      user: userId,
+      role: "member",
+      addedAt: new Date(),
+      addedBy: req.user.id,
+    });
+
+    await sprint.save();
+
+    res.json({
+      success: true,
+      message: "Thêm thành viên vào sprint thành công",
+      data: { userId, sprintId },
+    });
+  } catch (error) {
+    console.error("Lỗi khi thêm thành viên vào sprint:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi thêm thành viên vào sprint",
+      error: error.message,
+    });
+  }
+};
+
+// Xóa thành viên khỏi sprint
+export const removeMemberFromSprint = async (req, res) => {
+  try {
+    const { projectId, sprintId, userId } = req.params;
+
+    // Kiểm tra quyền quản lý thành viên sprint (cần là owner hoặc project manager)
+    const { error } = await checkProjectPermission(projectId, req.user.id, [
+      ROLES.PROJECT_MANAGER,
+      ROLES.ADMIN,
+    ]);
+    if (error) {
+      return res.status(403).json({
+        success: false,
+        message: error,
+      });
+    }
+
+    // Kiểm tra xem sprint có tồn tại không
+    const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
+    if (!sprint) {
+      return res.status(404).json({
+        success: false,
+        message: "Sprint không tồn tại",
+      });
+    }
+
+    // Kiểm tra xem user có phải là thành viên của sprint không
+    const memberIndex = sprint.members.findIndex(
+      (member) => member.user.toString() === userId
+    );
+
+    if (memberIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Người dùng không phải là thành viên của sprint",
+      });
+    }
+
+    // Xóa user khỏi sprint
+    sprint.members.splice(memberIndex, 1);
+    await sprint.save();
+
+    res.json({
+      success: true,
+      message: "Xóa thành viên khỏi sprint thành công",
+    });
+  } catch (error) {
+    console.error("Lỗi khi xóa thành viên khỏi sprint:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi xóa thành viên khỏi sprint",
+      error: error.message,
+    });
+  }
+};
+
+// Lấy danh sách người dùng có thể thêm vào sprint
+export const getAvailableUsersForSprint = async (req, res) => {
+  try {
+    const { projectId, sprintId } = req.params;
+
+    // Kiểm tra quyền truy cập dự án
+    const { project, error } = await checkProjectPermission(
+      projectId,
+      req.user.id
+    );
+    if (error) {
+      return res.status(403).json({
+        success: false,
+        message: error,
+      });
+    }
+
+    // Kiểm tra xem sprint có tồn tại không
+    const sprint = await Sprint.findOne({ _id: sprintId, project: projectId });
+    if (!sprint) {
+      return res.status(404).json({
+        success: false,
+        message: "Sprint không tồn tại",
+      });
+    }
+
+    // Lấy danh sách ID thành viên hiện tại của sprint
+    const currentSprintMemberIds = sprint.members.map((member) =>
+      member.user.toString()
+    );
+
+    // Lấy danh sách thành viên dự án có thể thêm vào sprint
+    const availableUsers = await Promise.all(
+      project.members
+        .filter(
+          (member) => !currentSprintMemberIds.includes(member.user.toString())
+        )
+        .map(async (member) => {
+          const user = await User.findById(member.user);
+          return {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            role: member.role,
+          };
+        })
+    );
+
+    res.json({
+      success: true,
+      data: availableUsers,
+      message: "Lấy danh sách người dùng có thể thêm thành công",
+    });
+  } catch (error) {
+    console.error(
+      "Lỗi khi lấy danh sách người dùng có thể thêm vào sprint:",
+      error
+    );
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy danh sách người dùng",
       error: error.message,
     });
   }

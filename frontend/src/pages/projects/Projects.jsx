@@ -432,75 +432,74 @@ const Projects = () => {
                     </Typography>
                   )}
                 </CardMedia>
-                <CardContent>
-                  <Chip
-                    label={getStatusLabel(project.status)}
-                    size="small"
-                    sx={{
-                      bgcolor: `${getStatusColor(project.status)}20`,
-                      color: getStatusColor(project.status),
-                      mb: 2,
-                    }}
-                  />
-                  <Typography variant="h6" gutterBottom>
-                    {project.name}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    {project.description}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    Tạo{" "}
-                    {new Date(project.createdAt).toLocaleDateString("vi-VN")}
-                  </Typography>
+                <CardContent
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    flexGrow: 1,
+                    height: "100%",
+                  }}
+                >
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Chip
+                      label={getStatusLabel(project.status)}
+                      size="small"
+                      sx={{
+                        bgcolor: `${getStatusColor(project.status)}20`,
+                        color: getStatusColor(project.status),
+                        mb: 2,
+                      }}
+                    />
+                    <Typography variant="h6" gutterBottom>
+                      {project.name}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      {project.description}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                    >
+                      Tạo{" "}
+                      {new Date(project.createdAt).toLocaleDateString("vi-VN")}
+                    </Typography>
 
-                  <Box sx={{ mt: 2, mb: 2 }}>
-                    {project.members?.slice(0, 3).map((member, index) => (
-                      <Avatar
-                        key={member.user._id}
-                        sx={{
-                          bgcolor: "#1976D2",
-                          display: "inline-flex",
-                          marginLeft: index > 0 ? -1 : 0,
-                        }}
-                      >
-                        {member.user.name?.[0] || member.user.email?.[0]}
-                      </Avatar>
-                    ))}
-                    {project.members?.length > 3 && (
-                      <Avatar sx={{ bgcolor: "grey.500", marginLeft: -1 }}>
-                        +{project.members.length - 3}
-                      </Avatar>
-                    )}
+                    <Box sx={{ mt: 2, mb: 2 }}>
+                      {project.members?.slice(0, 3).map((member, index) => (
+                        <Avatar
+                          key={member.user._id}
+                          sx={{
+                            bgcolor: "#1976D2",
+                            display: "inline-flex",
+                            marginLeft: index > 0 ? -1 : 0,
+                          }}
+                        >
+                          {member.user.name?.[0] || member.user.email?.[0]}
+                        </Avatar>
+                      ))}
+                      {project.members?.length > 3 && (
+                        <Avatar sx={{ bgcolor: "grey.500", marginLeft: -1 }}>
+                          +{project.members.length - 3}
+                        </Avatar>
+                      )}
+                    </Box>
                   </Box>
 
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="outlined"
-                      startIcon={<VisibilityIcon />}
-                      size="small"
-                      sx={{ flex: 1 }}
-                      onClick={() => navigate(`/projects/${project._id}`)}
-                    >
-                      Xem dự án
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      startIcon={<AssignmentIcon />}
-                      size="small"
-                      sx={{ flex: 1 }}
-                      onClick={() => navigate(`/projects/${project._id}/tasks`)}
-                    >
-                      Công việc
-                    </Button>
-                  </Stack>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    startIcon={<VisibilityIcon />}
+                    size="medium"
+                    onClick={() => navigate(`/projects/${project._id}`)}
+                    sx={{ mt: "auto", pt: 1, pb: 1 }}
+                  >
+                    Xem chi tiết
+                  </Button>
                 </CardContent>
               </Card>
             </Grid>

@@ -1,9 +1,16 @@
 import API from "./api";
+import { getProjectById } from "./projectApi";
+
+export { getProjectById };
 
 // Lấy danh sách sprint của dự án
 export const getSprints = async (projectId) => {
   try {
+    console.log("=== DEBUG getSprints API Call ===");
+    console.log("Calling GET /projects/" + projectId + "/sprints");
+
     const response = await API.get(`/projects/${projectId}/sprints`);
+    console.log("API Response:", response.data);
 
     return {
       success: true,
@@ -11,7 +18,9 @@ export const getSprints = async (projectId) => {
       message: "Lấy danh sách sprint thành công",
     };
   } catch (error) {
-    console.error("Error fetching sprints:", error);
+    console.error("Error in getSprints API:", error);
+    console.log("Error response:", error.response?.data);
+    console.log("=== END DEBUG getSprints API Call ===");
 
     return {
       success: false,
@@ -195,6 +204,100 @@ export const removeTaskFromSprint = async (projectId, sprintId, taskId) => {
     return {
       success: false,
       message: error.response?.data?.message || "Không thể gỡ task khỏi sprint",
+    };
+  }
+};
+
+// Lấy danh sách thành viên của sprint
+export const getSprintMembers = async (projectId, sprintId) => {
+  try {
+    const response = await API.get(
+      `/projects/${projectId}/sprints/${sprintId}/members`
+    );
+
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message || "Lấy danh sách thành viên thành công",
+    };
+  } catch (error) {
+    console.error("Error fetching sprint members:", error);
+
+    return {
+      success: false,
+      data: null,
+      message:
+        error.response?.data?.message || "Không thể lấy danh sách thành viên",
+    };
+  }
+};
+
+// Thêm thành viên vào sprint
+export const addMemberToSprint = async (projectId, sprintId, userId) => {
+  try {
+    const response = await API.post(
+      `/projects/${projectId}/sprints/${sprintId}/members`,
+      { userId }
+    );
+
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message || "Thêm thành viên vào sprint thành công",
+    };
+  } catch (error) {
+    console.error("Error adding member to sprint:", error);
+
+    return {
+      success: false,
+      message:
+        error.response?.data?.message || "Không thể thêm thành viên vào sprint",
+    };
+  }
+};
+
+// Xóa thành viên khỏi sprint
+export const removeMemberFromSprint = async (projectId, sprintId, userId) => {
+  try {
+    const response = await API.delete(
+      `/projects/${projectId}/sprints/${sprintId}/members/${userId}`
+    );
+
+    return {
+      success: true,
+      message: response.data.message || "Xóa thành viên khỏi sprint thành công",
+    };
+  } catch (error) {
+    console.error("Error removing member from sprint:", error);
+
+    return {
+      success: false,
+      message:
+        error.response?.data?.message || "Không thể xóa thành viên khỏi sprint",
+    };
+  }
+};
+
+// Lấy danh sách người dùng có thể thêm vào sprint
+export const getAvailableUsersForSprint = async (projectId, sprintId) => {
+  try {
+    const response = await API.get(
+      `/projects/${projectId}/sprints/${sprintId}/available-users`
+    );
+
+    return {
+      success: true,
+      data: response.data.data,
+      message: response.data.message || "Lấy danh sách người dùng thành công",
+    };
+  } catch (error) {
+    console.error("Error fetching available users:", error);
+
+    return {
+      success: false,
+      data: null,
+      message:
+        error.response?.data?.message || "Không thể lấy danh sách người dùng",
     };
   }
 };

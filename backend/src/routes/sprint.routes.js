@@ -7,6 +7,10 @@ import {
   deleteSprint,
   addTaskToSprint,
   removeTaskFromSprint,
+  getSprintMembers,
+  addMemberToSprint,
+  removeMemberFromSprint,
+  getAvailableUsersForSprint,
 } from "../controllers/sprint.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
@@ -362,6 +366,144 @@ router.delete(
   setProjectRole,
   checkPermission(PERMISSIONS.UPDATE_SPRINT),
   removeTaskFromSprint
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/members:
+ *   get:
+ *     summary: Lấy danh sách thành viên của sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Danh sách thành viên của sprint
+ */
+router.get(
+  "/projects/:projectId/sprints/:sprintId/members",
+  protect,
+  setProjectRole,
+  getSprintMembers
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/members:
+ *   post:
+ *     summary: Thêm thành viên vào sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Thêm thành viên thành công
+ */
+router.post(
+  "/projects/:projectId/sprints/:sprintId/members",
+  protect,
+  setProjectRole,
+  checkPermission([ROLES.ADMIN, ROLES.PROJECT_MANAGER]),
+  addMemberToSprint
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/members/{userId}:
+ *   delete:
+ *     summary: Xóa thành viên khỏi sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Xóa thành viên thành công
+ */
+router.delete(
+  "/projects/:projectId/sprints/:sprintId/members/:userId",
+  protect,
+  setProjectRole,
+  checkPermission([ROLES.ADMIN, ROLES.PROJECT_MANAGER]),
+  removeMemberFromSprint
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/available-users:
+ *   get:
+ *     summary: Lấy danh sách người dùng có thể thêm vào sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Danh sách người dùng có thể thêm vào sprint
+ */
+router.get(
+  "/projects/:projectId/sprints/:sprintId/available-users",
+  protect,
+  setProjectRole,
+  getAvailableUsersForSprint
 );
 
 export default router;

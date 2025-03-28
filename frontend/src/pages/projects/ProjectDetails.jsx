@@ -38,7 +38,6 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
   Login as LoginIcon,
-  ArrowBack as ArrowBackIcon,
 } from "@mui/icons-material";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
@@ -50,10 +49,14 @@ import {
   archiveProject,
   restoreProject,
 } from "../../api/projectApi";
+import { getSprints } from "../../api/sprintApi";
 import { useSnackbar } from "notistack";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePermissions } from "../../hooks/usePermissions";
 import CustomAvatar from "../../components/common/Avatar";
+import BackButton from "../../components/common/BackButton";
+import ActionButtons from "../../components/common/ActionButtons";
+import SprintFormDialog from "../../components/sprint/SprintFormDialog";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -65,7 +68,10 @@ const ProjectDetails = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [sprints, setSprints] = useState([]);
+  const [loadingSprints, setLoadingSprints] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
+  const [openCreateSprintDialog, setOpenCreateSprintDialog] = useState(false);
 
   // Debug log - Kiểm tra user
   console.log("ProjectDetails - user từ useAuth:", user);
@@ -109,6 +115,7 @@ const ProjectDetails = () => {
   useEffect(() => {
     if (!authLoading) {
       fetchProjectDetails();
+      fetchProjectSprints();
     }
   }, [projectId, authLoading, reloadKey]);
 
@@ -137,6 +144,24 @@ const ProjectDetails = () => {
       setError(err.response?.data?.message || "Không thể tải thông tin dự án");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchProjectSprints = async () => {
+    try {
+      setLoadingSprints(true);
+      const response = await getSprints(projectId);
+      if (response?.success && response?.data) {
+        setSprints(response.data);
+      } else {
+        console.error("No sprints found or error in response:", response);
+        setSprints([]);
+      }
+    } catch (err) {
+      console.error("Error fetching sprints:", err);
+      setSprints([]);
+    } finally {
+      setLoadingSprints(false);
     }
   };
 
@@ -373,6 +398,19 @@ const ProjectDetails = () => {
     }
   };
 
+  const handleOpenCreateSprintDialog = () => {
+    setOpenCreateSprintDialog(true);
+  };
+
+  const handleCloseCreateSprintDialog = () => {
+    setOpenCreateSprintDialog(false);
+  };
+
+  const handleSprintCreated = () => {
+    fetchProjectSprints();
+    handleCloseCreateSprintDialog();
+  };
+
   if (authLoading || loading) {
     return (
       <Box
@@ -550,13 +588,7 @@ const ProjectDetails = () => {
       {project && (
         <>
           {/* Back Button */}
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={() => navigate("/projects")}
-            sx={{ mb: 2 }}
-          >
-            Quay lại
-          </Button>
+          <BackButton onClick={() => navigate("/projects")} />
 
           {/* Header */}
           <Box
@@ -619,6 +651,86 @@ const ProjectDetails = () => {
                   <Typography color="text.secondary" sx={{ mt: 2 }}>
                     {project.description}
                   </Typography>
+
+                  {/* Sprint Buttons Section - Replace the XEM DỰ ÁN and CÔNG VIỆC buttons */}
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Sprints của dự án
+                    </Typography>
+
+                    {loadingSprints ? (
+                      <CircularProgress size={24} sx={{ mt: 2 }} />
+                    ) : sprints && sprints.length > 0 ? (
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        sx={{ flexWrap: "wrap", gap: 2 }}
+                      >
+                        {sprints.map((sprint) => (
+                          <Button
+                            key={sprint._id}
+                            variant="outlined"
+                            color="primary"
+                            onClick={() =>
+                              navigate(
+                                `/projects/${projectId}/sprints/${sprint._id}`
+                              )
+                            }
+                            startIcon={<TimelineIcon />}
+                            sx={{ mt: 1 }}
+                          >
+                            {sprint.name}
+                          </Button>
+                        ))}
+                        <Tooltip
+                          title={
+                            !canEditProject(project)
+                              ? "Bạn không có quyền tạo sprint mới"
+                              : ""
+                          }
+                        >
+                          <span>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              startIcon={<AddIcon />}
+                              onClick={handleOpenCreateSprintDialog}
+                              disabled={!canEditProject(project)}
+                              sx={{ mt: 1 }}
+                            >
+                              Tạo Sprint mới
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      </Stack>
+                    ) : (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography color="text.secondary" gutterBottom>
+                          Dự án chưa có sprint nào.
+                        </Typography>
+                        <Tooltip
+                          title={
+                            !canEditProject(project)
+                              ? "Bạn không có quyền tạo sprint mới"
+                              : ""
+                          }
+                        >
+                          <span>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              startIcon={<AddIcon />}
+                              onClick={handleOpenCreateSprintDialog}
+                              disabled={!canEditProject(project)}
+                              sx={{ mt: 1 }}
+                            >
+                              Tạo Sprint đầu tiên
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      </Box>
+                    )}
+                  </Box>
                 </Box>
               </Box>
             </Box>
@@ -679,51 +791,15 @@ const ProjectDetails = () => {
                 </Tooltip>
               )}
 
-              {canEditProject(project) ? (
-                <Button
-                  startIcon={<EditIcon />}
-                  variant="outlined"
-                  onClick={() => setEditDialogOpen(true)}
-                >
-                  Chỉnh sửa
-                </Button>
-              ) : (
-                <Tooltip title="Bạn không có quyền chỉnh sửa dự án này">
-                  <span>
-                    <Button
-                      startIcon={<EditIcon />}
-                      variant="outlined"
-                      disabled
-                    >
-                      Chỉnh sửa
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-
-              {canDeleteProject(project) ? (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<DeleteIcon />}
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  Xóa
-                </Button>
-              ) : (
-                <Tooltip title="Bạn không có quyền xóa dự án này">
-                  <span>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      disabled
-                    >
-                      Xóa
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
+              <ActionButtons
+                canEdit={canEditProject(project)}
+                canDelete={canDeleteProject(project)}
+                onEdit={() => setEditDialogOpen(true)}
+                onDelete={() => setDeleteDialogOpen(true)}
+                editTooltip="Bạn không có quyền chỉnh sửa dự án này"
+                deleteTooltip="Bạn không có quyền xóa dự án này"
+                variant="outlined"
+              />
             </Stack>
           </Box>
 
@@ -986,110 +1062,13 @@ const ProjectDetails = () => {
             </DialogActions>
           </Dialog>
 
-          {/* Debug Info Section - Commented out
-          {debugMode && (
-            <Card sx={{ mb: 3, bgcolor: "#f9f9f9" }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2, color: "red" }}>
-                  DEBUG INFO
-                </Typography>
-
-                <Typography variant="subtitle2">
-                  Permission Check Results:
-                </Typography>
-                <ul>
-                  <li>
-                    canEditProject:{" "}
-                    {canEditProject(project) ? "✅ YES" : "❌ NO"}
-                  </li>
-                  <li>
-                    canDeleteProject:{" "}
-                    {canDeleteProject(project) ? "✅ YES" : "❌ NO"}
-                  </li>
-                  <li>
-                    canArchiveProject:{" "}
-                    {canArchiveProject(project) ? "✅ YES" : "❌ NO"}
-                  </li>
-                  <li>
-                    canAddMembers: {canAddMembers(project) ? "✅ YES" : "❌ NO"}
-                  </li>
-                </ul>
-
-                <Typography variant="subtitle2">Current User:</Typography>
-                <pre
-                  style={{
-                    background: "#eee",
-                    padding: "8px",
-                    overflow: "auto",
-                  }}
-                >
-                  {JSON.stringify(
-                    user
-                      ? {
-                          id: user._id,
-                          name: user.name,
-                          email: user.email,
-                          role: user.role,
-                        }
-                      : "Không có user",
-                    null,
-                    2
-                  )}
-                </pre>
-
-                <Typography variant="subtitle2">Auth State:</Typography>
-                <pre
-                  style={{
-                    background: "#eee",
-                    padding: "8px",
-                    overflow: "auto",
-                  }}
-                >
-                  {JSON.stringify(
-                    {
-                      isLoggedIn: !!user,
-                      loading: authLoading,
-                      error: authError,
-                    },
-                    null,
-                    2
-                  )}
-                </pre>
-
-                <Typography variant="subtitle2">Project Members:</Typography>
-                <pre
-                  style={{
-                    background: "#eee",
-                    padding: "8px",
-                    overflow: "auto",
-                  }}
-                >
-                  {JSON.stringify(
-                    project?.members?.map((member) => ({
-                      id: member.user._id,
-                      name: member.user.name,
-                      email: member.user.email,
-                      role: member.role,
-                    })),
-                    null,
-                    2
-                  )}
-                </pre>
-              </CardContent>
-            </Card>
-          )}
-          */}
-
-          {!debugMode && (
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={toggleDebugMode}
-              sx={{ mt: 2 }}
-            >
-              Show Debug
-            </Button>
-          )}
+          {/* Sprint Form Dialog */}
+          <SprintFormDialog
+            open={openCreateSprintDialog}
+            onClose={handleCloseCreateSprintDialog}
+            projectId={projectId}
+            onSuccess={handleSprintCreated}
+          />
         </>
       )}
     </Box>

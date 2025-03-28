@@ -62,6 +62,7 @@ import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePermissions } from "../../hooks/usePermissions";
+import ActionButtons from "../../components/common/ActionButtons";
 
 // Định nghĩa labels và colors cho các mức độ ưu tiên
 const priorityLabels = {
@@ -81,7 +82,7 @@ const Tasks = () => {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuth();
-  const { canDeleteTask } = usePermissions();
+  const { canDeleteTask, canEditTask } = usePermissions();
   const [tasks, setTasks] = useState({
     todo: [],
     inProgress: [],
@@ -535,21 +536,56 @@ const Tasks = () => {
     }
   };
 
+  // Render task card với button từ ActionButtons
   const renderTaskCards = (columnTasks, status) => {
     return columnTasks.map((task) => (
-      <TaskCard
+      <Box
         key={task._id}
-        task={task}
-        container={status}
-        project={project}
-        onEdit={(task) => {
-          setSelectedTask(task);
-          setOpenEditDialog(true);
+        sx={{
+          position: "relative",
+          "& .action-buttons": {
+            opacity: 0,
+            transition: "opacity 0.2s",
+          },
+          "&:hover .action-buttons": {
+            opacity: 1,
+          },
         }}
-        onDelete={handleDeleteTask}
-        onAddComment={handleAddComment}
-        onAddAttachment={handleAddAttachment}
-      />
+      >
+        <TaskCard
+          key={task._id}
+          task={task}
+          container={status}
+          project={project}
+          onEdit={(task) => {
+            setSelectedTask(task);
+            setOpenEditDialog(true);
+          }}
+          onDelete={handleDeleteTask}
+          onAddComment={handleAddComment}
+          onAddAttachment={handleAddAttachment}
+          actionButtons={
+            <Box
+              className="action-buttons"
+              sx={{ position: "absolute", top: 5, right: 5, zIndex: 2 }}
+            >
+              <ActionButtons
+                canEdit={canEditTask ? canEditTask(task, project) : true}
+                canDelete={canDeleteTask ? canDeleteTask(task, project) : true}
+                onEdit={() => {
+                  setSelectedTask(task);
+                  setOpenEditDialog(true);
+                }}
+                onDelete={() => handleDeleteTask(task._id)}
+                editTooltip="Bạn không có quyền chỉnh sửa công việc này"
+                deleteTooltip="Bạn không có quyền xóa công việc này"
+                useIcons={true}
+                size="small"
+              />
+            </Box>
+          }
+        />
+      </Box>
     ));
   };
 

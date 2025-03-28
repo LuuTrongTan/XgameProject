@@ -46,6 +46,27 @@ const sprintSchema = new mongoose.Schema(
         ref: "Task",
       },
     ],
+    members: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        role: {
+          type: String,
+          default: "member",
+        },
+        addedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        addedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -64,6 +85,8 @@ const sprintSchema = new mongoose.Schema(
 // Index để tối ưu truy vấn
 sprintSchema.index({ project: 1 });
 sprintSchema.index({ status: 1 });
+// Index để tìm kiếm thành viên nhanh hơn
+sprintSchema.index({ "members.user": 1 });
 
 // Middleware để kiểm tra ngày kết thúc
 sprintSchema.pre("save", function (next) {

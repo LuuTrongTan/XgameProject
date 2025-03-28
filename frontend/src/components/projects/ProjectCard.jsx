@@ -32,6 +32,7 @@ import {
   Unarchive as UnarchiveIcon,
   Visibility as VisibilityIcon,
 } from "@mui/icons-material";
+import ActionButtons from "../../components/common/ActionButtons";
 
 const statusColors = {
   active: "success",
@@ -252,27 +253,30 @@ const ProjectCard = ({ project, onEdit, onDelete, onViewDetails }) => {
             </ListItemIcon>
             Xem chi tiết
           </MenuItem>
-          {!p.isArchived &&
-            (user?.role === "admin" ||
-              p.members?.some(
-                (m) =>
-                  m.user._id === user?._id &&
-                  ["admin", "project_manager"].includes(m.role)
-              )) && (
-              <MenuItem onClick={onEdit}>
-                <ListItemIcon>
-                  <EditIcon fontSize="small" />
-                </ListItemIcon>
-                Chỉnh sửa
-              </MenuItem>
-            )}
-          {!p.isArchived && user?.role === "admin" && (
-            <MenuItem onClick={onDelete}>
-              <ListItemIcon>
-                <DeleteIcon fontSize="small" />
-              </ListItemIcon>
-              Xóa
-            </MenuItem>
+          {!p.isArchived && (
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              {(user?.role === "admin" ||
+                p.members?.some(
+                  (m) =>
+                    m.user._id === user?._id &&
+                    ["admin", "project_manager"].includes(m.role)
+                )) && (
+                <MenuItem onClick={onEdit}>
+                  <ListItemIcon>
+                    <EditIcon fontSize="small" />
+                  </ListItemIcon>
+                  Chỉnh sửa
+                </MenuItem>
+              )}
+              {user?.role === "admin" && (
+                <MenuItem onClick={onDelete}>
+                  <ListItemIcon>
+                    <DeleteIcon fontSize="small" />
+                  </ListItemIcon>
+                  Xóa
+                </MenuItem>
+              )}
+            </Box>
           )}
           {!p.isArchived &&
             (user?.role === "admin" ||

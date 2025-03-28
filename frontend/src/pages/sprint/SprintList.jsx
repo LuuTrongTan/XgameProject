@@ -17,14 +17,19 @@ import {
   Divider,
   CircularProgress,
   Alert,
+  Stack,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import { getSprints, deleteSprint } from "../../api/sprintApi";
+import { getSprints, deleteSprint, getProjectById } from "../../api/sprintApi";
 import SprintFormDialog from "../../components/sprint/SprintFormDialog";
 import { useSnackbar } from "notistack";
+import BackButton from "../../components/common/BackButton";
+import { useAuth } from "../../contexts/AuthContext";
+import { usePermissions } from "../../hooks/usePermissions";
+import ActionButtons from "../../components/common/ActionButtons";
 
 const formatDate = (dateString) => {
   if (!dateString) return "";
@@ -39,7 +44,7 @@ const formatDate = (dateString) => {
 const getStatusColor = (status) => {
   switch (status) {
     case "planning":
-      return "info";
+      return "primary";
     case "active":
       return "success";
     case "completed":
@@ -67,6 +72,7 @@ const SprintList = () => {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const [sprints, setSprints] = useState([]);
+  const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
@@ -74,40 +80,55 @@ const SprintList = () => {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedSprint, setSelectedSprint] = useState(null);
   const [refresh, setRefresh] = useState(0);
+  const { user } = useAuth();
+  const { canCreateSprint, canEditSprint, canDeleteSprint, canViewSprint } =
+    usePermissions();
 
   useEffect(() => {
-    const fetchSprints = async () => {
+    fetchData();
+  }, [projectId]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch project details
       try {
-        setLoading(true);
-        setError(null);
-        console.log("Fetching sprints for project ID:", projectId);
-        const response = await getSprints(projectId);
-        console.log("Sprint list response:", response);
-
-        if (response.success && response.data) {
-          setSprints(response.data);
-        } else {
-          setError(response.message || "Không thể tải danh sách sprint");
-          setSprints([]);
-        }
-      } catch (err) {
-        console.error("Error fetching sprints:", err);
-        setError("Không thể tải danh sách sprint");
-        setSprints([]);
-      } finally {
-        setLoading(false);
+        const projectResponse = await getProjectById(projectId);
+        setProject(projectResponse.data);
+      } catch (projectErr) {
+        console.error("Error fetching project:", projectErr);
       }
-    };
 
-    if (projectId) {
-      fetchSprints();
-    } else {
-      setError("ID dự án không hợp lệ");
+      // Fetch sprint list
+      const sprintsResponse = await getSprints(projectId);
+      if (sprintsResponse.success) {
+        // Lọc những sprint mà người dùng có quyền xem
+        const filteredSprints = sprintsResponse.data.filter((sprint) =>
+          canViewSprint(sprint)
+        );
+        setSprints(filteredSprints);
+      } else {
+        setError(sprintsResponse.message || "Không thể tải danh sách sprint");
+      }
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError("Có lỗi xảy ra khi tải dữ liệu");
+    } finally {
       setLoading(false);
     }
-  }, [projectId, refresh]);
+  };
 
   const handleOpenCreateDialog = () => {
+    // Kiểm tra quyền trước khi mở dialog tạo sprint
+    if (!canCreateSprint()) {
+      enqueueSnackbar("Bạn không có quyền tạo sprint", {
+        variant: "error",
+        autoHideDuration: 3000,
+      });
+      return;
+    }
     setOpenCreateDialog(true);
   };
 
@@ -115,7 +136,18 @@ const SprintList = () => {
     setOpenCreateDialog(false);
   };
 
-  const handleOpenEditDialog = (sprint) => {
+  const handleOpenEditDialog = (event, sprint) => {
+    event.stopPropagation();
+
+    // Kiểm tra quyền trước khi mở dialog sửa sprint
+    if (!canEditSprint()) {
+      enqueueSnackbar("Bạn không có quyền sửa sprint", {
+        variant: "error",
+        autoHideDuration: 3000,
+      });
+      return;
+    }
+
     setSelectedSprint(sprint);
     setOpenEditDialog(true);
   };
@@ -125,7 +157,18 @@ const SprintList = () => {
     setSelectedSprint(null);
   };
 
-  const handleOpenDeleteDialog = (sprint) => {
+  const handleOpenDeleteDialog = (event, sprint) => {
+    event.stopPropagation();
+
+    // Kiểm tra quyền trước khi mở dialog xóa sprint
+    if (!canDeleteSprint()) {
+      enqueueSnackbar("Bạn không có quyền xóa sprint", {
+        variant: "error",
+        autoHideDuration: 3000,
+      });
+      return;
+    }
+
     setSelectedSprint(sprint);
     setOpenDeleteDialog(true);
   };
@@ -137,6 +180,13 @@ const SprintList = () => {
 
   const handleDeleteSprint = async () => {
     if (!selectedSprint) return;
+
+    // Kiểm tra quyền trước khi xóa sprint
+    if (!canDeleteSprint()) {
+      enqueueSnackbar("Bạn không có quyền xóa sprint", { variant: "error" });
+      handleCloseDeleteDialog();
+      return;
+    }
 
     try {
       await deleteSprint(projectId, selectedSprint._id);
@@ -159,6 +209,14 @@ const SprintList = () => {
     navigate(`/projects/${projectId}/sprints/${sprintId}`);
   };
 
+  const handleBackClick = () => {
+    navigate(`/projects/${projectId}`);
+  };
+
+  const hasManagePermission = (projectRole) => {
+    return projectRole === "admin" || projectRole === "project_manager";
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
@@ -169,18 +227,35 @@ const SprintList = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
+      <BackButton onClick={handleBackClick} />
+
+      <Box
+        sx={{ display: "flex", justifyContent: "space-between", mb: 4, mt: 2 }}
+      >
         <Typography variant="h4" component="h1">
           Danh sách Sprint
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={handleOpenCreateDialog}
-        >
-          Tạo sprint mới
-        </Button>
+        {hasManagePermission(project?.projectRole) && (
+          <Tooltip
+            title={
+              project?.projectRole === "member"
+                ? "Bạn không có quyền tạo sprint mới"
+                : ""
+            }
+          >
+            <span>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={handleOpenCreateDialog}
+                disabled={project?.projectRole === "member"}
+              >
+                TẠO SPRINT MỚI
+              </Button>
+            </span>
+          </Tooltip>
+        )}
       </Box>
 
       {error && (
@@ -192,89 +267,88 @@ const SprintList = () => {
       {sprints.length === 0 && !loading && !error ? (
         <Card sx={{ minWidth: 275, mb: 2 }}>
           <CardContent>
-            <Typography variant="h6" align="center">
-              Chưa có sprint nào. Hãy tạo mới!
+            <Typography variant="h6" align="center" gutterBottom>
+              Dự án chưa có sprint nào.
             </Typography>
+            {hasManagePermission(project?.projectRole) && (
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                <Tooltip
+                  title={
+                    project?.projectRole === "member"
+                      ? "Bạn không có quyền tạo sprint mới"
+                      : ""
+                  }
+                >
+                  <span>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<AddIcon />}
+                      onClick={handleOpenCreateDialog}
+                      disabled={project?.projectRole === "member"}
+                    >
+                      TẠO SPRINT ĐẦU TIÊN
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <Grid container spacing={2}>
+        <Grid container spacing={3}>
           {sprints.map((sprint) => (
-            <Grid item xs={12} md={6} lg={4} key={sprint._id}>
+            <Grid item xs={12} sm={6} md={4} key={sprint._id}>
               <Card
                 sx={{
-                  minWidth: 275,
-                  mb: 2,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
                   cursor: "pointer",
-                  transition: "transform 0.3s, box-shadow 0.3s",
                   "&:hover": {
-                    transform: "translateY(-4px)",
-                    boxShadow: 6,
+                    boxShadow: 4,
                   },
                 }}
                 onClick={() => handleSprintClick(sprint._id)}
               >
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <Typography variant="h6" component="div">
-                      {sprint.name}
-                    </Typography>
-                    <Box>
-                      <Tooltip title="Chỉnh sửa sprint">
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditDialog(sprint);
-                          }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Xóa sprint">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDeleteDialog(sprint);
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    p: 2,
+                    borderBottom: "1px solid rgba(0,0,0,0.1)",
+                  }}
+                >
+                  <Typography variant="h6">{sprint.name}</Typography>
+                  {hasManagePermission(project?.projectRole) && (
+                    <ActionButtons
+                      canEdit={true}
+                      canDelete={true}
+                      onEdit={(e) => handleOpenEditDialog(e, sprint)}
+                      onDelete={(e) => handleOpenDeleteDialog(e, sprint)}
+                      useIcons={true}
+                      size="small"
+                    />
+                  )}
+                </Box>
+                <CardContent sx={{ flexGrow: 1, pt: 1 }}>
                   <Chip
                     label={getStatusLabel(sprint.status)}
                     color={getStatusColor(sprint.status)}
                     size="small"
-                    sx={{ mt: 1, mb: 2 }}
+                    sx={{ mb: 2 }}
                   />
 
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mb: 1 }}
-                  >
+                  <Typography variant="body2" color="text.secondary">
                     {sprint.description}
                   </Typography>
-
-                  <Divider sx={{ my: 1 }} />
 
                   <Box
                     sx={{
                       display: "flex",
                       justifyContent: "space-between",
-                      mt: 1,
+                      mt: 2,
                     }}
                   >
                     <Typography variant="body2" color="text.secondary">
@@ -285,10 +359,11 @@ const SprintList = () => {
                     </Typography>
                   </Box>
 
-                  <Box sx={{ display: "flex", alignItems: "center", mt: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mt: 2 }}>
                     <AssignmentIcon
                       fontSize="small"
-                      sx={{ mr: 0.5, color: "text.secondary" }}
+                      color="action"
+                      sx={{ mr: 1 }}
                     />
                     <Typography variant="body2" color="text.secondary">
                       {sprint.tasks ? sprint.tasks.length : 0} nhiệm vụ
@@ -313,18 +388,18 @@ const SprintList = () => {
           open={openEditDialog}
           onClose={handleCloseEditDialog}
           projectId={projectId}
-          onSuccess={handleFormSuccess}
           sprint={selectedSprint}
+          onSuccess={handleFormSuccess}
           isEditing
         />
       )}
 
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
-        <DialogTitle>Xóa Sprint</DialogTitle>
+        <DialogTitle>Xác nhận xóa</DialogTitle>
         <DialogContent>
           <Typography>
-            Bạn có chắc chắn muốn xóa sprint "{selectedSprint?.name}"? Hành động
-            này không thể hoàn tác.
+            Bạn có chắc muốn xóa sprint "{selectedSprint?.name}"? Tất cả công
+            việc trong sprint này sẽ bị gỡ khỏi sprint.
           </Typography>
         </DialogContent>
         <DialogActions>

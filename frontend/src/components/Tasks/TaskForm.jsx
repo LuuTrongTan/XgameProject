@@ -45,6 +45,7 @@ import {
   Add as AddIcon,
   RemoveCircle as RemoveCircleIcon,
 } from "@mui/icons-material";
+import { BackButton } from "../common/BackButton";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -648,13 +649,10 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
                 mt: 2,
               }}
             >
-              <Button
-                type="button"
-                startIcon={<ArrowBackIcon />}
+              <BackButton
+                label="Hủy"
                 onClick={() => (onClose ? onClose() : navigate(-1))}
-              >
-                Hủy
-              </Button>
+              />
               <Box>
                 {task?._id && (
                   <Tooltip
