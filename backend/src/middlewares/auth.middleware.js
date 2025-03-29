@@ -49,10 +49,10 @@ export const protect = async (req, res, next) => {
       });
     }
   } catch (error) {
-    console.error("Auth Middleware Error:", error);
-    res.status(500).json({
+    console.error("Auth middleware error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Đã có lỗi xảy ra, vui lòng thử lại sau",
+      message: "Lỗi xác thực",
     });
   }
 };
@@ -60,12 +60,55 @@ export const protect = async (req, res, next) => {
 // Middleware kiểm tra vai trò của người dùng
 export const authorizeRoles = (...roles) => {
   return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Không tìm thấy thông tin người dùng",
+      });
+    }
+
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện thao tác này",
+        message: "Bạn không có quyền thực hiện hành động này",
       });
     }
+
     next();
+  };
+};
+
+export const checkPermission = (permission) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Không tìm thấy thông tin người dùng",
+        });
+      }
+
+      // Admin có tất cả quyền
+      if (req.user.role === "admin") {
+        return next();
+      }
+
+      // Kiểm tra quyền của user
+      const hasPermission = req.user.permissions?.includes(permission);
+      if (!hasPermission) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền thực hiện hành động này",
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error("Permission check error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi kiểm tra quyền",
+      });
+    }
   };
 };

@@ -263,23 +263,19 @@ export const login = async (req, res) => {
     // Find user with password
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message: "Email hoặc mật khẩu không chính xác",
-        });
+      return res.status(401).json({
+        success: false,
+        message: "Email hoặc mật khẩu không chính xác",
+      });
     }
 
     // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message: "Email hoặc mật khẩu không chính xác",
-        });
+      return res.status(401).json({
+        success: false,
+        message: "Email hoặc mật khẩu không chính xác",
+      });
     }
 
     // Generate token

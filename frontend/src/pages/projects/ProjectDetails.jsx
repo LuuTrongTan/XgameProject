@@ -56,7 +56,7 @@ import { usePermissions } from "../../hooks/usePermissions";
 import CustomAvatar from "../../components/common/Avatar";
 import BackButton from "../../components/common/BackButton";
 import ActionButtons from "../../components/common/ActionButtons";
-import SprintFormDialog from "../../components/sprint/SprintFormDialog";
+import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();

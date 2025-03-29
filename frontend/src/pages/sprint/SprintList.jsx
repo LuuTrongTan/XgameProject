@@ -24,7 +24,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import { getSprints, deleteSprint, getProjectById } from "../../api/sprintApi";
-import SprintFormDialog from "../../components/sprint/SprintFormDialog";
+import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import { useSnackbar } from "notistack";
 import BackButton from "../../components/common/BackButton";
 import { useAuth } from "../../contexts/AuthContext";

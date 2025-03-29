@@ -50,8 +50,8 @@ import {
   removeMemberFromSprint,
   getAvailableUsersForSprint,
 } from "../../api/sprintApi";
-import SprintFormDialog from "../../components/sprint/SprintFormDialog";
-import TaskSelectionDialog from "../../components/sprint/TaskSelectionDialog";
+import SprintFormDialog from "../../components/sprints/SprintFormDialog";
+import TaskSelectionDialog from "../../components/sprints/TaskSelectionDialog";
 import { useSnackbar } from "notistack";
 import BackButton from "../../components/common/BackButton";
 import { useAuth } from "../../contexts/AuthContext";

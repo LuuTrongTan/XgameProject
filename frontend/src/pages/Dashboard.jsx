@@ -34,7 +34,7 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import UpcomingTasks from "../components/UpcomingTasks";
+import UpcomingTasks from "../components/Tasks/UpcomingTasks";
 import { useTheme } from "@mui/material/styles";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -59,6 +59,7 @@ const Dashboard = () => {
     completedProjects: 0,
     pendingTasks: 0,
   });
+  const [projectId, setProjectId] = useState(null);
 
   const features = [
     {
@@ -251,11 +252,11 @@ const Dashboard = () => {
         </Grid>
 
         {/* Upcoming Tasks */}
-        <Grid item xs={12}>
+        <Grid item xs={12} md={6}>
           <Typography variant="h6" gutterBottom>
             Công việc sắp đến hạn
           </Typography>
-          <UpcomingTasks />
+          <UpcomingTasks projectId={projectId} />
         </Grid>
       </Grid>
     </Container>

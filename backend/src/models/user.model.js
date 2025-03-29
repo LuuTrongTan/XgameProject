@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { ROLES } from "../config/constants.js";
+import { PERMISSIONS } from "../constants/permissions.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -22,6 +23,17 @@ const userSchema = new mongoose.Schema(
       minlength: [6, "Mật khẩu phải có ít nhất 6 ký tự"],
       select: false,
     },
+    role: {
+      type: String,
+      enum: Object.values(ROLES),
+      default: ROLES.MEMBER,
+    },
+    permissions: [
+      {
+        type: String,
+        enum: Object.values(PERMISSIONS),
+      },
+    ],
     activeTokens: [
       {
         token: {
@@ -44,16 +56,19 @@ const userSchema = new mongoose.Schema(
     ],
     avatar: {
       type: String,
-      default: "",
+      default: null,
     },
     avatarBase64: {
       type: String,
-      default: "",
+      default: null,
     },
-    role: {
+    position: {
       type: String,
-      enum: Object.values(ROLES),
-      default: ROLES.MEMBER,
+      default: null,
+    },
+    department: {
+      type: String,
+      default: null,
     },
     phoneNumber: {
       type: String,
@@ -64,7 +79,7 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "active", "inactive", "blocked"],
+      enum: ["active", "inactive", "pending"],
       default: "pending",
     },
     lastLogin: {
@@ -104,8 +119,21 @@ userSchema.virtual("assignedTasks", {
   foreignField: "assignees",
 });
 
-// Hàm so sánh mật khẩu khi đăng nhập
-userSchema.methods.comparePassword = function (candidatePassword) {
+// Hash password before saving
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Compare password method
+userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -114,6 +142,50 @@ userSchema.methods.removeToken = function (token) {
   this.activeTokens = this.activeTokens.filter((t) => t.token !== token);
   return this.save();
 };
+
+// Set default permissions based on role
+userSchema.pre("save", function (next) {
+  if (!this.isModified("role")) return next();
+
+  // Set default permissions based on role
+  switch (this.role) {
+    case ROLES.ADMIN:
+      this.permissions = Object.values(PERMISSIONS);
+      break;
+    case ROLES.PROJECT_MANAGER:
+      this.permissions = [
+        PERMISSIONS.CREATE_PROJECT,
+        PERMISSIONS.EDIT_PROJECT,
+        PERMISSIONS.VIEW_PROJECT,
+        PERMISSIONS.MANAGE_PROJECT_MEMBERS,
+        PERMISSIONS.CREATE_SPRINT,
+        PERMISSIONS.EDIT_SPRINT,
+        PERMISSIONS.VIEW_SPRINT,
+        PERMISSIONS.MANAGE_SPRINT_MEMBERS,
+        PERMISSIONS.CREATE_TASK,
+        PERMISSIONS.EDIT_TASK,
+        PERMISSIONS.VIEW_TASK,
+        PERMISSIONS.ASSIGN_TASK,
+        PERMISSIONS.UPDATE_TASK_STATUS,
+        PERMISSIONS.VIEW_USERS,
+        PERMISSIONS.INVITE_USERS,
+      ];
+      break;
+    case ROLES.MEMBER:
+      this.permissions = [
+        PERMISSIONS.VIEW_PROJECT,
+        PERMISSIONS.VIEW_SPRINT,
+        PERMISSIONS.CREATE_TASK,
+        PERMISSIONS.EDIT_TASK,
+        PERMISSIONS.VIEW_TASK,
+        PERMISSIONS.ASSIGN_TASK,
+        PERMISSIONS.UPDATE_TASK_STATUS,
+      ];
+      break;
+  }
+
+  next();
+});
 
 const User = mongoose.model("User", userSchema);
 export default User;

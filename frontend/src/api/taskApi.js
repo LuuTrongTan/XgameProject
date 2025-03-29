@@ -284,3 +284,40 @@ export const syncWithCalendar = async (taskId, calendarType) => {
     };
   }
 };
+
+// Get unassigned tasks for a project
+export const getUnassignedTasks = async (projectId) => {
+  try {
+    const response = await API.get(`/tasks`, {
+      params: {
+        project: projectId,
+        unassigned: true,
+      },
+    });
+
+    let tasks = [];
+    if (response.data) {
+      if (Array.isArray(response.data)) {
+        tasks = response.data;
+      } else if (response.data.tasks && Array.isArray(response.data.tasks)) {
+        tasks = response.data.tasks;
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        tasks = response.data.data;
+      }
+    }
+
+    return {
+      success: true,
+      data: tasks,
+      message: "Lấy danh sách công việc chưa phân công thành công",
+    };
+  } catch (error) {
+    console.error("Error fetching unassigned tasks:", error);
+    return {
+      success: false,
+      data: [],
+      message:
+        error.message || "Không thể lấy danh sách công việc chưa phân công",
+    };
+  }
+};
