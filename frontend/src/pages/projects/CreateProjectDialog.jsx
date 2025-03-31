@@ -28,31 +28,7 @@ import {
 import { createProject } from "../../api/projectApi";
 import FileUpload from "../../components/common/FileUpload";
 import UserSelectionDialog from "../../components/common/UserSelectionDialog";
-
-const ROLES = {
-  ADMIN: "admin",
-  PROJECT_MANAGER: "project_manager",
-  MEMBER: "member",
-};
-
-const getRoleName = (roleValue) => {
-  switch (roleValue) {
-    case ROLES.ADMIN:
-      return "Admin";
-    case ROLES.PROJECT_MANAGER:
-      return "Project Manager";
-    case ROLES.MEMBER:
-      return "Member";
-    default:
-      return roleValue;
-  }
-};
-
-const PROJECT_STATUS = {
-  ACTIVE: "Đang hoạt động",
-  COMPLETED: "Hoàn thành",
-  CLOSED: "Đóng",
-};
+import { ROLES, getRoleName, PROJECT_STATUS } from "../../config/constants";
 
 const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -226,21 +202,20 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
 
     try {
       const projectData = {
-        ...formData,
+        name: formData.name,
+        description: formData.description,
+        status: formData.status,
+        avatarBase64: formData.avatar,
         members: members.map((member) => ({
-          user: member.id,
+          email: member.email,
           role: member.role,
         })),
       };
 
       const response = await createProject(projectData);
-      if (response.success) {
-        setSuccessMessage("Dự án được tạo thành công!");
-        onSuccess(response.data);
-        onClose();
-      } else {
-        setError(response.message || "Có lỗi xảy ra khi tạo dự án");
-      }
+      setSuccessMessage("Tạo dự án thành công");
+      onSuccess(response.data);
+      onClose();
     } catch (error) {
       console.error("Error creating project:", error);
       setError(error.message || "Có lỗi xảy ra khi tạo dự án");

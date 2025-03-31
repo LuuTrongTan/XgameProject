@@ -240,11 +240,7 @@ export const createProject = async (req, res) => {
         const user = await User.findOne({ email: member.email });
         if (user) {
           // Check if user is already a member
-          if (
-            !project.members.some(
-              (m) => m.user.toString() === user._id.toString()
-            )
-          ) {
+          if (!project.members.some(m => m.user.toString() === user._id.toString())) {
             project.members.push({
               user: user._id,
               role: member.role,

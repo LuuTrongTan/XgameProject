@@ -14,6 +14,7 @@ import {
   CircularProgress,
   Alert,
   CardMedia,
+  Tooltip,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -26,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import { getProjects } from "../../api/projectApi";
 import CreateProjectDialog from "./CreateProjectDialog";
 import CustomAvatar from "../../components/common/Avatar";
+import { ROLES, getRoleName, PROJECT_STATUS, getStatusColor, getStatusLabel } from "../../config/constants";
 
 const ProjectColumn = ({ title, tasks, addButton, columnId }) => (
   <Droppable droppableId={columnId}>
@@ -192,34 +194,6 @@ const Projects = () => {
     setFilter(newValue);
   };
 
-  const getStatusColor = (status) => {
-    if (!status) return "#4CAF50";
-    switch (status.toLowerCase()) {
-      case "đang hoạt động":
-        return "#4CAF50";
-      case "hoàn thành":
-        return "#2196F3";
-      case "đóng":
-        return "#9E9E9E";
-      default:
-        return "#4CAF50";
-    }
-  };
-
-  const getStatusLabel = (status) => {
-    if (!status) return "Đang hoạt động";
-    switch (status.toLowerCase()) {
-      case "đang hoạt động":
-        return "Đang hoạt động";
-      case "hoàn thành":
-        return "Hoàn thành";
-      case "đóng":
-        return "Đóng";
-      default:
-        return "Đang hoạt động";
-    }
-  };
-
   const handleCreateSuccess = (newProject) => {
     setProjects((prev) => [newProject, ...prev]);
   };
@@ -362,13 +336,14 @@ const Projects = () => {
                     "transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out",
                   borderRadius: "8px",
                   overflow: "hidden",
+                  maxWidth: "100%",
                 }}
                 onClick={() => navigate(`/projects/${project._id}`)}
               >
                 <CardMedia
                   component="div"
                   sx={{
-                    height: project.avatarBase64 ? 250 : 140,
+                    height: project.avatarBase64 ? 450 : 50,
                     bgcolor: "grey.100",
                     display: "flex",
                     alignItems: "center",
@@ -438,6 +413,7 @@ const Projects = () => {
                     flexDirection: "column",
                     flexGrow: 1,
                     height: "100%",
+                    p: 2,
                   }}
                 >
                   <Box sx={{ flexGrow: 1 }}>
@@ -447,16 +423,17 @@ const Projects = () => {
                       sx={{
                         bgcolor: `${getStatusColor(project.status)}20`,
                         color: getStatusColor(project.status),
-                        mb: 2,
+                        mb: 1,
                       }}
                     />
-                    <Typography variant="h6" gutterBottom>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>
                       {project.name}
                     </Typography>
                     <Typography
                       variant="body2"
                       color="text.secondary"
                       gutterBottom
+                      sx={{ mb: 1 }}
                     >
                       {project.description}
                     </Typography>
@@ -464,29 +441,48 @@ const Projects = () => {
                       variant="body2"
                       color="text.secondary"
                       gutterBottom
+                      sx={{ mb: 1 }}
                     >
                       Tạo{" "}
                       {new Date(project.createdAt).toLocaleDateString("vi-VN")}
                     </Typography>
 
-                    <Box sx={{ mt: 2, mb: 2 }}>
-                      {project.members?.slice(0, 3).map((member, index) => (
-                        <Avatar
-                          key={member.user._id}
-                          sx={{
-                            bgcolor: "#1976D2",
-                            display: "inline-flex",
-                            marginLeft: index > 0 ? -1 : 0,
-                          }}
-                        >
-                          {member.user.name?.[0] || member.user.email?.[0]}
-                        </Avatar>
-                      ))}
-                      {project.members?.length > 3 && (
-                        <Avatar sx={{ bgcolor: "grey.500", marginLeft: -1 }}>
-                          +{project.members.length - 3}
-                        </Avatar>
-                      )}
+                    <Box sx={{ mt: 1, mb: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {project.members?.slice(0, 3).map((member, index) => (
+                          <Tooltip 
+                            key={member.user._id} 
+                            title={`${member.user.name || member.user.email} (${getRoleName(member.role)})`}
+                          >
+                            <Avatar
+                              src={member.user.avatar}
+                              sx={{
+                                width: 32,
+                                height: 32,
+                                bgcolor: "#1976D2",
+                                display: "inline-flex",
+                                marginLeft: index > 0 ? -1 : 0,
+                              }}
+                            >
+                              {member.user.name?.[0] || member.user.email?.[0]}
+                            </Avatar>
+                          </Tooltip>
+                        ))}
+                        {project.members?.length > 3 && (
+                          <Tooltip title={`Còn ${project.members.length - 3} thành viên khác`}>
+                            <Avatar 
+                              sx={{ 
+                                bgcolor: "grey.500", 
+                                marginLeft: -1,
+                                width: 32,
+                                height: 32,
+                              }}
+                            >
+                              +{project.members.length - 3}
+                            </Avatar>
+                          </Tooltip>
+                        )}
+                      </Box>
                     </Box>
                   </Box>
 
