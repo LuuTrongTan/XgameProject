@@ -1,641 +1,307 @@
 import React, { useState } from "react";
 import {
+  Box,
+  Typography,
   Card,
   CardContent,
-  Typography,
-  Chip,
-  Avatar,
-  Box,
+  CardActions,
   IconButton,
-  Tooltip,
-  AvatarGroup,
-  Menu,
-  MenuItem,
+  Chip,
+  Collapse,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
   TextField,
-  Stack,
-  Collapse,
-  Paper,
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
+  ListItemIcon,
+  Divider,
 } from "@mui/material";
 import {
-  AccessTime as TimeIcon,
-  Flag as FlagIcon,
+  ExpandMore as ExpandMoreIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Comment as CommentIcon,
   AttachFile as AttachFileIcon,
-  MoreVert as MoreVertIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  CalendarMonth as CalendarIcon,
-  Download as DownloadIcon,
   History as HistoryIcon,
+  CloudUpload as CloudUploadIcon,
+  Download as DownloadIcon,
 } from "@mui/icons-material";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+import { useAuth } from "../../contexts/AuthContext";
+import { usePermissions } from "../../hooks/usePermissions";
+import {
+  updateTask,
+  deleteTask,
+  updateTaskStatus,
+  assignTask,
+  addTaskAttachment,
+  getTaskAttachments,
+  deleteTaskAttachment,
+  getTaskComments,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+  getTaskAuditLogs,
+} from "../../api/taskApi";
+import UserAvatar from "../common/UserAvatar";
+import DateTimeDisplay from "../common/DateTimeDisplay";
 import TaskComments from "./TaskComments";
 import TaskAuditLog from "./TaskAuditLog";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { usePermissions } from "../../hooks/usePermissions";
-import { useAuth } from "../../contexts/AuthContext";
 
-const priorityColors = {
-  LOW: "#4caf50",
-  MEDIUM: "#ff9800",
-  HIGH: "#f44336",
-  low: "#4caf50",
-  medium: "#ff9800",
-  high: "#f44336",
-};
-
-const priorityLabels = {
-  LOW: "Thấp",
-  MEDIUM: "Trung bình",
-  HIGH: "Cao",
-  low: "Thấp",
-  medium: "Trung bình",
-  high: "Cao",
-};
-
-const statusColors = {
-  TODO: "#42a5f5",
-  IN_PROGRESS: "#ff9800",
-  REVIEWING: "#ab47bc",
-  DONE: "#4caf50",
-  todo: "#42a5f5",
-  inProgress: "#ff9800",
-  review: "#ab47bc",
-  done: "#4caf50",
-};
-
-const statusLabels = {
-  TODO: "Chưa bắt đầu",
-  IN_PROGRESS: "Đang thực hiện",
-  REVIEWING: "Đang kiểm tra",
-  DONE: "Hoàn thành",
-  todo: "Chưa bắt đầu",
-  inProgress: "Đang thực hiện",
-  review: "Đang kiểm tra",
-  done: "Hoàn thành",
-};
-
-const TaskCard = ({
-  task,
-  container,
-  project,
-  onEdit,
-  onDelete,
-  onAddComment,
-  onAddAttachment,
-  actionButtons,
-}) => {
+const TaskCard = ({ task, projectId, sprintId, onUpdate, onDelete }) => {
   const { user } = useAuth();
   const { canDeleteTask } = usePermissions();
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [openCommentDialog, setOpenCommentDialog] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [openAttachmentDialog, setOpenAttachmentDialog] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [expanded, setExpanded] = useState(false);
-  const [detailView, setDetailView] = useState("comments");
+  const [showComments, setShowComments] = useState(false);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showAddComment, setShowAddComment] = useState(false);
+  const [showAddAttachment, setShowAddAttachment] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [attachments, setAttachments] = useState([]);
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: task._id,
-    data: {
-      container,
-    },
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    cursor: "grab",
-    backgroundColor: "#ffffff",
-    borderRadius: "8px",
-    padding: "12px",
-    marginBottom: "8px",
-    boxShadow: isDragging
-      ? "0 8px 16px rgba(0,0,0,0.15), 0 4px 8px rgba(0,0,0,0.1)"
-      : "0 1px 3px rgba(0,0,0,0.1)",
-    border: "1px solid #e9ecef",
-    position: "relative",
-    zIndex: isDragging ? 999 : 1,
-    "&:hover": {
-      boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-    },
-  };
-
-  if (!task) return null;
-
-  const handleMenuClick = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleAddComment = () => {
-    setOpenCommentDialog(true);
-    handleMenuClose();
-  };
-
-  const handleAddAttachment = () => {
-    setOpenAttachmentDialog(true);
-    handleMenuClose();
-  };
-
-  const handleCommentSubmit = () => {
-    if (onAddComment) {
-      onAddComment(task._id, newComment);
-      setNewComment("");
-      setOpenCommentDialog(false);
-    }
-  };
-
-  const handleAttachmentSubmit = () => {
-    if (onAddAttachment && selectedFile) {
-      onAddAttachment(task._id, selectedFile);
-      setSelectedFile(null);
-      setOpenAttachmentDialog(false);
-    }
-  };
-
-  const handleEditClick = () => {
-    if (onEdit) {
-      onEdit(task);
-    }
-    handleMenuClose();
-  };
-
-  const handleDeleteClick = () => {
-    console.log("TaskCard - Delete attempt:");
-    console.log("- Task:", task);
-    console.log("- Project:", project);
-
-    if (!canDeleteTask(task, project)) {
-      console.log("- Permission check failed: User cannot delete this task");
-      alert(
-        "Bạn không có quyền xóa công việc này. Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa."
-      );
-      handleMenuClose();
-      return;
-    }
-
-    console.log("- Permission check passed: User can delete this task");
-
-    if (
-      onDelete &&
-      window.confirm("Bạn có chắc chắn muốn xóa công việc này?")
-    ) {
-      onDelete(task._id);
-    }
-    handleMenuClose();
-  };
-
-  const toggleExpand = () => {
+  const handleExpandClick = () => {
     setExpanded(!expanded);
   };
 
-  const handleFileChange = (event) => {
-    setSelectedFile(event.target.files[0]);
+  const handleStatusChange = async (newStatus) => {
+    try {
+      await updateTaskStatus(projectId, sprintId, task._id, newStatus);
+      onUpdate({ ...task, status: newStatus });
+    } catch (error) {
+      console.error("Error updating task status:", error);
+    }
   };
 
-  const getStatusColor = (status) => {
-    return statusColors[status] || "#757575";
+  const handleDelete = async () => {
+    try {
+      await deleteTask(projectId, sprintId, task._id);
+      onDelete(task._id);
+    } catch (error) {
+      console.error("Error deleting task:", error);
+    }
   };
 
-  const getPriorityColor = (priority) => {
-    return priorityColors[priority] || "#757575";
+  const handleAssign = async (assigneeId) => {
+    try {
+      await assignTask(projectId, sprintId, task._id, assigneeId);
+      onUpdate({ ...task, assignee: assigneeId });
+    } catch (error) {
+      console.error("Error assigning task:", error);
+    }
+  };
+
+  const handleFileUpload = async (file) => {
+    try {
+      const response = await addTaskAttachment(projectId, sprintId, task._id, file);
+      setAttachments([...attachments, response]);
+    } catch (error) {
+      console.error("Error uploading attachment:", error);
+    }
+  };
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    try {
+      await deleteTaskAttachment(projectId, sprintId, task._id, attachmentId);
+      setAttachments(attachments.filter((att) => att._id !== attachmentId));
+    } catch (error) {
+      console.error("Error deleting attachment:", error);
+    }
   };
 
   return (
-    <>
-      <Card
-        ref={setNodeRef}
-        style={{
-          transform: CSS.Transform.toString(transform),
-          transition,
-        }}
-        {...attributes}
-        {...listeners}
-      >
-        <Paper
-          elevation={0}
-          sx={{
-            ...style,
-            position: "relative",
-          }}
-        >
-          {actionButtons && actionButtons}
-          <CardContent>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="flex-start"
-            >
-              <Box
-                display="flex"
-                alignItems="center"
-                flex={1}
-                sx={{
-                  cursor: "grab",
-                  "&:hover": {
-                    backgroundColor: "rgba(0,0,0,0.02)",
-                  },
-                  borderRadius: "4px",
-                  p: 1,
-                }}
-              >
-                <Typography variant="h6" component="div">
-                  {task.title || task.name}
-                </Typography>
-              </Box>
-              <Box display="flex" alignItems="center" sx={{ ml: 1 }}>
-                <IconButton
-                  size="small"
-                  onClick={toggleExpand}
-                  sx={{
-                    cursor: "pointer",
-                    "&:hover": {
-                      backgroundColor: "rgba(0,0,0,0.04)",
-                    },
-                  }}
-                >
-                  {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </IconButton>
-                <IconButton
-                  size="small"
-                  onClick={handleMenuClick}
-                  sx={{
-                    cursor: "pointer",
-                    color: isDragging ? "primary.main" : "text.secondary",
-                    "&:hover": {
-                      backgroundColor: "rgba(0,0,0,0.04)",
-                    },
-                  }}
-                >
-                  <MoreVertIcon />
-                </IconButton>
-                <Menu
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={handleMenuClose}
-                  sx={{ zIndex: 9999 }}
-                >
-                  <MenuItem onClick={handleEditClick}>
-                    <EditIcon fontSize="small" sx={{ mr: 1 }} />
-                    Chỉnh sửa
-                  </MenuItem>
-                  <MenuItem onClick={handleAddComment}>
-                    <CommentIcon fontSize="small" sx={{ mr: 1 }} />
-                    Thêm bình luận
-                  </MenuItem>
-                  <MenuItem onClick={handleAddAttachment}>
-                    <AttachFileIcon fontSize="small" sx={{ mr: 1 }} />
-                    Thêm tệp đính kèm
-                  </MenuItem>
-                  {canDeleteTask(task, project) && (
-                    <MenuItem
-                      onClick={handleDeleteClick}
-                      sx={{ color: "error.main" }}
-                    >
-                      <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
-                      Xóa
-                    </MenuItem>
-                  )}
-                </Menu>
-              </Box>
-            </Box>
-
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{
-                mb: 2,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
+    <Card sx={{ mb: 2 }}>
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+          <Box flex={1}>
+            <Typography variant="h6" gutterBottom>
+              {task.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
               {task.description}
             </Typography>
-
-            <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+            <Box display="flex" gap={1} mt={1}>
               <Chip
+                label={task.status}
+                color={
+                  task.status === "completed"
+                    ? "success"
+                    : task.status === "in_progress"
+                    ? "primary"
+                    : "default"
+                }
                 size="small"
-                label={statusLabels[task.status] || task.status}
-                sx={{
-                  backgroundColor: `${getStatusColor(task.status)}20`,
-                  color: getStatusColor(task.status),
-                  fontWeight: 500,
-                }}
               />
-              <Chip
-                size="small"
-                label={priorityLabels[task.priority] || task.priority}
-                sx={{
-                  backgroundColor: `${getPriorityColor(task.priority)}20`,
-                  color: getPriorityColor(task.priority),
-                  fontWeight: 500,
-                }}
-              />
-              {task.syncWithCalendar && (
-                <Tooltip title="Đã đồng bộ với lịch">
-                  <Chip
-                    size="small"
-                    icon={<CalendarIcon sx={{ fontSize: "1rem !important" }} />}
-                    label={
-                      task.calendarType === "google" ? "Google" : "Outlook"
-                    }
-                    sx={{
-                      backgroundColor: "#e3f2fd",
-                      color: "#2196f3",
-                    }}
-                  />
-                </Tooltip>
+              {task.priority && (
+                <Chip
+                  label={task.priority}
+                  color={
+                    task.priority === "high"
+                      ? "error"
+                      : task.priority === "medium"
+                      ? "warning"
+                      : "default"
+                  }
+                  size="small"
+                />
               )}
             </Box>
+          </Box>
+          <Box>
+            <IconButton onClick={handleExpandClick}>
+              <ExpandMoreIcon
+                sx={{
+                  transform: expanded ? "rotate(180deg)" : "none",
+                  transition: "transform 0.2s",
+                }}
+              />
+            </IconButton>
+            {canDeleteTask && (
+              <IconButton onClick={handleDelete}>
+                <DeleteIcon />
+              </IconButton>
+            )}
+          </Box>
+        </Box>
+      </CardContent>
 
-            {task.tags?.length > 0 && (
-              <Box display="flex" gap={0.5} mb={2} flexWrap="wrap">
-                {task.tags.map((tag, idx) => (
-                  <Chip
-                    key={idx}
-                    size="small"
-                    label={tag}
-                    sx={{
-                      backgroundColor: "#e0e0e0",
-                      color: "text.secondary",
-                      height: 20,
-                      fontSize: "0.7rem",
-                    }}
-                  />
-                ))}
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
+        <CardContent>
+          <Box display="flex" gap={2} mb={2}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Ngày tạo
+              </Typography>
+              <DateTimeDisplay date={task.createdAt} />
+            </Box>
+            {task.dueDate && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Hạn hoàn thành
+                </Typography>
+                <DateTimeDisplay date={task.dueDate} format="dd/MM/yyyy" />
               </Box>
             )}
-
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Box display="flex" alignItems="center">
-                <TimeIcon
-                  fontSize="small"
-                  sx={{ mr: 0.5, color: "text.secondary" }}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {task.dueDate &&
-                    format(new Date(task.dueDate), "dd/MM/yyyy", {
-                      locale: vi,
-                    })}
+            {task.estimatedHours && (
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Thời gian ước tính
                 </Typography>
-              </Box>
-
-              <Box display="flex" alignItems="center" gap={1}>
-                {task.comments?.length > 0 && (
-                  <Tooltip title={`${task.comments.length} bình luận`}>
-                    <Box display="flex" alignItems="center">
-                      <CommentIcon fontSize="small" color="action" />
-                      <Typography variant="caption" sx={{ ml: 0.5 }}>
-                        {task.comments.length}
-                      </Typography>
-                    </Box>
-                  </Tooltip>
-                )}
-                {task.attachments?.length > 0 && (
-                  <Tooltip title={`${task.attachments.length} tệp đính kèm`}>
-                    <Box display="flex" alignItems="center">
-                      <AttachFileIcon fontSize="small" color="action" />
-                      <Typography variant="caption" sx={{ ml: 0.5 }}>
-                        {task.attachments.length}
-                      </Typography>
-                    </Box>
-                  </Tooltip>
-                )}
-                {task.assignees && task.assignees.length > 0 && (
-                  <AvatarGroup
-                    max={3}
-                    sx={{
-                      "& .MuiAvatar-root": {
-                        width: 24,
-                        height: 24,
-                        fontSize: "0.75rem",
-                      },
-                    }}
-                  >
-                    {task.assignees.map((assignee) => (
-                      <Tooltip key={assignee._id} title={assignee.fullName}>
-                        <Avatar alt={assignee.fullName} src={assignee.avatar} />
-                      </Tooltip>
-                    ))}
-                  </AvatarGroup>
-                )}
-              </Box>
-            </Box>
-
-            <Collapse in={expanded} timeout="auto" unmountOnExit>
-              <Box sx={{ mt: 2, pt: 2, borderTop: "1px solid #eee" }}>
-                <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-                  <Button
-                    size="small"
-                    variant={detailView === "comments" ? "contained" : "text"}
-                    startIcon={<CommentIcon />}
-                    onClick={() => setDetailView("comments")}
-                    sx={{ mr: 1 }}
-                  >
-                    Bình luận
-                  </Button>
-                  <Button
-                    size="small"
-                    variant={
-                      detailView === "attachments" ? "contained" : "text"
-                    }
-                    startIcon={<AttachFileIcon />}
-                    onClick={() => setDetailView("attachments")}
-                    sx={{ mr: 1 }}
-                  >
-                    Tệp đính kèm
-                  </Button>
-                  <Button
-                    size="small"
-                    variant={detailView === "history" ? "contained" : "text"}
-                    startIcon={<HistoryIcon />}
-                    onClick={() => setDetailView("history")}
-                  >
-                    Lịch sử
-                  </Button>
-                </Box>
-
-                {detailView === "comments" && (
-                  <TaskComments taskId={task._id} />
-                )}
-
-                {detailView === "history" && <TaskAuditLog taskId={task._id} />}
-
-                {detailView === "attachments" && (
-                  <Box>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Tệp đính kèm
-                    </Typography>
-                    {task.attachments && task.attachments.length > 0 ? (
-                      <List dense>
-                        {task.attachments.map((attachment, index) => (
-                          <ListItem
-                            key={index}
-                            sx={{
-                              border: "1px solid #eee",
-                              borderRadius: 1,
-                              mb: 1,
-                            }}
-                          >
-                            <ListItemAvatar>
-                              <Avatar>
-                                <AttachFileIcon />
-                              </Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={attachment.name}
-                              secondary={`${(attachment.size / 1024).toFixed(
-                                2
-                              )} KB • ${attachment.type}`}
-                            />
-                            <Tooltip title="Tải xuống">
-                              <IconButton
-                                edge="end"
-                                size="small"
-                                onClick={() => {
-                                  window.open(attachment.path, "_blank");
-                                }}
-                              >
-                                <DownloadIcon />
-                              </IconButton>
-                            </Tooltip>
-                          </ListItem>
-                        ))}
-                      </List>
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        align="center"
-                      >
-                        Chưa có tệp đính kèm
-                      </Typography>
-                    )}
-                    <Box
-                      sx={{
-                        mt: 2,
-                        display: "flex",
-                        justifyContent: "flex-end",
-                      }}
-                    >
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AttachFileIcon />}
-                        onClick={handleAddAttachment}
-                      >
-                        Thêm tệp đính kèm
-                      </Button>
-                    </Box>
-                  </Box>
-                )}
-              </Box>
-            </Collapse>
-          </CardContent>
-        </Paper>
-      </Card>
-
-      {/* Dialog thêm bình luận */}
-      <Dialog
-        open={openCommentDialog}
-        onClose={() => setOpenCommentDialog(false)}
-      >
-        <DialogTitle>Thêm bình luận</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Nội dung bình luận"
-            fullWidth
-            multiline
-            rows={4}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenCommentDialog(false)}>Hủy</Button>
-          <Button
-            onClick={handleCommentSubmit}
-            variant="contained"
-            disabled={!newComment.trim()}
-          >
-            Gửi
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Dialog thêm tệp đính kèm */}
-      <Dialog
-        open={openAttachmentDialog}
-        onClose={() => setOpenAttachmentDialog(false)}
-      >
-        <DialogTitle>Thêm tệp đính kèm</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <Button variant="outlined" component="label">
-              Chọn tệp
-              <input type="file" hidden onChange={handleFileChange} />
-            </Button>
-            {selectedFile && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2">Tệp đã chọn:</Typography>
-                <Paper sx={{ p: 1, mt: 1 }}>
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    <AttachFileIcon sx={{ mr: 1 }} />
-                    <Typography variant="body2">
-                      {selectedFile.name} (
-                      {(selectedFile.size / 1024).toFixed(2)} KB)
-                    </Typography>
-                  </Box>
-                </Paper>
+                <Typography variant="body2">{task.estimatedHours} giờ</Typography>
               </Box>
             )}
           </Box>
+
+          <Box display="flex" gap={1} mb={2}>
+            <Button
+              size="small"
+              startIcon={<CommentIcon />}
+              onClick={() => setShowComments(!showComments)}
+            >
+              Bình luận
+            </Button>
+            <Button
+              size="small"
+              startIcon={<AttachFileIcon />}
+              onClick={() => setShowAttachments(!showAttachments)}
+            >
+              Tệp đính kèm
+            </Button>
+            <Button
+              size="small"
+              startIcon={<HistoryIcon />}
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              Lịch sử
+            </Button>
+          </Box>
+
+          {showComments && (
+            <Box mb={2}>
+              <TaskComments taskId={task._id} projectId={projectId} sprintId={sprintId} />
+            </Box>
+          )}
+
+          {showAttachments && (
+            <Box mb={2}>
+              <List>
+                {attachments.map((attachment) => (
+                  <ListItem key={attachment._id}>
+                    <ListItemIcon>
+                      <AttachFileIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={attachment.fileName}
+                      secondary={
+                        <DateTimeDisplay date={attachment.uploadedAt} />
+                      }
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteAttachment(attachment._id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItem>
+                ))}
+              </List>
+              <Button
+                startIcon={<CloudUploadIcon />}
+                onClick={() => setShowAddAttachment(true)}
+              >
+                Thêm tệp đính kèm
+              </Button>
+            </Box>
+          )}
+
+          {showHistory && (
+            <Box>
+              <TaskAuditLog taskId={task._id} projectId={projectId} sprintId={sprintId} />
+            </Box>
+          )}
+        </CardContent>
+      </Collapse>
+
+      <Dialog open={showAddAttachment} onClose={() => setShowAddAttachment(false)}>
+        <DialogTitle>Thêm tệp đính kèm</DialogTitle>
+        <DialogContent>
+          <input
+            type="file"
+            onChange={(e) => setSelectedFile(e.target.files[0])}
+            style={{ display: "none" }}
+            id="attachment-input"
+          />
+          <label htmlFor="attachment-input">
+            <Button
+              component="span"
+              startIcon={<CloudUploadIcon />}
+              variant="outlined"
+            >
+              Chọn tệp
+            </Button>
+            {selectedFile && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                {selectedFile.name}
+              </Typography>
+            )}
+          </label>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenAttachmentDialog(false)}>Hủy</Button>
+          <Button onClick={() => setShowAddAttachment(false)}>Hủy</Button>
           <Button
-            onClick={handleAttachmentSubmit}
             variant="contained"
+            onClick={() => handleFileUpload(selectedFile)}
             disabled={!selectedFile}
           >
             Tải lên
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+    </Card>
   );
 };
 

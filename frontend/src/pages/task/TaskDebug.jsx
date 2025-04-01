@@ -21,7 +21,7 @@ import {
   Select,
 } from "@mui/material";
 import axios from "axios";
-import { getProjectTasks } from "../../api/taskApi";
+import { getSprintTasks } from "../../api/taskApi";
 
 const TaskDebug = () => {
   const [tasks, setTasks] = useState([]);
@@ -29,10 +29,16 @@ const TaskDebug = () => {
   const [error, setError] = useState(null);
   const [rawResponse, setRawResponse] = useState(null);
   const [projectId, setProjectId] = useState("");
+  const [sprintId, setSprintId] = useState("");
 
   const fetchTasks = async () => {
     if (!projectId) {
       setError("Vui lòng nhập ID của dự án");
+      return;
+    }
+
+    if (!sprintId) {
+      setError("Vui lòng nhập ID của sprint");
       return;
     }
 
@@ -41,8 +47,8 @@ const TaskDebug = () => {
       setError(null);
 
       // Sử dụng API thông thường
-      console.log(`Fetching tasks for project: ${projectId} with normal API`);
-      const result = await getProjectTasks(projectId);
+      console.log(`Fetching tasks for project: ${projectId}, sprint: ${sprintId} with normal API`);
+      const result = await getSprintTasks(projectId, sprintId);
       console.log("API Response:", result);
       setTasks(result.data || []);
       setRawResponse(JSON.stringify(result, null, 2));
@@ -50,9 +56,9 @@ const TaskDebug = () => {
       // Thử truy cập thông qua proxy của Vite
       try {
         console.log(
-          `Fetching tasks with direct axios call to: /api/tasks?project=${projectId}`
+          `Fetching tasks with direct axios call to: /projects/${projectId}/sprints/${sprintId}/tasks`
         );
-        const response = await axios.get(`/api/tasks?project=${projectId}`, {
+        const response = await axios.get(`/projects/${projectId}/sprints/${sprintId}/tasks`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
@@ -82,6 +88,13 @@ const TaskDebug = () => {
               label="Project ID"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
+              variant="outlined"
+              sx={{ minWidth: 250 }}
+            />
+            <TextField
+              label="Sprint ID"
+              value={sprintId}
+              onChange={(e) => setSprintId(e.target.value)}
               variant="outlined"
               sx={{ minWidth: 250 }}
             />

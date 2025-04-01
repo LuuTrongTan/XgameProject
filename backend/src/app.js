@@ -113,7 +113,7 @@ app.use(
 // ✅ Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
-app.use("/api/tasks", taskRoutes);
+app.use("/api", taskRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/search", searchRoutes);
@@ -122,7 +122,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/settings", settingsRoutes);
-app.use("/api/sprints", sprintRoutes);
+app.use("/api", sprintRoutes);
 app.use("/api/users", userRoutes);
 
 // ✅ Xử lý lỗi 404 (API không tồn tại)

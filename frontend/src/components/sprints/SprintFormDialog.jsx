@@ -11,16 +11,27 @@ import {
   Select,
   MenuItem,
   Box,
-  Chip,
-  Stack,
+  Typography,
 } from "@mui/material";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { vi } from "date-fns/locale";
-import UserSelectionDialog from "../common/UserSelectionDialog";
+import MemberSelection from "../common/MemberSelection";
+import { createSprint, updateSprint } from "../../api/sprintApi";
+import { useSnackbar } from "notistack";
+import { getProjectMembers } from "../../api/projectApi";
 
-const SprintFormDialog = ({ open, onClose, onSubmit, sprint, projectId }) => {
+const SprintFormDialog = ({ 
+  open, 
+  onClose, 
+  onSubmit, 
+  onSuccess, 
+  sprint, 
+  projectId,
+  isEditing = false
+}) => {
+  const { enqueueSnackbar } = useSnackbar();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -29,9 +40,9 @@ const SprintFormDialog = ({ open, onClose, onSubmit, sprint, projectId }) => {
     status: "planning",
     members: [],
   });
-
-  const [openUserDialog, setOpenUserDialog] = useState(false);
-  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [loadingProjectMembers, setLoadingProjectMembers] = useState(false);
 
   useEffect(() => {
     if (sprint) {
@@ -43,7 +54,6 @@ const SprintFormDialog = ({ open, onClose, onSubmit, sprint, projectId }) => {
         status: sprint.status || "planning",
         members: sprint.members || [],
       });
-      setSelectedMembers(sprint.members || []);
     } else {
       setFormData({
         name: "",
@@ -53,9 +63,31 @@ const SprintFormDialog = ({ open, onClose, onSubmit, sprint, projectId }) => {
         status: "planning",
         members: [],
       });
-      setSelectedMembers([]);
     }
   }, [sprint]);
+
+  // Fetch project members when dialog opens
+  useEffect(() => {
+    if (open && projectId) {
+      fetchProjectMembers();
+    }
+  }, [open, projectId]);
+
+  const fetchProjectMembers = async () => {
+    try {
+      setLoadingProjectMembers(true);
+      const response = await getProjectMembers(projectId);
+      if (response.success) {
+        setProjectMembers(response.data);
+      } else {
+        console.error("Không thể lấy danh sách thành viên dự án:", response.message);
+      }
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách thành viên dự án:", error);
+    } finally {
+      setLoadingProjectMembers(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -72,122 +104,155 @@ const SprintFormDialog = ({ open, onClose, onSubmit, sprint, projectId }) => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    setLoading(true);
+
+    try {
+      console.log("Submitting form data:", {
+        ...formData,
+        membersCount: formData.members?.length || 0
+      });
+      
+      let response;
+      
+      if (isEditing && sprint) {
+        // Cập nhật sprint hiện có
+        response = await updateSprint(projectId, sprint._id, formData);
+      } else {
+        // Tạo sprint mới
+        response = await createSprint(projectId, formData);
+      }
+
+      console.log("API response:", response);
+
+      if (response.success) {
+        enqueueSnackbar(
+          isEditing 
+            ? "Sprint đã được cập nhật thành công" 
+            : "Sprint đã được tạo thành công", 
+          { variant: "success" }
+        );
+        
+        // Gọi callback
+        if (typeof onSubmit === 'function') {
+          onSubmit(formData);
+        } 
+        
+        if (typeof onSuccess === 'function') {
+          onSuccess(response.data);
+        }
+
+        onClose();
+      } else {
+        throw new Error(response.message || "Có lỗi xảy ra");
+      }
+    } catch (error) {
+      console.error("Lỗi khi xử lý sprint:", error);
+      enqueueSnackbar(
+        error.message || "Không thể lưu sprint, vui lòng thử lại", 
+        { variant: "error" }
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUserSelect = (selectedUsers) => {
-    setSelectedMembers(selectedUsers);
+  const handleMembersChange = (newMembers) => {
     setFormData((prev) => ({
       ...prev,
-      members: selectedUsers,
+      members: newMembers,
     }));
   };
 
   return (
-    <>
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {sprint ? "Chỉnh sửa Sprint" : "Tạo Sprint mới"}
-        </DialogTitle>
-        <form onSubmit={handleSubmit}>
-          <DialogContent>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <TextField
-                label="Tên Sprint"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                fullWidth
-                required
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        {sprint ? "Chỉnh sửa Sprint" : "Tạo Sprint mới"}
+      </DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <TextField
+              label="Tên Sprint"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Mô tả"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={vi}>
+              <DatePicker
+                label="Ngày bắt đầu"
+                value={formData.startDate}
+                onChange={(date) => handleDateChange(date, "startDate")}
+                slotProps={{ textField: { fullWidth: true, required: true } }}
               />
-              <TextField
-                label="Mô tả"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                fullWidth
-                multiline
-                rows={3}
+              <DatePicker
+                label="Ngày kết thúc"
+                value={formData.endDate}
+                onChange={(date) => handleDateChange(date, "endDate")}
+                slotProps={{ textField: { fullWidth: true, required: true } }}
+                minDate={formData.startDate}
               />
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <DatePicker
-                  label="Ngày bắt đầu"
-                  value={formData.startDate}
-                  onChange={(date) => handleDateChange(date, "startDate")}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
-                  required
-                />
-                <DatePicker
-                  label="Ngày kết thúc"
-                  value={formData.endDate}
-                  onChange={(date) => handleDateChange(date, "endDate")}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
-                  required
-                />
-              </LocalizationProvider>
-              <FormControl fullWidth>
-                <InputLabel>Trạng thái</InputLabel>
-                <Select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  label="Trạng thái"
-                >
-                  <MenuItem value="planning">Lên kế hoạch</MenuItem>
-                  <MenuItem value="active">Đang thực hiện</MenuItem>
-                  <MenuItem value="completed">Hoàn thành</MenuItem>
-                  <MenuItem value="cancelled">Đã hủy</MenuItem>
-                </Select>
-              </FormControl>
+            </LocalizationProvider>
+            <FormControl fullWidth>
+              <InputLabel>Trạng thái</InputLabel>
+              <Select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                label="Trạng thái"
+              >
+                <MenuItem value="planning">Lên kế hoạch</MenuItem>
+                <MenuItem value="active">Đang thực hiện</MenuItem>
+                <MenuItem value="completed">Hoàn thành</MenuItem>
+                <MenuItem value="cancelled">Đã hủy</MenuItem>
+              </Select>
+            </FormControl>
 
-              <Box>
-                <Button
-                  variant="outlined"
-                  onClick={() => setOpenUserDialog(true)}
-                  sx={{ mb: 1 }}
-                >
-                  Chọn thành viên
-                </Button>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {selectedMembers.map((member) => (
-                    <Chip
-                      key={member.id}
-                      label={member.name || member.email}
-                      onDelete={() => {
-                        setSelectedMembers((prev) =>
-                          prev.filter((m) => m.id !== member.id)
-                        );
-                        setFormData((prev) => ({
-                          ...prev,
-                          members: prev.members.filter(
-                            (m) => m.id !== member.id
-                          ),
-                        }));
-                      }}
-                    />
-                  ))}
-                </Stack>
-              </Box>
+            <Box sx={{ mt: 2 }}>
+              <MemberSelection
+                members={formData.members}
+                onMembersChange={handleMembersChange}
+                showRoleSelection={false}
+                title="Thành viên Sprint"
+                mode={projectMembers.length > 0 ? "project" : "all"}
+                projectMembers={projectMembers}
+              />
+              {loadingProjectMembers && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Đang tải danh sách thành viên dự án...
+                </Typography>
+              )}
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Nếu chọn người dùng chưa có trong dự án, họ sẽ tự động được thêm vào dự án với vai trò thành viên.
+              </Typography>
             </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={onClose}>Hủy</Button>
-            <Button type="submit" variant="contained" color="primary">
-              {sprint ? "Cập nhật" : "Tạo mới"}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-
-      <UserSelectionDialog
-        open={openUserDialog}
-        onClose={() => setOpenUserDialog(false)}
-        onSubmit={handleUserSelect}
-        selectedUsers={selectedMembers}
-      />
-    </>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Hủy</Button>
+          <Button 
+            type="submit" 
+            variant="contained" 
+            color="primary"
+            disabled={loading}
+          >
+            {sprint ? "Cập nhật" : "Tạo mới"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 

@@ -34,7 +34,7 @@ import { vi } from "date-fns/locale";
 import { useSnackbar } from "notistack";
 import { getSprintById } from "../../api/sprintApi";
 import {
-  getProjectTasks,
+  getSprintTasks,
   createTask,
   updateTask,
   deleteTask,
@@ -90,7 +90,7 @@ const SprintTasks = () => {
         }
 
         // Lấy danh sách các task không thuộc sprint nào để có thể thêm vào
-        const tasksResult = await getProjectTasks(projectId);
+        const tasksResult = await getSprintTasks(projectId, sprintId);
         if (tasksResult.success) {
           const projectTasks = tasksResult.data || [];
           // Lọc ra các task không thuộc sprint nào
@@ -122,13 +122,23 @@ const SprintTasks = () => {
   // Tạo task mới
   const handleCreateTask = async () => {
     try {
+      // Kiểm tra xem có sprintId không
+      if (!sprintId) {
+        enqueueSnackbar("Không thể tạo công việc: Sprint ID không hợp lệ", { variant: "error" });
+        console.error("Sprint ID is missing or invalid:", sprintId);
+        return;
+      }
+      
+      // Log để debug
+      console.log("Creating task with sprint ID:", sprintId);
+      
       const taskData = {
         ...newTask,
         projectId,
         sprint: sprintId,
       };
 
-      const result = await createTask(projectId, taskData);
+      const result = await createTask(projectId, sprintId, taskData);
 
       if (result.success) {
         enqueueSnackbar("Công việc đã được tạo thành công", {

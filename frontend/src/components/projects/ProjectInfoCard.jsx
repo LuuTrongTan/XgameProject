@@ -28,7 +28,7 @@ const ProjectInfoCard = ({ projectId }) => {
 
   const fetchProject = async () => {
     try {
-      const response = await api.get(`/api/projects/${projectId}`);
+      const response = await api.get(`/projects/${projectId}`);
       setProject(response.data);
     } catch (error) {
       console.error("Error fetching project:", error);
@@ -41,7 +41,7 @@ const ProjectInfoCard = ({ projectId }) => {
   const handleEditProject = async (updatedProject) => {
     try {
       const response = await api.put(
-        `/api/projects/${projectId}`,
+        `/projects/${projectId}`,
         updatedProject
       );
       if (response.data) {
@@ -51,6 +51,25 @@ const ProjectInfoCard = ({ projectId }) => {
     } catch (error) {
       console.error("Error updating project:", error);
       setError("Không thể cập nhật dự án");
+    }
+  };
+
+  const handleArchiveToggle = async () => {
+    try {
+      const endpoint = project.isArchived ? '/unarchive' : '/archive';
+      await api.post(
+        `/projects/${projectId}${endpoint}`,
+        {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      fetchProject();
+    } catch (error) {
+      console.error("Error archiving project:", error);
+      setError("Không thể thực hiện thao tác này");
     }
   };
 

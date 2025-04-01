@@ -47,7 +47,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import { getProjectById } from "../../api/projectApi";
 import {
-  getProjectTasks,
+  getSprintTasks,
   createTask,
   updateTaskStatus,
   addTaskComment,
@@ -55,6 +55,7 @@ import {
   deleteTask,
   updateTask,
 } from "../../api/taskApi";
+import { getSprintMembers } from "../../api/sprintApi";
 import TaskCard from "../../components/Tasks/TaskCard";
 import axios from "axios";
 import { useSnackbar } from "notistack";
@@ -98,6 +99,9 @@ const Tasks = () => {
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openViewDialog, setOpenViewDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [sprintId, setSprintId] = useState("");
+  const [sprints, setSprints] = useState([]);
+  const [sprintMembers, setSprintMembers] = useState([]);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -133,6 +137,15 @@ const Tasks = () => {
         setLoading(true);
         console.log("Fetching project data for ID:", projectId);
 
+        // Kiểm tra nếu có tham số sprint trong URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sprintIdFromUrl = urlParams.get('sprint');
+        
+        if (sprintIdFromUrl) {
+          console.log("Found sprint ID in URL:", sprintIdFromUrl);
+          setSprintId(sprintIdFromUrl);
+        }
+
         const projectResult = await getProjectById(projectId);
         console.log("Project Response:", projectResult);
 
@@ -141,12 +154,42 @@ const Tasks = () => {
           setProject(projectData);
           console.log("Project data set:", projectData);
           console.log("Project members:", projectData.members);
+          
+          // Chỉ tìm sprint từ dự án nếu không có sprint ID trong URL
+          if (!sprintIdFromUrl && projectData.sprints && projectData.sprints.length > 0) {
+            const activeSprint = projectData.sprints.find(sprint => sprint.status === 'active');
+            if (activeSprint) {
+              setSprintId(activeSprint._id);
+              console.log("Active sprint found:", activeSprint._id);
+            } else {
+              // Use most recent sprint if no active sprint
+              const latestSprint = projectData.sprints[projectData.sprints.length - 1];
+              setSprintId(latestSprint._id);
+              console.log("Using latest sprint:", latestSprint._id);
+            }
+            setSprints(projectData.sprints);
+          } else if (!sprintIdFromUrl) {
+            console.log("No sprints found for this project");
+            // Sử dụng project ID trực tiếp với một giá trị mặc định cho sprintId
+            // Backend sẽ xử lý theo cách tạo ra task trực tiếp trong project
+            setSprintId('default');
+            console.log("Using default sprint ID for project without sprints");
+            
+          }
         } else {
           throw new Error(projectResult.message);
         }
 
-        console.log("Fetching tasks for project:", projectId);
-        const tasksResult = await getProjectTasks(projectId);
+        // Đảm bảo đã có sprintId trước khi gọi API
+        const currentSprintId = sprintIdFromUrl || sprintId;
+        if (!currentSprintId) {
+          console.log("No sprint ID available to fetch tasks");
+          setLoading(false);
+          return;
+        }
+
+        console.log("Fetching tasks for project:", projectId, "and sprint:", currentSprintId);
+        const tasksResult = await getSprintTasks(projectId, currentSprintId);
         console.log("Tasks Response:", tasksResult);
 
         if (tasksResult.success) {
@@ -207,6 +250,22 @@ const Tasks = () => {
     fetchData();
   }, [projectId]);
 
+  // Add a useEffect to fetch tasks when sprintId changes
+  useEffect(() => {
+    if (projectId && sprintId) {
+      console.log("Sprint ID changed, fetching tasks for sprint:", sprintId);
+      fetchTasks();
+      fetchSprintMembers(projectId, sprintId);
+    }
+  }, [sprintId]);
+
+  // Thêm useEffect khi dialog mở để đảm bảo có dữ liệu thành viên sprint
+  useEffect(() => {
+    if ((openCreateDialog || openEditDialog) && projectId && sprintId && sprintMembers.length === 0) {
+      fetchSprintMembers(projectId, sprintId);
+    }
+  }, [openCreateDialog, openEditDialog]);
+
   const showSnackbar = (message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   };
@@ -225,7 +284,33 @@ const Tasks = () => {
 
   const handleCreateTask = async () => {
     try {
-      const result = await createTask(projectId, newTask);
+      // Kiểm tra xem có sprintId không
+      if (!sprintId) {
+        showSnackbar("Không thể tạo công việc: Sprint ID không hợp lệ", "error");
+        console.error("Sprint ID is missing or invalid:", sprintId);
+        return;
+      }
+      
+      // Log để debug
+      console.log("Creating task with sprint ID:", sprintId);
+      console.log("Task data being sent:", JSON.stringify(newTask, null, 2));
+      
+      // Chuẩn bị dữ liệu task format đúng cho API
+      const taskPayload = {
+        title: newTask.name,
+        description: newTask.description || "Mô tả công việc",
+        priority: newTask.priority,
+        status: newTask.status,
+        dueDate: newTask.dueDate || null,
+        assignees: newTask.assignees || [],
+        tags: newTask.tags || [],
+        projectId: projectId,
+        sprint: sprintId
+      };
+      
+      console.log("Formatted task payload:", JSON.stringify(taskPayload, null, 2));
+      
+      const result = await createTask(projectId, sprintId, taskPayload);
       if (result.success) {
         setTasks((prevTasks) => ({
           ...prevTasks,
@@ -246,6 +331,7 @@ const Tasks = () => {
         showSnackbar(result.message, "error");
       }
     } catch (error) {
+      console.error("Error creating task:", error);
       showSnackbar(error.message || "Không thể tạo công việc", "error");
     }
   };
@@ -408,7 +494,18 @@ const Tasks = () => {
 
   const fetchTasks = async () => {
     try {
-      const tasksResult = await getProjectTasks(projectId);
+      setLoading(true);
+      console.log("Fetching tasks for project:", projectId, "and sprint:", sprintId);
+      
+      if (!sprintId) {
+        console.error("Cannot fetch tasks: Sprint ID is missing");
+        setLoading(false);
+        return;
+      }
+      
+      const tasksResult = await getSprintTasks(projectId, sprintId);
+      console.log("Tasks Response:", tasksResult);
+      
       if (tasksResult.success) {
         const tasksArray = Array.isArray(tasksResult.data)
           ? tasksResult.data
@@ -431,12 +528,23 @@ const Tasks = () => {
           review: processedTasks.filter((task) => task.status === "review"),
           done: processedTasks.filter((task) => task.status === "done"),
         });
+      } else {
+        console.error("Failed to fetch tasks:", tasksResult.message);
+        setSnackbar({
+          open: true,
+          message: tasksResult.message || "Không thể tải danh sách công việc",
+          severity: "error",
+        });
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);
-      enqueueSnackbar("Không thể tải danh sách công việc", {
-        variant: "error",
+      setSnackbar({
+        open: true,
+        message: error.message || "Không thể tải danh sách công việc",
+        severity: "error",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -587,6 +695,30 @@ const Tasks = () => {
         />
       </Box>
     ));
+  };
+
+  // Hàm lấy danh sách thành viên của sprint
+  const fetchSprintMembers = async (projectId, sprintId) => {
+    if (!projectId || !sprintId || sprintId === 'default') {
+      console.log("Cannot fetch sprint members: Invalid projectId or sprintId");
+      return;
+    }
+    
+    try {
+      console.log("Fetching sprint members for sprint:", sprintId);
+      const result = await getSprintMembers(projectId, sprintId);
+      if (result.success) {
+        console.log("Sprint members:", result.data);
+        setSprintMembers(result.data);
+      } else {
+        console.error("Failed to fetch sprint members:", result.message);
+        // Nếu không lấy được thành viên sprint, sử dụng thành viên dự án
+        setSprintMembers(project?.members || []);
+      }
+    } catch (error) {
+      console.error("Error fetching sprint members:", error);
+      setSprintMembers(project?.members || []);
+    }
   };
 
   if (loading) {
@@ -1095,6 +1227,9 @@ const Tasks = () => {
               fullWidth
               value={newTask.name}
               onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
+              required
+              error={newTask.name.length > 0 && newTask.name.length < 3}
+              helperText={newTask.name.length > 0 && newTask.name.length < 3 ? "Tiêu đề phải có ít nhất 3 ký tự" : ""}
             />
             <TextField
               label="Mô tả"
@@ -1105,6 +1240,9 @@ const Tasks = () => {
               onChange={(e) =>
                 setNewTask({ ...newTask, description: e.target.value })
               }
+              required
+              error={newTask.description.length > 0 && newTask.description.length < 10}
+              helperText={newTask.description.length > 0 && newTask.description.length < 10 ? "Mô tả phải có ít nhất 10 ký tự" : ""}
             />
             <FormControl fullWidth>
               <InputLabel>Độ ưu tiên</InputLabel>
@@ -1140,11 +1278,19 @@ const Tasks = () => {
                   setNewTask({ ...newTask, assignees: e.target.value })
                 }
               >
-                {project?.members?.map((member) => (
-                  <MenuItem key={member._id} value={member._id}>
-                    {member.fullName}
-                  </MenuItem>
-                ))}
+                {sprintMembers.length > 0 ? (
+                  sprintMembers.map((member) => (
+                    <MenuItem key={member._id || member.id} value={member.user?._id || member.userId}>
+                      {member.user?.name || member.user?.email || member.userName || "Người dùng không xác định"}
+                    </MenuItem>
+                  ))
+                ) : (
+                  project?.members?.map((member) => (
+                    <MenuItem key={member._id} value={member.user?._id}>
+                      {member.user?.name || member.user?.email || "Người dùng không xác định"}
+                    </MenuItem>
+                  ))
+                )}
               </Select>
             </FormControl>
             <TextField
@@ -1162,7 +1308,16 @@ const Tasks = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenCreateDialog(false)}>Hủy</Button>
-          <Button onClick={handleCreateTask} variant="contained">
+          <Button 
+            onClick={handleCreateTask} 
+            variant="contained"
+            disabled={
+              !newTask.name || 
+              newTask.name.length < 3 || 
+              !newTask.description || 
+              newTask.description.length < 10
+            }
+          >
             Tạo
           </Button>
         </DialogActions>
@@ -1235,11 +1390,19 @@ const Tasks = () => {
                   })
                 }
               >
-                {project?.members?.map((member) => (
-                  <MenuItem key={member._id} value={member._id}>
-                    {member.fullName}
-                  </MenuItem>
-                ))}
+                {sprintMembers.length > 0 ? (
+                  sprintMembers.map((member) => (
+                    <MenuItem key={member._id || member.id} value={member.user?._id || member.userId}>
+                      {member.user?.name || member.user?.email || member.userName || "Người dùng không xác định"}
+                    </MenuItem>
+                  ))
+                ) : (
+                  project?.members?.map((member) => (
+                    <MenuItem key={member._id} value={member.user?._id}>
+                      {member.user?.name || member.user?.email || "Người dùng không xác định"}
+                    </MenuItem>
+                  ))
+                )}
               </Select>
             </FormControl>
             <TextField

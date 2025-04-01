@@ -184,14 +184,33 @@ export const checkProjectPermission = async (req, res, next) => {
 export const checkPermission = (permission) => {
   return async (req, res, next) => {
     try {
-      console.log("=== DEBUG CHECK PERMISSION ===");
+      console.log("\n=== DEBUG CHECK PERMISSION ===");
       console.log("User:", req.user.name, req.user.email);
       console.log("User role:", req.user.role);
+      console.log("Project role:", req.projectRole);
       console.log("Required permission:", permission);
 
       // Admin luôn có tất cả quyền
       if (req.user.role === ROLES.ADMIN) {
         console.log("User is ADMIN, access granted");
+        return next();
+      }
+
+      // Project manager có tất cả quyền liên quan đến sprint
+      const sprintPermissions = [
+        PERMISSIONS.CREATE_SPRINT,
+        PERMISSIONS.UPDATE_SPRINT, 
+        PERMISSIONS.DELETE_SPRINT,
+        PERMISSIONS.VIEW_SPRINT,
+        PERMISSIONS.MANAGE_SPRINT_MEMBERS,
+        PERMISSIONS.ADD_SPRINT_MEMBER,
+        PERMISSIONS.REMOVE_SPRINT_MEMBER
+      ];
+
+      // Nếu là project manager của project và đây là quyền liên quan đến sprint
+      if ((req.projectRole === ROLES.PROJECT_MANAGER || req.projectRole === 'owner') && 
+          sprintPermissions.includes(permission)) {
+        console.log("User is PROJECT_MANAGER or owner of project, granting sprint permission:", permission);
         return next();
       }
 
@@ -213,7 +232,7 @@ export const checkPermission = (permission) => {
       }
 
       console.log("Permission granted:", permission);
-      console.log("=== END DEBUG ===");
+      console.log("=== END DEBUG ===\n");
       next();
     } catch (error) {
       console.error("Lỗi khi kiểm tra quyền:", error);

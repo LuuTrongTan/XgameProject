@@ -27,7 +27,7 @@ import {
 } from "@mui/icons-material";
 import { createProject } from "../../api/projectApi";
 import FileUpload from "../../components/common/FileUpload";
-import UserSelectionDialog from "../../components/common/UserSelectionDialog";
+import MemberSelection from "../../components/common/MemberSelection";
 import { ROLES, getRoleName, PROJECT_STATUS } from "../../config/constants";
 
 const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
@@ -38,16 +38,9 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
     status: PROJECT_STATUS.ACTIVE,
   });
   const [members, setMembers] = useState([]);
-  const [openUserDialog, setOpenUserDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [newMember, setNewMember] = useState({
-    email: "",
-    role: ROLES.MEMBER,
-    inviteMethod: "direct",
-  });
-  const [selectedUser, setSelectedUser] = useState(null);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -57,18 +50,6 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
     }));
   };
 
-  const handleInviteMethodChange = (event, newMethod) => {
-    if (newMethod !== null) {
-      setNewMember((prev) => ({
-        ...prev,
-        inviteMethod: newMethod,
-        email: "",
-        role: ROLES.MEMBER,
-      }));
-      setSelectedUser(null);
-    }
-  };
-
   const handleFileSelect = (file) => {
     if (!file) {
       console.error("No file selected");
@@ -76,14 +57,12 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       console.error("Invalid file type:", file.type);
       setError("File không phải là ảnh");
       return;
     }
 
-    // Convert File to base64
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64String = e.target.result;
@@ -103,7 +82,6 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
 
-      // Set max dimensions
       const MAX_WIDTH = 800;
       const MAX_HEIGHT = 800;
 
@@ -138,62 +116,6 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
     }
   };
 
-  const handleUserSelect = (selectedUsers) => {
-    // Add all selected users directly to members list
-    const newMembers = selectedUsers.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: "active",
-    }));
-
-    // Filter out any duplicates
-    const uniqueMembers = [...members];
-    newMembers.forEach((newMember) => {
-      if (!uniqueMembers.some((member) => member.id === newMember.id)) {
-        uniqueMembers.push(newMember);
-      }
-    });
-
-    setMembers(uniqueMembers);
-    setOpenUserDialog(false);
-  };
-
-  const handleAddMember = () => {
-    if (!newMember.email || !validateEmail(newMember.email)) {
-      setError("Email không hợp lệ");
-      return;
-    }
-
-    if (members.find((m) => m.email === newMember.email)) {
-      setError("Email này đã được thêm vào dự án");
-      return;
-    }
-
-    setMembers([
-      ...members,
-      {
-        ...newMember,
-        status: "pending",
-      },
-    ]);
-
-    setNewMember({
-      email: "",
-      role: ROLES.MEMBER,
-      inviteMethod: newMember.inviteMethod,
-    });
-
-    setError(null);
-    setSuccessMessage("Đã thêm email để gửi lời mời");
-    setTimeout(() => setSuccessMessage(null), 3000);
-  };
-
-  const handleRemoveMember = (userId) => {
-    setMembers(members.filter((member) => member.id !== userId));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -225,225 +147,81 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
   };
 
   return (
-    <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-        <DialogTitle>Tạo dự án mới</DialogTitle>
-        <form onSubmit={handleSubmit}>
-          <DialogContent>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {error}
-                </Alert>
-              )}
-              {successMessage && (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  {successMessage}
-                </Alert>
-              )}
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Tạo dự án mới</DialogTitle>
+      <form onSubmit={handleSubmit}>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {error && <Alert severity="error">{error}</Alert>}
+            {successMessage && (
+              <Alert severity="success">{successMessage}</Alert>
+            )}
 
-              <TextField
-                label="Tên dự án"
-                name="name"
-                value={formData.name}
+            <TextField
+              label="Tên dự án"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              required
+              fullWidth
+            />
+
+            <TextField
+              label="Mô tả"
+              name="description"
+              value={formData.description}
+              onChange={handleInputChange}
+              required
+              fullWidth
+              multiline
+              rows={4}
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Trạng thái</InputLabel>
+              <Select
+                name="status"
+                value={formData.status}
                 onChange={handleInputChange}
-                fullWidth
-                required
-              />
+                label="Trạng thái"
+              >
+                {Object.entries(PROJECT_STATUS).map(([key, value]) => (
+                  <MenuItem key={key} value={value}>
+                    {value}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-              <TextField
-                label="Mô tả"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                fullWidth
-                multiline
-                rows={3}
-              />
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              accept="image/*"
+              label="Tải lên ảnh đại diện"
+            />
 
-              <FormControl fullWidth>
-                <InputLabel>Trạng thái</InputLabel>
-                <Select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  label="Trạng thái"
-                >
-                  {Object.entries(PROJECT_STATUS).map(([key, value]) => (
-                    <MenuItem key={key} value={value}>
-                      {value}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Divider sx={{ my: 2 }} />
 
-              <FileUpload
-                onFileSelect={handleFileSelect}
-                accept="image/*"
-                label="Tải lên ảnh đại diện"
-              />
-
-              <Divider sx={{ my: 2 }} />
-
-              {/* Members Section */}
-              <Typography variant="subtitle1" gutterBottom>
-                Thêm thành viên
-              </Typography>
-
-              <Box sx={{ mb: 2 }}>
-                <ToggleButtonGroup
-                  value={newMember.inviteMethod}
-                  exclusive
-                  onChange={handleInviteMethodChange}
-                  sx={{ mb: 2, width: "100%" }}
-                >
-                  <ToggleButton value="direct" sx={{ width: "50%" }}>
-                    <PersonAddIcon sx={{ mr: 1 }} />
-                    Thêm trực tiếp
-                  </ToggleButton>
-                  <ToggleButton value="email" sx={{ width: "50%" }}>
-                    <EmailIcon sx={{ mr: 1 }} />
-                    Gửi lời mời
-                  </ToggleButton>
-                </ToggleButtonGroup>
-
-                {newMember.inviteMethod === "direct" ? (
-                  <Box>
-                    <Button
-                      variant="outlined"
-                      startIcon={<PersonAddIcon />}
-                      onClick={() => setOpenUserDialog(true)}
-                      sx={{ mb: 2 }}
-                    >
-                      Chọn thành viên
-                    </Button>
-
-                    {selectedUser && (
-                      <Box
-                        sx={{
-                          mb: 2,
-                          p: 2,
-                          border: "1px solid #ddd",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="subtitle2" gutterBottom>
-                          Thành viên đã chọn:
-                        </Typography>
-                        <Typography>
-                          {selectedUser.name || selectedUser.email}
-                        </Typography>
-                        <FormControl fullWidth sx={{ mt: 1 }}>
-                          <InputLabel>Vai trò</InputLabel>
-                          <Select
-                            value={newMember.role}
-                            label="Vai trò"
-                            onChange={(e) =>
-                              setNewMember({
-                                ...newMember,
-                                role: e.target.value,
-                              })
-                            }
-                          >
-                            {Object.values(ROLES).map((role) => (
-                              <MenuItem key={role} value={role}>
-                                {getRoleName(role)}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </Box>
-                    )}
-                  </Box>
-                ) : (
-                  <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                    <TextField
-                      label="Email"
-                      fullWidth
-                      value={newMember.email}
-                      onChange={(e) =>
-                        setNewMember({ ...newMember, email: e.target.value })
-                      }
-                      error={Boolean(
-                        newMember.email && !validateEmail(newMember.email)
-                      )}
-                      helperText={
-                        newMember.email && !validateEmail(newMember.email)
-                          ? "Email không hợp lệ"
-                          : ""
-                      }
-                    />
-                    <FormControl sx={{ minWidth: 200 }}>
-                      <InputLabel>Vai trò</InputLabel>
-                      <Select
-                        value={newMember.role}
-                        label="Vai trò"
-                        onChange={(e) =>
-                          setNewMember({ ...newMember, role: e.target.value })
-                        }
-                      >
-                        {Object.values(ROLES).map((role) => (
-                          <MenuItem key={role} value={role}>
-                            {getRoleName(role)}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Button
-                      variant="contained"
-                      onClick={handleAddMember}
-                      disabled={
-                        !newMember.email || !validateEmail(newMember.email)
-                      }
-                    >
-                      <AddIcon />
-                    </Button>
-                  </Stack>
-                )}
-
-                <Stack spacing={1}>
-                  {members.map((member) => (
-                    <Chip
-                      key={member.id || member.email}
-                      label={`${member.name || member.email} (${getRoleName(
-                        member.role
-                      )}) - ${
-                        member.status === "pending" ? "Đang chờ" : "Đã thêm"
-                      }`}
-                      onDelete={() =>
-                        handleRemoveMember(member.id || member.email)
-                      }
-                      color={
-                        member.status === "pending" ? "warning" : "primary"
-                      }
-                      sx={{ maxWidth: "100%" }}
-                    />
-                  ))}
-                </Stack>
-              </Box>
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={onClose}>Hủy</Button>
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={loading}
-            >
-              {loading ? "Đang tạo..." : "Tạo dự án"}
-            </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
-
-      <UserSelectionDialog
-        open={openUserDialog}
-        onClose={() => setOpenUserDialog(false)}
-        onSubmit={handleUserSelect}
-        selectedUsers={members}
-      />
-    </>
+            <MemberSelection
+              members={members}
+              onMembersChange={setMembers}
+              showRoleSelection={true}
+              mode="all"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Hủy</Button>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={loading}
+          >
+            {loading ? "Đang tạo..." : "Tạo dự án"}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 };
 

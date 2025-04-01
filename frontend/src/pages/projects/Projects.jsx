@@ -343,7 +343,7 @@ const Projects = () => {
                 <CardMedia
                   component="div"
                   sx={{
-                    height: project.avatarBase64 ? 450 : 50,
+                    height: project.avatarBase64 ? 200 : 200,
                     bgcolor: "grey.100",
                     display: "flex",
                     alignItems: "center",
@@ -407,16 +407,8 @@ const Projects = () => {
                     </Typography>
                   )}
                 </CardMedia>
-                <CardContent
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    flexGrow: 1,
-                    height: "100%",
-                    p: 2,
-                  }}
-                >
-                  <Box sx={{ flexGrow: 1 }}>
+                <CardContent sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ mb: 2 }}>
                     <Chip
                       label={getStatusLabel(project.status)}
                       size="small"
@@ -426,64 +418,67 @@ const Projects = () => {
                         mb: 1,
                       }}
                     />
-                    <Typography variant="h6" gutterBottom sx={{ mb: 1 }}>
+                    <Typography variant="h6" noWrap gutterBottom>
                       {project.name}
                     </Typography>
                     <Typography
                       variant="body2"
                       color="text.secondary"
-                      gutterBottom
-                      sx={{ mb: 1 }}
+                      sx={{
+                        mb: 1,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        height: '40px'
+                      }}
                     >
                       {project.description}
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      gutterBottom
-                      sx={{ mb: 1 }}
-                    >
-                      Tạo{" "}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {project.members?.slice(0, 3).map((member, index) => (
+                        <Tooltip 
+                          key={member.user._id} 
+                          title={`${member.user.name || member.user.email} (${getRoleName(member.role)})`}
+                        >
+                          <Avatar
+                            src={member.user.avatar}
+                            sx={{
+                              width: 28,
+                              height: 28,
+                              bgcolor: "#1976D2",
+                              display: "inline-flex",
+                              marginLeft: index > 0 ? -1 : 0,
+                              fontSize: '0.875rem'
+                            }}
+                          >
+                            {member.user.name?.[0] || member.user.email?.[0]}
+                          </Avatar>
+                        </Tooltip>
+                      ))}
+                      {project.members?.length > 3 && (
+                        <Tooltip title={`Còn ${project.members.length - 3} thành viên khác`}>
+                          <Avatar 
+                            sx={{ 
+                              bgcolor: "grey.500", 
+                              marginLeft: -1,
+                              width: 28,
+                              height: 28,
+                              fontSize: '0.875rem'
+                            }}
+                          >
+                            +{project.members.length - 3}
+                          </Avatar>
+                        </Tooltip>
+                      )}
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
                       {new Date(project.createdAt).toLocaleDateString("vi-VN")}
                     </Typography>
-
-                    <Box sx={{ mt: 1, mb: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {project.members?.slice(0, 3).map((member, index) => (
-                          <Tooltip 
-                            key={member.user._id} 
-                            title={`${member.user.name || member.user.email} (${getRoleName(member.role)})`}
-                          >
-                            <Avatar
-                              src={member.user.avatar}
-                              sx={{
-                                width: 32,
-                                height: 32,
-                                bgcolor: "#1976D2",
-                                display: "inline-flex",
-                                marginLeft: index > 0 ? -1 : 0,
-                              }}
-                            >
-                              {member.user.name?.[0] || member.user.email?.[0]}
-                            </Avatar>
-                          </Tooltip>
-                        ))}
-                        {project.members?.length > 3 && (
-                          <Tooltip title={`Còn ${project.members.length - 3} thành viên khác`}>
-                            <Avatar 
-                              sx={{ 
-                                bgcolor: "grey.500", 
-                                marginLeft: -1,
-                                width: 32,
-                                height: 32,
-                              }}
-                            >
-                              +{project.members.length - 3}
-                            </Avatar>
-                          </Tooltip>
-                        )}
-                      </Box>
-                    </Box>
                   </Box>
 
                   <Button
@@ -491,8 +486,11 @@ const Projects = () => {
                     fullWidth
                     startIcon={<VisibilityIcon />}
                     size="medium"
-                    onClick={() => navigate(`/projects/${project._id}`)}
-                    sx={{ mt: "auto", pt: 1, pb: 1 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/projects/${project._id}`);
+                    }}
+                    sx={{ mt: 'auto' }}
                   >
                     Xem chi tiết
                   </Button>

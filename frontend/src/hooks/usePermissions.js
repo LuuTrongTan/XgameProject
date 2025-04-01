@@ -294,64 +294,31 @@ export const usePermissions = () => {
     [user, isProjectOwner, isProjectManager, debugMode]
   );
 
+  // Kiểm tra xem người dùng có quyền sửa sprint hay không 
   const rawCanEditSprint = useCallback(
     (project) => {
-      if (debugMode) console.log("Kiểm tra canEditSprint");
-
-      // Admin và Project Manager mới có quyền sửa sprint
-      if (!user) return false;
-
-      // Nếu user là admin hệ thống
-      if (user.role === ROLES.ADMIN) return true;
-
-      // Nếu không có project, kiểm tra quyền dựa trên projectRole
-      if (!project) {
-        return (
-          user.projectRole === ROLES.PROJECT_MANAGER ||
-          user.projectRole === ROLES.ADMIN
-        );
+      if (debugMode) {
+        console.log("Kiểm tra canEditSprint với project:", project);
+        console.log("User hiện tại:", user);
       }
 
-      // Nếu có project, kiểm tra quyền trong project đó
-      // Owner luôn có quyền
-      if (isProjectOwner(project)) return true;
-
-      // Project Manager có quyền
-      if (isProjectManager(project)) return true;
-
-      return false;
+      // Sử dụng hàm hasPermission như trong các hàm project
+      return hasPermission(project);
     },
-    [user, isProjectOwner, isProjectManager, debugMode]
+    [hasPermission, debugMode]
   );
 
   const rawCanDeleteSprint = useCallback(
     (project) => {
-      if (debugMode) console.log("Kiểm tra canDeleteSprint");
-
-      // Admin và Project Manager mới có quyền xóa sprint
-      if (!user) return false;
-
-      // Nếu user là admin hệ thống
-      if (user.role === ROLES.ADMIN) return true;
-
-      // Nếu không có project, kiểm tra quyền dựa trên projectRole
-      if (!project) {
-        return (
-          user.projectRole === ROLES.PROJECT_MANAGER ||
-          user.projectRole === ROLES.ADMIN
-        );
+      if (debugMode) {
+        console.log("Kiểm tra canDeleteSprint với project:", project);
+        console.log("User hiện tại:", user);
       }
 
-      // Nếu có project, kiểm tra quyền trong project đó
-      // Owner luôn có quyền
-      if (isProjectOwner(project)) return true;
-
-      // Project Manager có quyền
-      if (isProjectManager(project)) return true;
-
-      return false;
+      // Sử dụng hàm hasPermission như trong các hàm project
+      return hasPermission(project);
     },
-    [user, isProjectOwner, isProjectManager, debugMode]
+    [hasPermission, debugMode]
   );
 
   // Bọc các hàm kiểm tra bằng safePermissionCheck
@@ -576,7 +543,7 @@ export const usePermissions = () => {
   // Kiểm tra xem người dùng có quyền quản lý thành viên sprint hay không
   const canManageSprintMembers = useCallback(
     (sprint) => {
-      if (debugMode) console.log("Kiểm tra canManageSprintMembers");
+      if (debugMode) console.log("Kiểm tra canManageSprintMembers với sprint:", sprint);
 
       // Nếu không có sprint, không có quyền
       if (!sprint) {
@@ -592,21 +559,26 @@ export const usePermissions = () => {
         return true;
       }
 
-      // Nếu là project owner hoặc project manager thì có quyền
-      if (sprint.project) {
-        if (isProjectOwner(sprint.project)) {
-          if (debugMode)
-            console.log(
-              "canManageSprintMembers: User là Project Owner - có quyền"
-            );
-          return true;
-        }
+      // Kiểm tra người tạo sprint
+      if (sprint.createdBy && String(sprint.createdBy) === String(user?._id)) {
+        if (debugMode)
+          console.log("canManageSprintMembers: User là người tạo sprint - có quyền");
+        return true;
+      }
 
-        if (isProjectManager(sprint.project)) {
+      // Nếu user là project manager hệ thống  
+      if (user?.role === ROLES.PROJECT_MANAGER) {
+        if (debugMode)
+          console.log(`canManageSprintMembers: User có role hệ thống ${user.role} - có quyền`);
+        return true;
+      }
+
+      // Kiểm tra quyền dựa trên project - sử dụng hàm hasPermission như trong các hàm khác
+      if (sprint.project) {
+        const hasProjectPermission = hasPermission(sprint.project);
+        if (hasProjectPermission) {
           if (debugMode)
-            console.log(
-              "canManageSprintMembers: User là Project Manager - có quyền"
-            );
+            console.log("canManageSprintMembers: User có quyền dựa trên project - có quyền");
           return true;
         }
       }
@@ -617,7 +589,7 @@ export const usePermissions = () => {
         );
       return false;
     },
-    [isAdmin, isProjectOwner, isProjectManager, debugMode]
+    [isAdmin, hasPermission, user, debugMode]
   );
 
   return {

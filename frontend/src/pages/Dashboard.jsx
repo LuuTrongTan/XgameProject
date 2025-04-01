@@ -12,6 +12,7 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   IconButton,
+  CircularProgress,
 } from "@mui/material";
 import {
   Folder as FolderIcon,
@@ -37,6 +38,7 @@ import {
 import UpcomingTasks from "../components/Tasks/UpcomingTasks";
 import { useTheme } from "@mui/material/styles";
 import { useAuth } from "../contexts/AuthContext";
+import { getProjects } from "../api/projectApi";
 
 // Đăng ký các components cần thiết cho Chart.js
 ChartJS.register(
@@ -60,6 +62,37 @@ const Dashboard = () => {
     pendingTasks: 0,
   });
   const [projectId, setProjectId] = useState(null);
+  const [sprintId, setSprintId] = useState(null);
+
+  // Bổ sung useEffect để lấy projectId và sprintId gần nhất hoặc active
+  useEffect(() => {
+    const fetchUserProjects = async () => {
+      try {
+        const data = await getProjects();
+        
+        if (data && data.data && data.data.length > 0) {
+          // Lấy dự án active hoặc dự án đầu tiên
+          const activeProject = data.data.find(p => p.status === 'active') || data.data[0];
+          console.log("Dashboard - Selected project:", activeProject);
+          setProjectId(activeProject._id);
+          
+          // Nếu dự án có sprint, lấy sprint active hoặc sprint mới nhất
+          if (activeProject.sprints && activeProject.sprints.length > 0) {
+            const activeSprint = activeProject.sprints.find(s => s.status === 'active') 
+              || activeProject.sprints[activeProject.sprints.length - 1];
+            console.log("Dashboard - Selected sprint:", activeSprint);
+            setSprintId(activeSprint._id);
+          }
+        } else {
+          console.log("Dashboard - No projects found or data format unexpected:", data);
+        }
+      } catch (error) {
+        console.error('Error fetching user projects:', error);
+      }
+    };
+    
+    fetchUserProjects();
+  }, []);
 
   const features = [
     {
@@ -256,7 +289,13 @@ const Dashboard = () => {
           <Typography variant="h6" gutterBottom>
             Công việc sắp đến hạn
           </Typography>
-          <UpcomingTasks projectId={projectId} />
+          {projectId && sprintId ? (
+            <UpcomingTasks projectId={projectId} sprintId={sprintId} />
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+              Không tìm thấy dự án hoặc sprint nào.
+            </Typography>
+          )}
         </Grid>
       </Grid>
     </Container>

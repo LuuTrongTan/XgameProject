@@ -16,22 +16,22 @@ import {
 } from "@mui/material";
 import { getUnassignedTasks } from "../../api/taskApi";
 
-const TaskSelectionDialog = ({ open, onClose, onSubmit, projectId }) => {
+const TaskSelectionDialog = ({ open, onClose, onSubmit, projectId, sprintId }) => {
   const [tasks, setTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open && projectId) {
+    if (open && projectId && sprintId) {
       fetchUnassignedTasks();
     }
-  }, [open, projectId]);
+  }, [open, projectId, sprintId]);
 
   const fetchUnassignedTasks = async () => {
     try {
       setLoading(true);
-      const response = await getUnassignedTasks(projectId);
+      const response = await getUnassignedTasks(projectId, sprintId);
       setTasks(response.data);
     } catch (error) {
       console.error("Error fetching unassigned tasks:", error);
@@ -65,56 +65,43 @@ const TaskSelectionDialog = ({ open, onClose, onSubmit, projectId }) => {
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>Chọn công việc cho Sprint</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Chọn công việc</DialogTitle>
       <DialogContent>
-        <Box sx={{ mb: 2 }}>
-          <TextField
-            fullWidth
-            label="Tìm kiếm công việc"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            margin="normal"
-          />
-        </Box>
-        {loading ? (
-          <Typography>Đang tải...</Typography>
-        ) : tasks.length === 0 ? (
-          <Typography>Không có công việc nào chưa được phân công</Typography>
-        ) : (
-          <List>
-            {filteredTasks.map((task) => (
-              <ListItem
-                key={task.id}
-                button
-                onClick={() => handleToggleTask(task.id)}
-              >
-                <ListItemIcon>
-                  <Checkbox
-                    edge="start"
-                    checked={selectedTasks.includes(task.id)}
-                    tabIndex={-1}
-                    disableRipple
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={task.name}
-                  secondary={task.description}
+        <TextField
+          fullWidth
+          label="Tìm kiếm"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        <List>
+          {filteredTasks.map((task) => (
+            <ListItem
+              key={task._id}
+              button
+              onClick={() => handleToggleTask(task._id)}
+            >
+              <ListItemIcon>
+                <Checkbox
+                  edge="start"
+                  checked={selectedTasks.includes(task._id)}
+                  tabIndex={-1}
+                  disableRipple
                 />
-              </ListItem>
-            ))}
-          </List>
-        )}
+              </ListItemIcon>
+              <ListItemText
+                primary={task.name}
+                secondary={task.description}
+              />
+            </ListItem>
+          ))}
+        </List>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Hủy</Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          color="primary"
-          disabled={selectedTasks.length === 0}
-        >
-          Thêm công việc ({selectedTasks.length})
+        <Button onClick={handleSubmit} variant="contained">
+          Thêm vào Sprint
         </Button>
       </DialogActions>
     </Dialog>

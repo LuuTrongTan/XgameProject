@@ -1,323 +1,192 @@
-import axios from "./axiosClient";
 import API from "./api";
 
-// Get tasks for a specific project
-export const getProjectTasks = async (projectId) => {
+// Lấy danh sách công việc trong sprint
+export const getSprintTasks = async (projectId, sprintId) => {
   try {
-    console.log("Fetching tasks for project ID:", projectId);
+    if (!projectId) {
+      console.error('Error: Project ID is missing');
+      return { success: false, message: 'ID dự án không hợp lệ hoặc bị thiếu' };
+    }
 
-    // Sử dụng API client đã cấu hình đúng
-    const response = await API.get(`/tasks`, {
-      params: { project: projectId },
-    });
-
-    console.log("Raw API Response:", response.data);
-
-    // Kiểm tra cấu trúc response và trả về dữ liệu phù hợp
-    let tasks = [];
-
-    if (response.data) {
-      if (Array.isArray(response.data)) {
-        tasks = response.data;
-      } else if (response.data.tasks && Array.isArray(response.data.tasks)) {
-        tasks = response.data.tasks;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        tasks = response.data.data;
+    // Xử lý trường hợp sprintId
+    let processedSprintId;
+    if (typeof sprintId === 'object' && sprintId !== null) {
+      processedSprintId = sprintId._id || sprintId.id;
+      if (!processedSprintId) {
+        console.error('Invalid sprint object:', sprintId);
+        return { success: false, message: 'Đối tượng sprint không chứa ID hợp lệ' };
       }
+    } else {
+      processedSprintId = sprintId;
     }
 
-    console.log("Processed Tasks:", tasks);
-
-    // Đảm bảo mỗi task có đầy đủ các trường cần thiết
-    tasks = tasks.map((task) => ({
-      ...task,
-      status: task.status || "todo",
-      priority: task.priority || "medium",
-      assignees: task.assignees || [],
-      tags: task.tags || [],
-      comments: task.comments || [],
-      attachments: task.attachments || [],
-    }));
-
-    return {
-      success: true,
-      data: tasks,
-      message: "Lấy danh sách công việc thành công",
-    };
-  } catch (error) {
-    console.error("Error fetching tasks:", error);
-    if (error.isNetworkError) {
-      return {
-        success: false,
-        data: [],
-        message:
-          "Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối.",
-        isNetworkError: true,
-      };
+    // Nếu có sprint ID, gọi API với sprint ID
+    let url;
+    if (processedSprintId && processedSprintId !== 'default') {
+      console.log(`Fetching tasks for project ${projectId} and sprint ${processedSprintId}`);
+      url = `/projects/${projectId}/sprints/${processedSprintId}/tasks`;
+    } else {
+      // Nếu không có sprint ID hoặc là 'default', lấy tất cả task của project
+      console.log(`Fetching all tasks for project ${projectId}`);
+      url = `/projects/${projectId}/tasks`;
     }
-    return {
-      success: false,
-      data: [],
-      message: error.message || "Không thể lấy danh sách công việc",
-      isNetworkError: false,
-    };
-  }
-};
 
-// Create a new task for a project
-export const createTask = async (projectId, taskData) => {
-  try {
-    const response = await API.post(`/tasks`, {
-      ...taskData,
-      project: projectId,
-    });
-    return {
-      success: true,
-      data: response.data.task || response.data,
-      message: "Tạo công việc thành công",
-    };
+    const response = await API.get(url);
+    return response.data;
   } catch (error) {
-    console.error("Error creating task:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể tạo công việc",
+    console.error('Error fetching tasks:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Không thể tải danh sách công việc. Vui lòng thử lại sau.',
+      isNetworkError: !error.response
     };
   }
 };
 
-// Cập nhật thông tin của task
-export const updateTask = async (taskId, taskData) => {
-  try {
-    const response = await API.put(`/tasks/${taskId}`, taskData);
-    return {
-      success: true,
-      data: response.data.task || response.data,
-      message: "Cập nhật công việc thành công",
-    };
-  } catch (error) {
-    console.error("Error updating task:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể cập nhật công việc",
-    };
-  }
+// Lấy chi tiết công việc
+export const getTaskById = async (projectId, sprintId, taskId) => {
+  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`);
+  return response.data;
 };
 
-// Xóa task
-export const deleteTask = async (taskId) => {
+// Tạo công việc mới
+export const createTask = async (projectId, sprintId, taskData) => {
   try {
-    const response = await API.delete(`/tasks/${taskId}`);
-    return {
-      success: true,
-      data: response.data,
-      message: "Xóa công việc thành công",
-    };
-  } catch (error) {
-    console.error("Error deleting task:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể xóa công việc",
-    };
-  }
-};
+    // Kiểm tra nếu projectId hoặc sprintId không tồn tại
+    if (!projectId) {
+      console.error('Error: Project ID is missing');
+      return { success: false, message: 'ID dự án không hợp lệ hoặc bị thiếu' };
+    }
 
-// Cập nhật trạng thái của task (di chuyển giữa các cột)
-export const updateTaskStatus = async (taskId, status) => {
-  try {
-    const response = await API.put(`/tasks/${taskId}/status`, { status });
-    return {
-      success: true,
-      data: response.data.task || response.data,
-      message: "Cập nhật trạng thái thành công",
-    };
-  } catch (error) {
-    console.error("Error updating task status:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể cập nhật trạng thái",
-    };
-  }
-};
+    if (!sprintId) {
+      console.error('Error: Sprint ID is missing or empty');
+      return { success: false, message: 'ID sprint không hợp lệ hoặc bị thiếu' };
+    }
 
-export const addTaskComment = async (taskId, comment) => {
-  try {
-    const response = await API.post(`/tasks/${taskId}/comments`, {
-      content: comment,
-    });
-    return {
-      success: true,
-      data: response.data.comment || response.data,
-      message: "Thêm bình luận thành công",
-    };
-  } catch (error) {
-    console.error("Error adding comment:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể thêm bình luận",
-    };
-  }
-};
-
-export const addTaskAttachment = async (taskId, file) => {
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await API.post(`/tasks/${taskId}/attachments`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
-    return {
-      success: true,
-      data: response.data.attachment || response.data,
-      message: "Đính kèm tệp thành công",
-    };
-  } catch (error) {
-    console.error("Error adding attachment:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể đính kèm tệp",
-    };
-  }
-};
-
-export const getTaskComments = async (taskId) => {
-  try {
-    const response = await API.get(`/tasks/${taskId}/comments`);
-    return {
-      success: true,
-      data: response.data.comments || response.data || [],
-      message: "Lấy danh sách bình luận thành công",
-    };
-  } catch (error) {
-    console.error("Error fetching comments:", error);
-    return {
-      success: false,
-      data: [],
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể lấy danh sách bình luận",
-    };
-  }
-};
-
-export const getTaskAttachments = async (taskId) => {
-  try {
-    const response = await API.get(`/tasks/${taskId}/attachments`);
-    return {
-      success: true,
-      data: response.data.attachments || response.data || [],
-      message: "Lấy danh sách tệp đính kèm thành công",
-    };
-  } catch (error) {
-    console.error("Error fetching attachments:", error);
-    return {
-      success: false,
-      data: [],
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể lấy danh sách tệp đính kèm",
-    };
-  }
-};
-
-export const deleteTaskAttachment = async (taskId, attachmentId) => {
-  try {
-    const response = await API.delete(
-      `/tasks/${taskId}/attachments/${attachmentId}`
-    );
-    return {
-      success: true,
-      data: response.data,
-      message: "Xóa tệp đính kèm thành công",
-    };
-  } catch (error) {
-    console.error("Error deleting attachment:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể xóa tệp đính kèm",
-    };
-  }
-};
-
-export const syncWithCalendar = async (taskId, calendarType) => {
-  try {
-    const response = await API.post(`/tasks/${taskId}/sync-calendar`, {
-      calendarType,
-    });
-    return {
-      success: true,
-      data: response.data,
-      message: "Đồng bộ với lịch thành công",
-    };
-  } catch (error) {
-    console.error("Error syncing with calendar:", error);
-    return {
-      success: false,
-      message:
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể đồng bộ với lịch",
-    };
-  }
-};
-
-// Get unassigned tasks for a project
-export const getUnassignedTasks = async (projectId) => {
-  try {
-    const response = await API.get(`/tasks`, {
-      params: {
-        project: projectId,
-        unassigned: true,
-      },
-    });
-
-    let tasks = [];
-    if (response.data) {
-      if (Array.isArray(response.data)) {
-        tasks = response.data;
-      } else if (response.data.tasks && Array.isArray(response.data.tasks)) {
-        tasks = response.data.tasks;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        tasks = response.data.data;
+    // Kiểm tra nếu sprintId là một object thì lấy _id hoặc id
+    let processedSprintId;
+    if (typeof sprintId === 'object' && sprintId !== null) {
+      processedSprintId = sprintId._id || sprintId.id;
+      if (!processedSprintId) {
+        console.error('Invalid sprint object:', sprintId);
+        return { success: false, message: 'Đối tượng sprint không chứa ID hợp lệ' };
       }
+    } else {
+      processedSprintId = sprintId;
     }
 
-    return {
-      success: true,
-      data: tasks,
-      message: "Lấy danh sách công việc chưa phân công thành công",
-    };
+    console.log(`Creating task in project ${projectId} and sprint ${processedSprintId}`);
+    console.log('Task data being sent to API:', JSON.stringify(taskData, null, 2));
+    
+    const response = await API.post(`/projects/${projectId}/sprints/${processedSprintId}/tasks`, taskData);
+    return response.data;
   } catch (error) {
-    console.error("Error fetching unassigned tasks:", error);
-    return {
-      success: false,
-      data: [],
-      message:
-        error.message || "Không thể lấy danh sách công việc chưa phân công",
+    console.error('Error creating task:', error);
+    console.error('Error response:', error.response?.data);
+    
+    // Log thêm thông tin chi tiết từ response lỗi
+    if (error.response?.data?.errors) {
+      console.error('Validation errors:', error.response.data.errors);
+    }
+    
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Không thể tạo công việc mới. Vui lòng thử lại sau.',
+      errors: error.response?.data?.errors || []
     };
   }
+};
+
+// Cập nhật công việc
+export const updateTask = async (projectId, sprintId, taskId, taskData) => {
+  const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`, taskData);
+  return response.data;
+};
+
+// Xóa công việc
+export const deleteTask = async (projectId, sprintId, taskId) => {
+  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`);
+  return response.data;
+};
+
+// Cập nhật trạng thái công việc
+export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
+  const response = await API.patch(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/status`, { status });
+  return response.data;
+};
+
+// Gán công việc
+export const assignTask = async (projectId, sprintId, taskId, assigneeId) => {
+  const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/assign`, { assigneeId });
+  return response.data;
+};
+
+// Tải lên tệp đính kèm
+export const addTaskAttachment = async (projectId, sprintId, taskId, file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response.data;
+};
+
+// Lấy danh sách tệp đính kèm
+export const getTaskAttachments = async (projectId, sprintId, taskId) => {
+  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`);
+  return response.data;
+};
+
+// Xóa tệp đính kèm
+export const deleteTaskAttachment = async (projectId, sprintId, taskId, attachmentId) => {
+  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments/${attachmentId}`);
+  return response.data;
+};
+
+// Lấy danh sách bình luận
+export const getTaskComments = async (projectId, sprintId, taskId) => {
+  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`);
+  return response.data;
+};
+
+// Thêm bình luận
+export const addTaskComment = async (projectId, sprintId, taskId, content) => {
+  const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`, { content });
+  return response.data;
+};
+
+// Cập nhật bình luận
+export const updateTaskComment = async (projectId, sprintId, taskId, commentId, content) => {
+  const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`, { content });
+  return response.data;
+};
+
+// Xóa bình luận
+export const deleteTaskComment = async (projectId, sprintId, taskId, commentId) => {
+  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`);
+  return response.data;
+};
+
+// Lấy lịch sử thay đổi
+export const getTaskAuditLogs = async (projectId, sprintId, taskId) => {
+  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`);
+  return response.data;
+};
+
+// Đồng bộ với lịch
+export const syncWithCalendar = async (projectId, sprintId, taskId, calendarType) => {
+  const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/sync-calendar`, { calendarType });
+  return response.data;
+};
+
+// Lấy danh sách công việc chưa phân công
+export const getUnassignedTasks = async (projectId, sprintId) => {
+  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks`, {
+    params: {
+      unassigned: true,
+    },
+  });
+  return response.data;
 };

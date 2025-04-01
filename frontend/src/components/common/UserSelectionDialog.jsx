@@ -34,17 +34,35 @@ const UserSelectionDialog = ({
   onClose,
   onSubmit,
   selectedUsers = [],
+  availableUsers = [],
+  title = "Chọn thành viên",
+  showRoleSelection = true
 }) => {
   const [users, setUsers] = useState([]);
   const [selectedMembers, setSelectedMembers] = useState(
     selectedUsers.map((user) => ({
-      userId: user.id,
+      userId: user._id || user.id,
       role: user.role || "member",
     }))
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (selectedUsers && selectedUsers.length > 0) {
+      setSelectedMembers(
+        selectedUsers
+          .filter(user => user) // Lọc bỏ các giá trị null/undefined
+          .map((user) => ({
+            userId: user._id || user.id,
+            role: user.role || "member",
+          }))
+      );
+    } else {
+      setSelectedMembers([]);
+    }
+  }, [selectedUsers]);
 
   useEffect(() => {
     if (open) {
@@ -56,11 +74,28 @@ const UserSelectionDialog = ({
     setLoading(true);
     setError(null);
     try {
-      const response = await getAllUsers();
-      if (response.success) {
-        setUsers(response.data);
+      if (availableUsers && availableUsers.length > 0) {
+        // Đã có sẵn danh sách người dùng từ props
+        setUsers(availableUsers.map(member => {
+          // Xử lý cấu trúc dữ liệu khác nhau
+          const user = member.user || member;
+          return {
+            _id: user._id || user.id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            role: member.role || user.role || "member"
+          };
+        }));
+        setLoading(false);
       } else {
-        setError(response.message);
+        // Không có danh sách sẵn, gọi API lấy tất cả người dùng
+        const response = await getAllUsers();
+        if (response.success) {
+          setUsers(response.data);
+        } else {
+          setError(response.message);
+        }
       }
     } catch (error) {
       setError("Không thể tải danh sách người dùng");
@@ -90,25 +125,50 @@ const UserSelectionDialog = ({
   };
 
   const handleSubmit = () => {
+    console.log("selectedMembers before processing:", selectedMembers);
+    console.log("available users:", users);
+    
     const selectedUsersWithRoles = selectedMembers.map((member) => {
       const user = users.find((u) => u._id === member.userId);
+      if (!user) {
+        console.warn(`User with ID ${member.userId} not found`);
+        return {
+          id: member.userId,
+          _id: member.userId,
+          name: "Unknown User",
+          email: "",
+          role: member.role,
+        };
+      }
+      
+      // Đảm bảo tất cả các trường quan trọng đều có giá trị
       return {
         id: user._id,
-        name: user.name,
-        email: user.email,
+        _id: user._id,
+        name: user.name || "Unknown",
+        email: user.email || "", // Email là bắt buộc cho API addMember
         avatar: user.avatar,
         role: member.role,
       };
     });
+    
+    console.log("UserSelectionDialog - Submitting selected users:", selectedUsersWithRoles);
     onSubmit(selectedUsersWithRoles);
     onClose(); // Close dialog after submission
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Lọc users đã được chọn ra khỏi danh sách hiển thị
+  const getFilteredUsers = () => {
+    // Lọc ra những người dùng phù hợp với từ khóa tìm kiếm
+    const searchFiltered = users.filter(
+      (user) =>
+        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    // Chỉ hiển thị những người dùng chưa được chọn khi showSelected=false
+    return searchFiltered;
+  };
 
   return (
     <Dialog
@@ -125,7 +185,7 @@ const UserSelectionDialog = ({
         },
       }}
     >
-      <DialogTitle>Chọn thành viên</DialogTitle>
+      <DialogTitle>{title}</DialogTitle>
       <DialogContent
         sx={{
           p: 2,
@@ -168,8 +228,8 @@ const UserSelectionDialog = ({
               },
             }}
           >
-            {filteredUsers.length > 0 ? (
-              filteredUsers.map((user) => {
+            {getFilteredUsers().length > 0 ? (
+              getFilteredUsers().map((user) => {
                 const selectedMember = selectedMembers.find(
                   (m) => m.userId === user._id
                 );

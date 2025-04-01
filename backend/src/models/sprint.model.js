@@ -1,5 +1,29 @@
 import mongoose from "mongoose";
 
+// Định nghĩa schema con cho thành viên sprint
+const sprintMemberSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    role: {
+      type: String,
+      default: "member",
+    },
+    addedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  { _id: false }
+);
+
 const sprintSchema = new mongoose.Schema(
   {
     name: {
@@ -46,27 +70,7 @@ const sprintSchema = new mongoose.Schema(
         ref: "Task",
       },
     ],
-    members: [
-      {
-        user: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          required: true,
-        },
-        role: {
-          type: String,
-          default: "member",
-        },
-        addedAt: {
-          type: Date,
-          default: Date.now,
-        },
-        addedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-        },
-      },
-    ],
+    members: [sprintMemberSchema],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -93,6 +97,13 @@ sprintSchema.pre("save", function (next) {
   if (this.endDate <= this.startDate) {
     next(new Error("Ngày kết thúc phải sau ngày bắt đầu"));
   }
+  
+  // Đảm bảo members là một mảng
+  if (!this.members) {
+    this.members = [];
+  }
+  
+  console.log(`Pre-save: Sprint ${this._id}, members count: ${this.members?.length || 0}`);
   next();
 });
 

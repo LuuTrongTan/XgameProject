@@ -57,6 +57,9 @@ import BackButton from "../../components/common/BackButton";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePermissions } from "../../hooks/usePermissions";
 import ActionButtons from "../../components/common/ActionButtons";
+import { getRoleName } from "../../config/constants";
+import MemberItem from "../../components/common/MemberItem";
+import SprintMemberSelection from "../../components/sprints/SprintMemberSelection";
 
 const formatDate = (dateString) => {
   if (!dateString) return "";
@@ -166,7 +169,6 @@ const SprintDetail = () => {
     canManageSprintMembers,
     canViewSprint,
   } = usePermissions();
-  const [debugMode, setDebugMode] = useState(false);
 
   // Thêm state quản lý thành viên
   const [sprintMembers, setSprintMembers] = useState([]);
@@ -174,6 +176,10 @@ const SprintDetail = () => {
   const [openAddMemberDialog, setOpenAddMemberDialog] = useState(false);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
+
+  // Thêm state lưu danh sách thành viên project
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [loadingProjectMembers, setLoadingProjectMembers] = useState(false);
 
   useEffect(() => {
     const fetchSprintDetails = async () => {
@@ -189,18 +195,31 @@ const SprintDetail = () => {
           );
         }
 
+        // Lưu project data để sử dụng sau này
+        const projectData = projectResponse.data;
+        
+        // Kiểm tra quyền truy cập dự án
+        if (!projectData) {
+          throw new Error("Không thể tải thông tin dự án");
+        }
+
         // Lấy thông tin sprint
         const response = await getSprintById(projectId, sprintId);
-        console.log("Dữ liệu sprint nhận từ API:", response.data);
 
         if (!response.success || !response.data) {
           throw new Error(response.message || "Không thể tải thông tin sprint");
         }
 
+        // Gắn thông tin project vào sprint để kiểm tra phân quyền
+        const sprintData = {
+          ...response.data,
+          project: projectData // Đảm bảo sprint có đủ thông tin project
+        };
+        
         // Kiểm tra quyền truy cập sử dụng usePermissions hook
-        const hasViewPermission = canViewSprint(projectResponse.data);
-        const isSprintMember = response.data.members?.some(
-          (member) => member.user._id === user.id
+        const hasViewPermission = canViewSprint(sprintData);
+        const isSprintMember = sprintData.members?.some(
+          (member) => member.user?._id === user?._id
         );
 
         if (!hasViewPermission && !isSprintMember) {
@@ -211,7 +230,7 @@ const SprintDetail = () => {
           return;
         }
 
-        setSprint(response.data);
+        setSprint(sprintData);
       } catch (err) {
         console.error("Error fetching sprint details:", err);
         setError(err.message || "Có lỗi xảy ra khi tải thông tin sprint");
@@ -222,6 +241,13 @@ const SprintDetail = () => {
 
     fetchSprintDetails();
   }, [projectId, sprintId, refresh]);
+
+  // Fetch danh sách thành viên của sprint
+  useEffect(() => {
+    if (sprint) {
+      fetchSprintMembers();
+    }
+  }, [sprint, refresh]);
 
   // Fetch danh sách thành viên của sprint
   const fetchSprintMembers = async () => {
@@ -240,24 +266,75 @@ const SprintDetail = () => {
     }
   };
 
-  // Mở dialog thêm thành viên
-  const handleOpenAddMemberDialog = async () => {
+  // Kiểm tra và trả về danh sách thành viên hiện có
+  const getCurrentMembers = () => {
+    // Nếu đã load được từ API riêng
+    if (sprintMembers && sprintMembers.length > 0) {
+      return sprintMembers;
+    }
+    
+    // Nếu có từ thông tin sprint
+    if (sprint && sprint.members && sprint.members.length > 0) {
+      return sprint.members;
+    }
+    
+    return [];
+  };
+  
+  // Lấy thông tin người dùng từ cấu trúc thành viên 
+  // (có thể khác nhau giữa sprintMembers và sprint.members)
+  const getMemberUser = (member) => {
+    if (!member) return null;
+    
+    // Nếu đã có thuộc tính user
+    if (member.user) {
+      return member.user;
+    }
+    
+    // Nếu member là user object
+    if (member._id || member.id) {
+      return member;
+    }
+    
+    return null;
+  };
+
+  // Thêm hàm fetch project members
+  const fetchProjectMembers = async () => {
     try {
-      const response = await getAvailableUsersForSprint(projectId, sprintId);
-      if (response.success) {
-        setAvailableUsers(response.data);
-        setOpenAddMemberDialog(true);
+      setLoadingProjectMembers(true);
+      
+      // Lấy thông tin project trước (endpoint này đã hoạt động theo logs)
+      const { getProjectById } = await import("../../api/sprintApi");
+      const projectResponse = await getProjectById(projectId);
+      
+      if (projectResponse.success && projectResponse.data) {
+        // Sử dụng danh sách thành viên từ project data
+        if (projectResponse.data.members) {
+          setProjectMembers(projectResponse.data.members);
+        } else {
+          setProjectMembers([]);
+        }
       } else {
-        enqueueSnackbar(
-          response.message || "Không thể lấy danh sách người dùng",
-          { variant: "error" }
-        );
+        console.error("Lỗi khi lấy thông tin dự án:", projectResponse.message);
       }
     } catch (error) {
-      enqueueSnackbar("Không thể lấy danh sách người dùng", {
-        variant: "error",
-      });
+      console.error("Lỗi khi lấy danh sách thành viên dự án:", error);
+    } finally {
+      setLoadingProjectMembers(false);
     }
+  };
+
+  // Thêm useEffect để fetch project members
+  useEffect(() => {
+    if (projectId) {
+      fetchProjectMembers();
+    }
+  }, [projectId]);
+
+  // Cập nhật hàm mở dialog thêm thành viên
+  const handleOpenAddMemberDialog = () => {
+    setOpenAddMemberDialog(true);
   };
 
   // Đóng dialog thêm thành viên
@@ -277,11 +354,44 @@ const SprintDetail = () => {
       const response = await addMemberToSprint(
         projectId,
         sprintId,
-        selectedUser._id
+        { userId: selectedUser._id }
       );
+      
       if (response.success) {
         enqueueSnackbar("Thêm thành viên thành công", { variant: "success" });
-        setRefresh((prev) => prev + 1);
+        
+        // Thêm thành viên vào state nếu API trả về thông tin
+        if (response.data && response.data.member) {
+          // Tạo một bản sao của thành viên hiện tại
+          const updatedMembers = [...getCurrentMembers()];
+          
+          // Thêm thành viên mới nếu chưa tồn tại
+          const existingMemberIndex = updatedMembers.findIndex(
+            m => getMemberUser(m)?._id === selectedUser._id
+          );
+          
+          if (existingMemberIndex === -1) {
+            // Cập nhật state trước khi API refresh
+            setSprintMembers(prev => prev ? [...prev, response.data.member] : [response.data.member]);
+            
+            // Cập nhật sprint.members nếu đang được sử dụng
+            if (sprint && sprint.members) {
+              setSprint(prev => ({
+                ...prev,
+                members: [...(prev.members || []), response.data.member]
+              }));
+            }
+          }
+        } else {
+          // Nếu API không trả về chi tiết thành viên, làm mới toàn bộ dữ liệu
+          setRefresh((prev) => prev + 1);
+        }
+        
+        // Gọi lại API để cập nhật dữ liệu từ server
+        setTimeout(() => {
+          fetchSprintMembers();
+        }, 500);
+        
         handleCloseAddMemberDialog();
       } else {
         enqueueSnackbar(response.message || "Không thể thêm thành viên", {
@@ -289,7 +399,10 @@ const SprintDetail = () => {
         });
       }
     } catch (error) {
-      enqueueSnackbar("Không thể thêm thành viên", { variant: "error" });
+      console.error("Error adding member:", error);
+      enqueueSnackbar(error.response?.data?.message || "Không thể thêm thành viên", { 
+        variant: "error" 
+      });
     }
   };
 
@@ -353,7 +466,7 @@ const SprintDetail = () => {
   const handleDeleteSprint = async () => {
     try {
       // Kiểm tra quyền xóa
-      if (!canDeleteSprint(sprint?.project)) {
+      if (!canDeleteSprint(sprint.project)) {
         enqueueSnackbar("Bạn không có quyền xóa sprint này", {
           variant: "error",
         });
@@ -401,6 +514,94 @@ const SprintDetail = () => {
 
   const goBack = () => {
     navigate(`/projects/${projectId}/sprints`);
+  };
+
+  // Xử lý thêm thành viên vào cả project
+  const handleAddToProject = async (newMembers) => {
+    try {
+      // Thêm từng thành viên vào project
+      for (const member of newMembers) {
+        if (!member.email) {
+          console.error("Thiếu thông tin email cho thành viên:", member);
+          continue;
+        }
+        
+        // Đảm bảo role là "member" (chữ thường) cho phù hợp với API
+        const role = member.role || "member";
+        
+        await addMember(projectId, member.email, role);
+      }
+      
+      // Cập nhật danh sách thành viên project
+      await fetchProjectMembers();
+      
+      enqueueSnackbar("Đã thêm thành viên mới vào dự án", { variant: "success" });
+    } catch (error) {
+      console.error("Lỗi khi thêm thành viên vào project:", error);
+      enqueueSnackbar(`Không thể thêm thành viên vào dự án: ${error.message || 'Lỗi không xác định'}`, { variant: "error" });
+    }
+  };
+  
+  // Xử lý khi thay đổi danh sách thành viên của sprint
+  const handleSprintMembersChange = async (newMembers) => {
+    try {
+      // Lấy danh sách thành viên hiện tại
+      const currentMembers = getCurrentMembers();
+      
+      // Tìm các thành viên mới được thêm vào
+      const addedMembers = newMembers.filter(
+        newMember => !currentMembers.some(
+          currentMember => 
+            (getMemberUser(currentMember)?._id || getMemberUser(currentMember)?.id) === 
+            (newMember._id || newMember.id)
+        )
+      );
+      
+      // Thêm từng thành viên mới vào sprint
+      for (const member of addedMembers) {
+        const userId = member._id || member.id;
+        if (userId) {
+          await addMemberToSprint(projectId, sprintId, { userId });
+        }
+      }
+      
+      setRefresh(prev => prev + 1);
+      enqueueSnackbar("Đã cập nhật thành viên sprint", { variant: "success" });
+    } catch (error) {
+      console.error("Lỗi khi cập nhật thành viên sprint:", error);
+      enqueueSnackbar("Không thể cập nhật thành viên", { variant: "error" });
+    }
+  };
+
+  // Render ActionButtons trong Return
+  const renderActionButtons = () => {
+    // Kiểm tra quyền chỉnh sửa và xóa sprint
+    const canEdit = canEditSprint(sprint?.project);
+    const canDelete = canDeleteSprint(sprint?.project);
+    
+    return (
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          variant="contained"
+          color="primary"
+          size="small"
+          startIcon={<TaskIcon />}
+          onClick={() => navigate(`/projects/${projectId}/tasks?sprint=${sprintId}`)}
+        >
+          XEM CÔNG VIỆC
+        </Button>
+        <ActionButtons
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onEdit={handleOpenEditDialog}
+          onDelete={handleOpenDeleteDialog}
+          editTooltip="Bạn không có quyền chỉnh sửa sprint này"
+          deleteTooltip="Bạn không có quyền xóa sprint này"
+          useIcons={false}
+          variant="outlined"
+        />
+      </Box>
+    );
   };
 
   if (loading) {
@@ -454,16 +655,7 @@ const SprintDetail = () => {
         <Typography variant="h4" component="h1">
           {sprint.name}
         </Typography>
-        <ActionButtons
-          canEdit={canEditSprint(sprint?.project)}
-          canDelete={canDeleteSprint(sprint?.project)}
-          onEdit={handleOpenEditDialog}
-          onDelete={handleOpenDeleteDialog}
-          editTooltip="Bạn không có quyền chỉnh sửa sprint này"
-          deleteTooltip="Bạn không có quyền xóa sprint này"
-          useIcons={false}
-          variant="outlined"
-        />
+        {renderActionButtons()}
       </Box>
 
       <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
@@ -535,72 +727,57 @@ const SprintDetail = () => {
       </Paper>
 
       {/* Phần Thành viên Sprint */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 2,
-        }}
-      >
-        <Typography variant="h5">Thành viên Sprint</Typography>
-        {canManageSprintMembers(sprint) && (
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<PersonAddIcon />}
-            onClick={handleOpenAddMemberDialog}
-          >
-            Thêm thành viên
-          </Button>
-        )}
-      </Box>
-
-      {loadingMembers ? (
-        <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
-          <CircularProgress size={24} />
+      <Paper elevation={1} sx={{ p: 3, mb: 4 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          <Typography variant="h5" fontWeight="500">Thành viên Sprint</Typography>
+          {canManageSprintMembers(sprint) && (
+            <Button
+              variant="contained"
+              color="primary"
+              size="small"
+              startIcon={<PersonAddIcon />}
+              onClick={handleOpenAddMemberDialog}
+            >
+              THÊM THÀNH VIÊN
+            </Button>
+          )}
         </Box>
-      ) : sprintMembers && sprintMembers.length > 0 ? (
-        <Card sx={{ mb: 4 }}>
+
+        {loadingMembers ? (
+          <Box sx={{ display: "flex", justifyContent: "center", my: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : getCurrentMembers().length > 0 ? (
           <List>
-            {sprintMembers.map((member) => (
-              <ListItem
-                key={member.user._id}
-                secondaryAction={
-                  canManageSprintMembers(sprint) && (
-                    <IconButton
-                      edge="end"
-                      color="error"
-                      onClick={() => handleRemoveMember(member.user._id)}
-                      size="small"
-                    >
-                      <PersonRemoveIcon fontSize="small" />
-                    </IconButton>
-                  )
-                }
-              >
-                <ListItemAvatar>
-                  <Avatar alt={member.user.name} src={member.user.avatar}>
-                    {member.user.name.charAt(0)}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={member.user.name}
-                  secondary={member.user.email}
+            {getCurrentMembers().map((member) => {
+              const userInfo = getMemberUser(member);
+              return (
+                <MemberItem
+                  key={userInfo?._id || userInfo?.id}
+                  user={userInfo}
+                  member={member}
+                  canRemove={canManageSprintMembers(sprint)}
+                  onRemove={handleRemoveMember}
+                  creatorId={sprint.createdBy}
                 />
-              </ListItem>
-            ))}
+              );
+            })}
           </List>
-        </Card>
-      ) : (
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="body1" align="center">
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 3 }}>
+            <Typography variant="body1" color="text.secondary">
               Chưa có thành viên nào trong sprint này. Hãy thêm thành viên!
             </Typography>
-          </CardContent>
-        </Card>
-      )}
+          </Box>
+        )}
+      </Paper>
 
       {sprint && (
         <SprintFormDialog
@@ -615,38 +792,33 @@ const SprintDetail = () => {
       )}
 
       {/* Dialog thêm thành viên */}
-      <Dialog open={openAddMemberDialog} onClose={handleCloseAddMemberDialog}>
-        <DialogTitle>Thêm thành viên vào Sprint</DialogTitle>
-        <DialogContent>
-          <Autocomplete
-            options={availableUsers || []}
-            getOptionLabel={(option) => `${option.name} (${option.email})`}
-            value={selectedUser}
-            onChange={(event, newValue) => setSelectedUser(newValue)}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Thành viên"
-                fullWidth
-                margin="normal"
-              />
-            )}
-            sx={{ minWidth: 300, mt: 1 }}
-          />
-          <Typography variant="caption" color="textSecondary">
-            Nếu người dùng chưa thuộc dự án, họ sẽ tự động được thêm vào dự án.
+      <Dialog 
+        open={openAddMemberDialog} 
+        onClose={handleCloseAddMemberDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>Thêm thành viên vào Sprint</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Chọn thành viên để thêm vào sprint. Người dùng chưa thuộc dự án sẽ tự động được thêm vào dự án với vai trò Thành viên.
           </Typography>
+          
+          {loadingProjectMembers ? (
+            <Box sx={{ display: "flex", justifyContent: "center", my: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <SprintMemberSelection
+              sprintMembers={[]}
+              onSprintMembersChange={handleSprintMembersChange}
+              projectMembers={projectMembers}
+              onAddToProject={handleAddToProject}
+            />
+          )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAddMemberDialog}>Hủy</Button>
-          <Button
-            onClick={handleAddMember}
-            color="primary"
-            variant="contained"
-            disabled={!selectedUser}
-          >
-            Thêm thành viên
-          </Button>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseAddMemberDialog} color="inherit">Đóng</Button>
         </DialogActions>
       </Dialog>
 

@@ -1,217 +1,122 @@
 import React, { useState, useEffect } from "react";
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
+  List,
+  ListItem,
+  ListItemText,
   Chip,
-  Avatar,
-  AvatarGroup,
   CircularProgress,
-  Alert,
 } from "@mui/material";
-import { format, isAfter, isBefore, addDays } from "date-fns";
-import { vi } from "date-fns/locale";
 import { useAuth } from "../../contexts/AuthContext";
-import { getProjectTasks } from "../../api/taskApi";
+import { getSprintTasks } from "../../api/taskApi";
+import DateTimeDisplay from "../common/DateTimeDisplay";
 
-const UpcomingTasks = ({ projectId }) => {
+const UpcomingTasks = ({ projectId, sprintId }) => {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const { user } = useAuth();
 
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        setLoading(true);
-        const response = await getProjectTasks(projectId);
-        if (response.success) {
-          // Filter tasks that are due within the next 7 days and not completed
-          const now = new Date();
-          const nextWeek = addDays(now, 7);
-          const upcomingTasks = response.data.filter(
-            (task) =>
-              task.status !== "done" &&
-              isAfter(new Date(task.dueDate), now) &&
-              isBefore(new Date(task.dueDate), nextWeek)
-          );
-          setTasks(upcomingTasks);
-        } else {
-          throw new Error(response.message);
-        }
-      } catch (err) {
-        console.error("Error fetching upcoming tasks:", err);
-        setError(err.message || "Không thể tải danh sách công việc");
-      } finally {
-        setLoading(false);
-      }
-    };
+    fetchTasks();
+  }, [projectId, sprintId]);
 
-    if (projectId) {
-      fetchTasks();
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      
+      // Kiểm tra projectId và sprintId trước khi gọi API
+      if (!projectId || !sprintId) {
+        console.log("Missing projectId or sprintId", { projectId, sprintId });
+        setTasks([]);
+        setLoading(false);
+        return;
+      }
+      
+      const response = await getSprintTasks(projectId, sprintId);
+      console.log("UpcomingTasks - API Response:", response);
+      
+      // Lấy đúng mảng dữ liệu từ response
+      const taskData = response.data || response;
+      
+      // Kiểm tra taskData có phải là mảng không
+      if (!Array.isArray(taskData)) {
+        console.log("Data is not an array:", taskData);
+        setTasks([]);
+        return;
+      }
+      
+      // Lọc các task có dueDate trong tương lai và sắp xếp theo ngày
+      const upcomingTasks = taskData
+        .filter((task) => task.dueDate && new Date(task.dueDate) > new Date())
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+        .slice(0, 5); // Chỉ lấy 5 task gần nhất
+      
+      setTasks(upcomingTasks);
+    } catch (error) {
+      console.error("Error fetching upcoming tasks:", error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
     }
-  }, [projectId]);
+  };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" p={3}>
-        <CircularProgress />
+      <Box display="flex" justifyContent="center" p={2}>
+        <CircularProgress size={24} />
       </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mt: 2 }}>
-        {error}
-      </Alert>
     );
   }
 
   if (tasks.length === 0) {
     return (
-      <Alert severity="info" sx={{ mt: 2 }}>
-        Không có công việc nào sắp đến hạn.
-      </Alert>
+      <Box p={2}>
+        <Typography variant="body2" color="text.secondary">
+          Không có công việc sắp tới
+        </Typography>
+      </Box>
     );
   }
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "high":
-        return { bg: "#ffebee", color: "#c62828" };
-      case "medium":
-        return { bg: "#fff8e1", color: "#f57c00" };
-      case "low":
-        return { bg: "#e8f5e9", color: "#2e7d32" };
-      default:
-        return { bg: "#f5f5f5", color: "#757575" };
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "todo":
-        return { bg: "#e3f2fd", color: "#1976d2" };
-      case "inProgress":
-        return { bg: "#fff8e1", color: "#f57c00" };
-      case "review":
-        return { bg: "#f3e5f5", color: "#7b1fa2" };
-      case "done":
-        return { bg: "#e8f5e9", color: "#2e7d32" };
-      default:
-        return { bg: "#f5f5f5", color: "#757575" };
-    }
-  };
-
   return (
-    <Box>
+    <List>
       {tasks.map((task) => (
-        <Card
-          key={task._id}
-          sx={{
-            mb: 2,
-            transition: "transform 0.2s",
-            "&:hover": {
-              transform: "translateY(-2px)",
-              boxShadow: 3,
-            },
-          }}
-        >
-          <CardContent>
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="flex-start"
-              mb={2}
-            >
+        <ListItem key={task._id}>
+          <ListItemText
+            primary={
+              <Box display="flex" alignItems="center" gap={1}>
+                <Typography variant="subtitle2">{task.title}</Typography>
+                <Chip
+                  label={task.status}
+                  size="small"
+                  color={
+                    task.status === "completed"
+                      ? "success"
+                      : task.status === "in_progress"
+                      ? "primary"
+                      : "default"
+                  }
+                />
+              </Box>
+            }
+            secondary={
               <Box>
-                <Typography variant="h6" gutterBottom>
-                  {task.name}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}
-                >
+                <Typography variant="body2" color="text.secondary">
                   {task.description}
                 </Typography>
+                <Box display="flex" alignItems="center" gap={1} mt={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    Hạn hoàn thành:
+                  </Typography>
+                  <DateTimeDisplay date={task.dueDate} format="dd/MM/yyyy" />
+                </Box>
               </Box>
-
-              <Box display="flex" gap={1}>
-                <Chip
-                  label={
-                    {
-                      todo: "Chưa bắt đầu",
-                      inProgress: "Đang thực hiện",
-                      review: "Đang kiểm tra",
-                      done: "Hoàn thành",
-                    }[task.status]
-                  }
-                  size="small"
-                  sx={{
-                    bgcolor: getStatusColor(task.status).bg,
-                    color: getStatusColor(task.status).color,
-                  }}
-                />
-                <Chip
-                  label={
-                    {
-                      low: "Thấp",
-                      medium: "Trung bình",
-                      high: "Cao",
-                    }[task.priority]
-                  }
-                  size="small"
-                  sx={{
-                    bgcolor: getPriorityColor(task.priority).bg,
-                    color: getPriorityColor(task.priority).color,
-                  }}
-                />
-              </Box>
-            </Box>
-
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Dự án: {task.project?.name}
-                </Typography>
-                <br />
-                <Typography variant="caption" color="text.secondary">
-                  Hạn:{" "}
-                  {format(new Date(task.dueDate), "dd/MM/yyyy", { locale: vi })}
-                </Typography>
-              </Box>
-
-              {task.assignees?.length > 0 && (
-                <AvatarGroup max={3}>
-                  {task.assignees.map((assignee) => (
-                    <Avatar
-                      key={assignee._id}
-                      alt={assignee.name}
-                      src={assignee.avatar}
-                      sx={{ width: 24, height: 24 }}
-                    >
-                      {assignee.name.charAt(0)}
-                    </Avatar>
-                  ))}
-                </AvatarGroup>
-              )}
-            </Box>
-          </CardContent>
-        </Card>
+            }
+          />
+        </ListItem>
       ))}
-    </Box>
+    </List>
   );
 };
 

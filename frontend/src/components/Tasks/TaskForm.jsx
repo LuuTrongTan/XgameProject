@@ -70,7 +70,7 @@ const VisuallyHiddenInput = styled("input")({
   width: 1,
 });
 
-const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
+const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
@@ -83,6 +83,7 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
     assignees: [],
     estimatedHours: 0,
     project: projectId,
+    sprint: sprintId,
     tags: [],
     syncWithCalendar: false,
     calendarType: "google",
@@ -111,6 +112,7 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
         assignees: task.assignees?.map((a) => a._id) || [],
         estimatedHours: task.estimatedHours || 0,
         project: task.project || projectId,
+        sprint: task.sprint || sprintId,
         tags: task.tags || [],
         syncWithCalendar: task.syncWithCalendar || false,
         calendarType: task.calendarType || "google",
@@ -126,12 +128,13 @@ const TaskForm = ({ open, onClose, onSave, task, projectId }) => {
         assignees: [],
         estimatedHours: 0,
         project: projectId,
+        sprint: sprintId,
         tags: [],
         syncWithCalendar: false,
         calendarType: "google",
       });
     }
-  }, [task, projectId]);
+  }, [task, projectId, sprintId]);
 
   useEffect(() => {
     fetchUsers();

@@ -29,14 +29,14 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel }) => {
     try {
       if (comment?._id) {
         await api.put(
-          `/api/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`,
+          `/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`,
           {
             content,
           }
         );
         await ActivityService.logCommentUpdated(content);
       } else {
-        await api.post(`/api/projects/${projectId}/tasks/${taskId}/comments`, {
+        await api.post(`/projects/${projectId}/tasks/${taskId}/comments`, {
           content,
         });
         await ActivityService.logCommentCreated(content);
@@ -60,7 +60,7 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel }) => {
       setLoading(true);
       try {
         await api.delete(
-          `/api/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`
+          `/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`
         );
         await ActivityService.logCommentDeleted(content);
         onSubmit();

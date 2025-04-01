@@ -110,10 +110,14 @@ export const updateMemberRole = async (projectId, memberId, role) => {
   }
 };
 
-// Get tasks for a specific project
-export const getProjectTasks = async (projectId) => {
+// Get tasks for a specific project (deprecated - use getSprintTasks from taskApi.js instead)
+export const getProjectTasks = async (projectId, sprintId) => {
   try {
-    const response = await API.get(`/tasks?project=${projectId}`);
+    if (!sprintId) {
+      throw new Error("sprintId is required to fetch tasks");
+    }
+    
+    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks`);
     if (response && response.data && response.data.success) {
       return response.data.data;
     }
@@ -124,13 +128,14 @@ export const getProjectTasks = async (projectId) => {
   }
 };
 
-// Create a new task for a project
-export const createProjectTask = async (projectId, taskData) => {
+// Create a new task for a project (deprecated - use createTask from taskApi.js instead)
+export const createProjectTask = async (projectId, sprintId, taskData) => {
   try {
-    const response = await API.post("/tasks", {
-      ...taskData,
-      projectId,
-    });
+    if (!sprintId) {
+      throw new Error("sprintId is required to create a task");
+    }
+    
+    const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks`, taskData);
     return response.data;
   } catch (error) {
     console.error("Error creating project task:", error);
@@ -138,13 +143,14 @@ export const createProjectTask = async (projectId, taskData) => {
   }
 };
 
-// Cập nhật task trong project
-export const updateProjectTask = async (projectId, taskId, taskData) => {
+// Cập nhật task trong project (deprecated - use updateTask from taskApi.js instead)
+export const updateProjectTask = async (projectId, sprintId, taskId, taskData) => {
   try {
-    const response = await API.put(`/tasks/${taskId}`, {
-      ...taskData,
-      projectId,
-    });
+    if (!sprintId) {
+      throw new Error("sprintId is required to update a task");
+    }
+    
+    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`, taskData);
     return response.data;
   } catch (error) {
     console.error("Error updating task:", error);
@@ -152,23 +158,28 @@ export const updateProjectTask = async (projectId, taskId, taskData) => {
   }
 };
 
-// Xóa task trong project
-export const deleteProjectTask = async (projectId, taskId) => {
+// Xóa task trong project (deprecated - use deleteTask from taskApi.js instead)
+export const deleteProjectTask = async (projectId, sprintId, taskId) => {
   try {
-    const response = await API.delete(`/projects/${projectId}/tasks/${taskId}`);
+    if (!sprintId) {
+      throw new Error("sprintId is required to delete a task");
+    }
+    
+    const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`);
     return response.data;
   } catch (error) {
     throw error;
   }
 };
 
-// Cập nhật trạng thái của task (di chuyển giữa các cột)
-export const updateTaskStatus = async (projectId, taskId, status) => {
+// Cập nhật trạng thái của task (deprecated - use updateTaskStatus from taskApi.js instead)
+export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
   try {
-    const response = await API.patch(`/tasks/${taskId}/status`, {
-      status,
-      projectId,
-    });
+    if (!sprintId) {
+      throw new Error("sprintId is required to update task status");
+    }
+    
+    const response = await API.patch(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/status`, { status });
     return response.data;
   } catch (error) {
     console.error("Error updating task status:", error);
@@ -194,6 +205,50 @@ export const restoreProject = async (projectId) => {
     return response.data;
   } catch (error) {
     console.error("Error restoring project:", error);
+    throw error;
+  }
+};
+
+/**
+ * Xóa thành viên khỏi dự án
+ * @param {string} projectId - ID của dự án
+ * @param {string} memberId - ID của thành viên cần xóa
+ * @returns {Promise<Object>} - Kết quả từ API
+ */
+export const removeMemberFromProject = async (projectId, memberId) => {
+  try {
+    const response = await API.delete(`/projects/${projectId}/members/${memberId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error removing member from project:', error);
+    throw error.response?.data || error;
+  }
+};
+
+/**
+ * Lấy danh sách thành viên của dự án
+ * @param {string} projectId - ID của dự án
+ * @returns {Promise<Object>} - Danh sách thành viên từ API
+ */
+export const getProjectMembers = async (projectId) => {
+  try {
+    // Thay vì gọi API endpoint không tồn tại, lấy dữ liệu từ project
+    const response = await getProjectById(projectId);
+    
+    if (response && response.success && response.data && response.data.members) {
+      return {
+        success: true,
+        data: response.data.members
+      };
+    }
+    
+    return {
+      success: false,
+      message: "Không thể lấy thành viên dự án",
+      data: []
+    };
+  } catch (error) {
+    console.error('Error fetching project members:', error);
     throw error;
   }
 };

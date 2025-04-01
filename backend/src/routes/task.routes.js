@@ -34,46 +34,29 @@ const upload = multer({ dest: "uploads/" });
 
 /**
  * @swagger
- * /tasks:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks:
  *   get:
- *     summary: Lấy danh sách công việc
+ *     summary: Lấy danh sách công việc của sprint
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: query
+ *       - in: path
  *         name: projectId
+ *         required: true
  *         schema:
  *           type: string
- *       - in: query
- *         name: status
+ *       - in: path
+ *         name: sprintId
+ *         required: true
  *         schema:
  *           type: string
- *           enum: [todo, in_progress, review, done]
- *       - in: query
- *         name: priority
- *         schema:
- *           type: string
- *           enum: [low, medium, high]
- *       - in: query
- *         name: assignee
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Danh sách công việc
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Task'
  */
-router.get("/", protect, getTasks);
+router.get("/projects/:projectId/sprints/:sprintId/tasks", protect, getTasks);
 
 /**
  * @swagger
- * /tasks/{id}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
  *   get:
  *     summary: Lấy thông tin chi tiết công việc
  *     tags: [Tasks]
@@ -81,28 +64,42 @@ router.get("/", protect, getTasks);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     responses:
- *       200:
- *         description: Chi tiết công việc
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Task'
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.get("/:id", protect, getTaskById);
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, getTaskById);
 
 /**
  * @swagger
- * /tasks:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks:
  *   post:
- *     summary: Tạo công việc mới
+ *     summary: Tạo công việc mới trong sprint
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
  *     requestBody:
  *       required: true
  *       content:
@@ -112,17 +109,10 @@ router.get("/:id", protect, getTaskById);
  *             required:
  *               - title
  *               - description
- *               - projectId
  *             properties:
  *               title:
  *                 type: string
- *                 minLength: 3
- *                 maxLength: 200
  *               description:
- *                 type: string
- *                 minLength: 10
- *                 maxLength: 2000
- *               projectId:
  *                 type: string
  *               priority:
  *                 type: string
@@ -143,19 +133,12 @@ router.get("/:id", protect, getTaskById);
  *               dueDate:
  *                 type: string
  *                 format: date
- *     responses:
- *       201:
- *         description: Công việc đã được tạo
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Task'
  */
-router.post("/", protect, checkPermission(PERMISSIONS.CREATE_TASK), createTask);
+router.post("/projects/:projectId/sprints/:sprintId/tasks", protect, checkPermission(PERMISSIONS.CREATE_TASK), createTask);
 
 /**
  * @swagger
- * /tasks/{id}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
  *   put:
  *     summary: Cập nhật công việc
  *     tags: [Tasks]
@@ -163,42 +146,26 @@ router.post("/", protect, checkPermission(PERMISSIONS.CREATE_TASK), createTask);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *                 minLength: 3
- *                 maxLength: 200
- *               description:
- *                 type: string
- *                 minLength: 10
- *                 maxLength: 2000
- *               priority:
- *                 type: string
- *                 enum: [low, medium, high]
- *               status:
- *                 type: string
- *                 enum: [todo, in_progress, review, done]
- *               estimatedTime:
- *                 type: number
- *               dueDate:
- *                 type: string
- *                 format: date
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.put("/:id", protect, updateTask);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, updateTask);
 
 /**
  * @swagger
- * /tasks/{id}/assign:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/assign:
  *   post:
  *     summary: Gán công việc cho thành viên
  *     tags: [Tasks]
@@ -206,61 +173,26 @@ router.put("/:id", protect, updateTask);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - assignees
- *             properties:
- *               assignees:
- *                 type: array
- *                 items:
- *                   type: string
- */
-router.post("/:id/assign", protect, assignTask);
-
-/**
- * @swagger
- * /tasks/{id}/comments:
- *   post:
- *     summary: Thêm bình luận
- *     tags: [Tasks]
- *     security:
- *       - bearerAuth: []
- *     parameters:
  *       - in: path
- *         name: id
+ *         name: sprintId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - content
- *             properties:
- *               content:
- *                 type: string
- *               mentions:
- *                 type: array
- *                 items:
- *                   type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.post("/:id/comments", protect, addTaskComment);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", protect, assignTask);
 
 /**
  * @swagger
- * /tasks/{id}/attachments:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments:
  *   post:
  *     summary: Upload file đính kèm
  *     tags: [Tasks]
@@ -268,89 +200,58 @@ router.post("/:id/comments", protect, addTaskComment);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
 router.post(
-  "/:id/attachments",
+  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments",
   protect,
   upload.single("file"),
   uploadAttachment
 );
+
 /**
  * @swagger
- * /tasks/{id}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}:
  *   delete:
  *     summary: Xóa một công việc
- *     description: Xóa một công việc dựa trên ID của nó. Yêu cầu quyền Admin hoặc Project Manager.
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
- *         description: ID của công việc cần xóa
  *         schema:
  *           type: string
- *     responses:
- *       200:
- *         description: Xóa công việc thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Công việc đã bị xóa"
- *       404:
- *         description: Công việc không tồn tại
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Công việc không tồn tại"
- *       500:
- *         description: Lỗi máy chủ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Lỗi khi xóa công việc"
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.delete("/:id", protect, deleteTask);
+router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, deleteTask);
 
 /**
  * @swagger
- * /tasks/{id}/status:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/status:
  *   put:
  *     summary: Cập nhật trạng thái công việc
  *     tags: [Tasks]
@@ -358,28 +259,53 @@ router.delete("/:id", protect, deleteTask);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [todo, in_progress, review, done]
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.put("/:id/status", protect, updateStatus);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protect, updateStatus);
 
 /**
  * @swagger
- * /tasks/{id}/tags:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/comments:
+ *   post:
+ *     summary: Thêm bình luận
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, addTaskComment);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/tags:
  *   post:
  *     summary: Thêm tag cho công việc
  *     tags: [Tasks]
@@ -387,27 +313,26 @@ router.put("/:id/status", protect, updateStatus);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - tag
- *             properties:
- *               tag:
- *                 type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.post("/:id/tags", protect, addTag);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/tags", protect, addTag);
 
 /**
  * @swagger
- * /tasks/{id}/tags/{tag}:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/tags/{tag}:
  *   delete:
  *     summary: Xóa tag khỏi công việc
  *     tags: [Tasks]
@@ -415,7 +340,17 @@ router.post("/:id/tags", protect, addTag);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
  *         required: true
  *         schema:
  *           type: string
@@ -425,11 +360,11 @@ router.post("/:id/tags", protect, addTag);
  *         schema:
  *           type: string
  */
-router.delete("/:id/tags/:tag", protect, removeTag);
+router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId/tags/:tag", protect, removeTag);
 
 /**
  * @swagger
- * /tasks/{id}/sync-calendar:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/sync-calendar:
  *   post:
  *     summary: Đồng bộ với Google Calendar/Outlook
  *     tags: [Tasks]
@@ -437,28 +372,26 @@ router.delete("/:id/tags/:tag", protect, removeTag);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - calendarType
- *             properties:
- *               calendarType:
- *                 type: string
- *                 enum: [google, outlook]
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.post("/:id/sync-calendar", protect, syncWithGoogleCalendar);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/sync-calendar", protect, syncWithGoogleCalendar);
 
 /**
  * @swagger
- * /tasks/{id}/estimated-time:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/estimated-time:
  *   put:
  *     summary: Cập nhật thời gian dự kiến
  *     tags: [Tasks]
@@ -466,35 +399,26 @@ router.post("/:id/sync-calendar", protect, syncWithGoogleCalendar);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - estimatedTime
- *             properties:
- *               estimatedTime:
- *                 type: number
- *                 minimum: 0
- *     responses:
- *       200:
- *         description: Cập nhật thành công
- *       400:
- *         description: Dữ liệu không hợp lệ
- *       403:
- *         description: Không có quyền cập nhật
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.put("/:id/estimated-time", protect, updateEstimatedTime);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/estimated-time", protect, updateEstimatedTime);
 
 /**
  * @swagger
- * /tasks/{id}/time-stats:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/time-stats:
  *   get:
  *     summary: Lấy thống kê thời gian của task
  *     tags: [Tasks]
@@ -502,23 +426,26 @@ router.put("/:id/estimated-time", protect, updateEstimatedTime);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     responses:
- *       200:
- *         description: Thống kê thời gian
- *       403:
- *         description: Không có quyền truy cập
- *       404:
- *         description: Không tìm thấy task
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.get("/:id/time-stats", protect, getTaskTimeStats);
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/time-stats", protect, getTaskTimeStats);
 
 /**
  * @swagger
- * /tasks/{id}/progress:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/progress:
  *   put:
  *     summary: Cập nhật tiến độ công việc
  *     tags: [Tasks]
@@ -526,51 +453,43 @@ router.get("/:id/time-stats", protect, getTaskTimeStats);
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: projectId
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - progress
- *             properties:
- *               progress:
- *                 type: number
- *                 minimum: 0
- *                 maximum: 100
- *     responses:
- *       200:
- *         description: Cập nhật thành công
- *       400:
- *         description: Dữ liệu không hợp lệ
- *       403:
- *         description: Không có quyền cập nhật
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.put("/:id/progress", protect, updateProgress);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/progress", protect, updateProgress);
 
 /**
  * @swagger
- * /tasks/upcoming:
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/upcoming:
  *   get:
  *     summary: Lấy danh sách công việc sắp tới
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Danh sách công việc sắp tới
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Task'
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
  */
-router.get("/upcoming", protect, getUpcomingTasks);
+router.get("/projects/:projectId/sprints/:sprintId/tasks/upcoming", protect, getUpcomingTasks);
 
 export default router;

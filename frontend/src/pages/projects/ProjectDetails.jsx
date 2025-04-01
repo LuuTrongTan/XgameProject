@@ -48,6 +48,7 @@ import {
   addMember,
   archiveProject,
   restoreProject,
+  removeMemberFromProject,
 } from "../../api/projectApi";
 import { getSprints } from "../../api/sprintApi";
 import { useSnackbar } from "notistack";
@@ -57,6 +58,8 @@ import CustomAvatar from "../../components/common/Avatar";
 import BackButton from "../../components/common/BackButton";
 import ActionButtons from "../../components/common/ActionButtons";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
+import MemberSelection from "../../components/common/MemberSelection";
+import MemberItem from "../../components/common/MemberItem";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -72,6 +75,7 @@ const ProjectDetails = () => {
   const [loadingSprints, setLoadingSprints] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
   const [openCreateSprintDialog, setOpenCreateSprintDialog] = useState(false);
+  const [members, setMembers] = useState([]);
 
   // Debug log - Kiểm tra user
   console.log("ProjectDetails - user từ useAuth:", user);
@@ -138,6 +142,7 @@ const ProjectDetails = () => {
           description: response.data.description,
           status: response.data.status || "Active",
         });
+        setMembers(response.data.members);
       }
     } catch (err) {
       console.error("Error fetching project details:", err);
@@ -411,6 +416,68 @@ const ProjectDetails = () => {
     handleCloseCreateSprintDialog();
   };
 
+  const handleMembersChange = async (newMembers) => {
+    try {
+      // Lọc ra các thành viên mới được thêm vào
+      const addedMembers = newMembers.filter(
+        newMember => !members.some(
+          member => (member.id || member.email) === (newMember.id || newMember.email)
+        )
+      );
+
+      // Thêm từng thành viên mới vào project
+      for (const member of addedMembers) {
+        if (member.status === 'pending') {
+          // Gửi lời mời qua email
+          await inviteMember(project._id, member.email, member.role);
+        } else {
+          // Thêm trực tiếp
+          await addMember(project._id, member.email, member.role);
+        }
+      }
+
+      // Cập nhật lại thông tin project
+      const updatedProject = await getProjectById(project._id);
+      setProject(updatedProject.data);
+      setMembers(updatedProject.data.members);
+      
+      enqueueSnackbar('Thêm thành viên thành công', { variant: 'success' });
+    } catch (error) {
+      console.error('Error updating members:', error);
+      enqueueSnackbar(error.message || 'Có lỗi xảy ra khi thêm thành viên', { variant: 'error' });
+    }
+  };
+
+  // Thêm hàm canRemoveProjectMember
+  const canRemoveProjectMember = (project, memberId) => {
+    if (!project || !user) return false;
+    
+    // Không thể xóa owner
+    if (project.owner === memberId) return false;
+    
+    // Admin hoặc Project Manager có thể xóa thành viên
+    if (project.owner === user._id) return true;
+    
+    const currentUserMember = project.members.find(m => m.user._id === user._id);
+    return currentUserMember && (currentUserMember.role === ROLES.PROJECT_MANAGER || currentUserMember.role === ROLES.ADMIN);
+  };
+  
+  // Thêm hàm handleRemoveMember
+  const handleRemoveMember = async (memberId) => {
+    try {
+      // Gọi API xóa thành viên
+      await removeMemberFromProject(projectId, memberId);
+      
+      // Cập nhật UI - lấy lại thông tin dự án sau khi xóa thành viên
+      fetchProjectDetails();
+      
+      enqueueSnackbar("Đã xóa thành viên khỏi dự án", { variant: "success" });
+    } catch (error) {
+      console.error("Error removing member:", error);
+      enqueueSnackbar(error.message || "Không thể xóa thành viên", { variant: "error" });
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <Box
@@ -491,84 +558,19 @@ const ProjectDetails = () => {
     >
       <DialogTitle>Thêm thành viên</DialogTitle>
       <DialogContent>
-        <Stack spacing={2} sx={{ mt: 2 }}>
-          <ToggleButtonGroup
-            value={inviteForm.method}
-            exclusive
-            onChange={handleInviteMethodChange}
-            sx={{ mb: 2, width: "100%" }}
-          >
-            <ToggleButton value="direct" sx={{ width: "50%" }}>
-              <PersonAddIcon sx={{ mr: 1 }} />
-              Thêm trực tiếp
-            </ToggleButton>
-            <ToggleButton value="email" sx={{ width: "50%" }}>
-              <EmailIcon sx={{ mr: 1 }} />
-              Gửi lời mời
-            </ToggleButton>
-          </ToggleButtonGroup>
-
-          <TextField
-            label="Email"
-            fullWidth
-            value={inviteForm.email}
-            onChange={(e) =>
-              setInviteForm({ ...inviteForm, email: e.target.value })
-            }
-            error={Boolean(
-              inviteForm.email && !validateEmail(inviteForm.email)
-            )}
-            helperText={
-              inviteForm.email && !validateEmail(inviteForm.email)
-                ? "Email không hợp lệ"
-                : ""
-            }
+        <Box sx={{ mt: 2 }}>
+          <MemberSelection
+            members={members}
+            onMembersChange={handleMembersChange}
+            showRoleSelection={true}
+            mode="all"
+            title="Thêm thành viên vào dự án"
+            excludeCurrentUser={true}
           />
-          <TextField
-            select
-            label="Vai trò"
-            fullWidth
-            value={inviteForm.role}
-            onChange={(e) =>
-              setInviteForm({ ...inviteForm, role: e.target.value })
-            }
-          >
-            <MenuItem value={ROLES.PROJECT_MANAGER}>
-              {getRoleName(ROLES.PROJECT_MANAGER)}
-            </MenuItem>
-            <MenuItem value={ROLES.MEMBER}>
-              {getRoleName(ROLES.MEMBER)}
-            </MenuItem>
-          </TextField>
-
-          {inviteForm.method === "direct" && (
-            <Typography variant="body2" color="text.secondary">
-              * Người dùng sẽ được thêm trực tiếp vào dự án nếu đã có tài khoản
-              trong hệ thống.
-            </Typography>
-          )}
-
-          {inviteForm.method === "email" && (
-            <Typography variant="body2" color="text.secondary">
-              * Một email mời sẽ được gửi đến địa chỉ này với liên kết để tham
-              gia dự án.
-            </Typography>
-          )}
-        </Stack>
+        </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => setInviteDialogOpen(false)}>Hủy</Button>
-        <Button
-          variant="contained"
-          onClick={handleInviteMember}
-          disabled={
-            !canAddMembers(project) ||
-            !validateEmail(inviteForm.email) ||
-            loading
-          }
-        >
-          {loading ? <CircularProgress size={24} /> : "Thêm thành viên"}
-        </Button>
+        <Button onClick={() => setInviteDialogOpen(false)}>Đóng</Button>
       </DialogActions>
     </Dialog>
   );
@@ -735,14 +737,6 @@ const ProjectDetails = () => {
               </Box>
             </Box>
             <Stack direction="row" spacing={1}>
-              <Button
-                variant="contained"
-                startIcon={<TimelineIcon />}
-                onClick={() => navigate(`/projects/${projectId}/sprints`)}
-              >
-                Quản lý Sprint
-              </Button>
-
               {!project.isArchived ? (
                 canArchiveProject(project) ? (
                   <Button
@@ -892,36 +886,14 @@ const ProjectDetails = () => {
                   </Box>
                   <Stack spacing={2}>
                     {project.members?.map((member) => (
-                      <Box
+                      <MemberItem
                         key={member.user._id}
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Avatar
-                            src={member.user.avatar}
-                            alt={member.user.name}
-                          >
-                            {member.user.name?.charAt(0)}
-                          </Avatar>
-                          <Box>
-                            <Typography>{member.user.name}</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {member.user.email}
-                            </Typography>
-                          </Box>
-                        </Box>
-                        <Chip
-                          label={getRoleName(member.role)}
-                          size="small"
-                          sx={{ bgcolor: "#f5f5f5" }}
-                        />
-                      </Box>
+                        user={member.user}
+                        member={member}
+                        canRemove={canRemoveProjectMember(project, member.user._id)}
+                        onRemove={(userId) => handleRemoveMember(userId)}
+                        creatorId={project.owner}
+                      />
                     ))}
                   </Stack>
                 </CardContent>
