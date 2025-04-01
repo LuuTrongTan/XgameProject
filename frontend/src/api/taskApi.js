@@ -58,16 +58,16 @@ export const createTask = async (projectId, sprintId, taskData) => {
       return { success: false, message: 'ID dự án không hợp lệ hoặc bị thiếu' };
     }
 
-    if (!sprintId) {
-      console.error('Error: Sprint ID is missing or empty');
-      return { success: false, message: 'ID sprint không hợp lệ hoặc bị thiếu' };
+    if (!sprintId || sprintId === 'default') {
+      console.error('Error: Valid Sprint ID is required');
+      return { success: false, message: 'Vui lòng tạo và chọn một sprint trước khi tạo công việc' };
     }
 
     // Kiểm tra nếu sprintId là một object thì lấy _id hoặc id
     let processedSprintId;
     if (typeof sprintId === 'object' && sprintId !== null) {
       processedSprintId = sprintId._id || sprintId.id;
-      if (!processedSprintId) {
+      if (!processedSprintId || processedSprintId === 'default') {
         console.error('Invalid sprint object:', sprintId);
         return { success: false, message: 'Đối tượng sprint không chứa ID hợp lệ' };
       }

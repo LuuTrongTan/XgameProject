@@ -50,28 +50,41 @@ const ActionButtons = ({
 
   // Kiểm tra null/undefined với các handler
   const handleEdit = (event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
     if (onEdit && typeof onEdit === "function") {
       onEdit(event);
     }
+    return false;
   };
 
   const handleDelete = (event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
     if (onDelete && typeof onDelete === "function") {
       onDelete(event);
     }
+    return false;
   };
 
   // IconButton style - sử dụng icon nhỏ
   if (useIcons) {
     return (
-      <Box sx={{ display: "flex", ...sx }}>
+      <Box sx={{ display: "flex", ...sx }} onClick={(e) => e.stopPropagation()}>
         {canEdit && (
           <Tooltip title={editTooltip}>
             <IconButton
               color="primary"
               onClick={handleEdit}
               size={size}
-              sx={{ mr: 1 }}
+              sx={{ 
+                mr: 1,
+                pointerEvents: 'auto'
+              }}
             >
               <EditIcon fontSize={size === "small" ? "small" : "medium"} />
             </IconButton>
@@ -79,7 +92,12 @@ const ActionButtons = ({
         )}
         {canDelete && (
           <Tooltip title={deleteTooltip}>
-            <IconButton color="error" onClick={handleDelete} size={size}>
+            <IconButton 
+              color="error" 
+              onClick={handleDelete} 
+              size={size}
+              sx={{ pointerEvents: 'auto' }}
+            >
               <DeleteIcon fontSize={size === "small" ? "small" : "medium"} />
             </IconButton>
           </Tooltip>

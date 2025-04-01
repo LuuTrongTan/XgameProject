@@ -8,6 +8,7 @@ import { calendar } from "../config/google.config.js";
 import fs from "fs";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { ROLES } from "../config/constants.js";
+import mongoose from "mongoose";
 
 // Validate dữ liệu đầu vào
 const validateTaskData = (data) => {
@@ -81,8 +82,13 @@ const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
 // Lấy danh sách công việc
 export const getTasks = async (req, res) => {
   try {
+    console.log("=== DEBUG GET TASKS ===");
+    console.log("Request params:", req.params);
+    console.log("Request URL:", req.originalUrl);
+    console.log("Request query:", req.query);
+    
     const {
-      projectId,
+      projectId: queryProjectId,
       status,
       priority,
       assignee,
@@ -91,6 +97,13 @@ export const getTasks = async (req, res) => {
       endDate,
       milestone,
     } = req.query;
+    
+    // Ưu tiên sử dụng projectId và sprintId từ route params thay vì query
+    const projectId = req.params.projectId || queryProjectId;
+    const sprintId = req.params.sprintId;
+    
+    console.log("Using projectId:", projectId, "sprintId:", sprintId);
+    
     const query = {};
 
     // Lọc theo dự án
@@ -122,8 +135,42 @@ export const getTasks = async (req, res) => {
       if (startDate) query.dueDate.$gte = new Date(startDate);
       if (endDate) query.dueDate.$lte = new Date(endDate);
     }
+    
+    let tasks = [];
+    
+    // Nếu có sprintId, kiểm tra xem task có thuộc về sprint này không
+    if (sprintId && sprintId !== 'default') {
+      console.log("Fetching tasks for specific sprint:", sprintId);
+      
+      // Lấy sprint để xem danh sách task của sprint
+      const Sprint = mongoose.model('Sprint');
+      const sprint = await Sprint.findById(sprintId);
+      
+      if (!sprint) {
+        return res.status(404).json({
+          success: false,
+          message: "Sprint không tồn tại",
+        });
+      }
+      
+      console.log("Found sprint with", sprint.tasks?.length || 0, "tasks");
+      
+      // Chỉ lấy những task thuộc sprint này
+      if (sprint.tasks && sprint.tasks.length > 0) {
+        query._id = { $in: sprint.tasks };
+      } else {
+        // Nếu sprint không có task nào, trả về mảng rỗng
+        return res.json({
+          success: true,
+          data: [],
+          message: "Sprint này chưa có task nào"
+        });
+      }
+    }
+    
+    console.log("Final query:", JSON.stringify(query));
 
-    const tasks = await Task.find(query)
+    tasks = await Task.find(query)
       .populate("project", "name status")
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
@@ -132,6 +179,8 @@ export const getTasks = async (req, res) => {
       .populate("milestone", "name dueDate")
       .populate("watchers", "name email avatar")
       .sort({ createdAt: -1 });
+      
+    console.log("Found", tasks.length, "tasks");
 
     // Thêm thống kê cho mỗi task
     const tasksWithStats = await Promise.all(
@@ -231,6 +280,24 @@ export const getTaskById = async (req, res) => {
 // Tạo công việc mới
 export const createTask = async (req, res) => {
   try {
+    console.log("=== DEBUG CREATE TASK ===");
+    console.log("Request params:", req.params);
+    console.log("Request body:", req.body);
+    
+    // Lấy projectId và sprintId từ URL hoặc body
+    const projectId = req.params.projectId || req.body.projectId;
+    const sprintId = req.params.sprintId || req.body.sprintId;
+    
+    console.log("Using projectId:", projectId, "sprintId:", sprintId);
+    
+    // Kiểm tra sprintId phải tồn tại và khác 'default'
+    if (!sprintId || sprintId === 'default') {
+      return res.status(400).json({
+        success: false,
+        message: "Sprint ID không hợp lệ. Vui lòng chọn một sprint cụ thể.",
+      });
+    }
+    
     const errors = validateTaskData(req.body);
     if (errors.length > 0) {
       return res.status(400).json({
@@ -239,8 +306,26 @@ export const createTask = async (req, res) => {
         errors,
       });
     }
-
-    const project = await Project.findById(req.body.projectId);
+    
+    // Kiểm tra sprint tồn tại
+    const Sprint = mongoose.model('Sprint');
+    const sprint = await Sprint.findById(sprintId);
+    if (!sprint) {
+      return res.status(404).json({
+        success: false,
+        message: "Sprint không tồn tại",
+      });
+    }
+    
+    // Kiểm tra sprint thuộc project
+    if (sprint.project.toString() !== projectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Sprint không thuộc dự án này",
+      });
+    }
+    
+    const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({
         success: false,
@@ -261,7 +346,7 @@ export const createTask = async (req, res) => {
 
     const task = new Task({
       ...req.body,
-      project: req.body.projectId,
+      project: projectId,
       createdBy: req.user.id,
     });
 
@@ -279,6 +364,12 @@ export const createTask = async (req, res) => {
     }
 
     await task.save();
+
+    // Thêm task vào sprint (luôn bắt buộc)
+    console.log("Adding task to sprint:", sprintId);
+    sprint.tasks.push(task._id);
+    await sprint.save();
+    console.log("Task added to sprint successfully");
 
     // Thêm người tạo vào watchers
     task.watchers.push(req.user.id);
@@ -1064,7 +1155,25 @@ export const assignTask = async (req, res) => {
 // Xóa công việc
 export const deleteTask = async (req, res) => {
   try {
-    const taskId = req.params.id;
+    console.log("=== DEBUG DELETE TASK ===");
+    console.log("Request params:", req.params);
+    console.log("Request URL:", req.originalUrl);
+    console.log("Request path:", req.path);
+    
+    // Lấy ID từ params
+    const taskId = req.params.taskId || req.params.id;
+    const projectId = req.params.projectId;
+    const sprintId = req.params.sprintId;
+    
+    console.log("Extracted IDs:", { taskId, projectId, sprintId });
+    
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu ID công việc",
+      });
+    }
+    
     const userId = req.user.id;
 
     // Lấy thông tin task
@@ -1074,11 +1183,19 @@ export const deleteTask = async (req, res) => {
     });
 
     if (!task) {
+      console.log("Task not found with ID:", taskId);
       return res.status(404).json({
         success: false,
         message: "Công việc không tồn tại",
       });
     }
+    
+    console.log("Found task:", {
+      id: task._id,
+      title: task.title,
+      project: task.project?._id,
+      assignees: task.assignees?.length || 0
+    });
 
     const project = task.project;
 
@@ -1143,6 +1260,20 @@ export const deleteTask = async (req, res) => {
         );
         await parentTask.save();
       }
+    }
+    
+    // Cập nhật các sprint chứa task này
+    const Sprint = mongoose.model('Sprint');
+    const sprints = await Sprint.find({ tasks: task._id });
+    
+    console.log(`Found ${sprints.length} sprints containing this task`);
+    
+    for (const sprint of sprints) {
+      console.log(`Removing task from sprint ${sprint._id}`);
+      sprint.tasks = sprint.tasks.filter(
+        (id) => id.toString() !== task._id.toString()
+      );
+      await sprint.save();
     }
 
     await task.deleteOne();
