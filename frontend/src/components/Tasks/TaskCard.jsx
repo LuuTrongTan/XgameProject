@@ -73,34 +73,16 @@ const TaskCardContainer = styled(Card)(({ theme }) => ({
   marginBottom: theme.spacing(2),
   borderRadius: "12px",
   overflow: "visible",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
   transition: "all 0.2s ease-in-out",
   position: "relative",
+  border: "1px solid rgba(255,255,255,0.5)",
+  backgroundColor: "#ffffff",
+  backgroundImage: "linear-gradient(to bottom, #ffffff, #fcfcff)",
   "&:hover": {
-    boxShadow: "0 5px 15px rgba(0,0,0,0.1)",
-    transform: "translateY(-2px)",
-  }
-}));
-
-const DragHandle = styled(Box)(({ theme, isDragging }) => ({
-  display: "flex",
-  alignItems: "center",
-  cursor: isDragging ? "grabbing" : "grab",
-  color: theme.palette.text.secondary,
-  width: "100%",
-  padding: "10px 12px",
-  borderTopLeftRadius: "12px",
-  borderTopRightRadius: "12px",
-  backgroundColor: isDragging ? theme.palette.primary.light + '10' : 'transparent',
-  borderBottom: `1px solid ${theme.palette.grey[200]}`,
-  transition: "all 0.2s ease",
-  "&:hover": {
-    color: theme.palette.primary.main,
-    backgroundColor: theme.palette.grey[50],
-  },
-  "&:active": {
-    cursor: "grabbing",
-    backgroundColor: theme.palette.primary.light + '20',
+    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+    transform: "translateY(-4px)",
+    backgroundImage: "linear-gradient(to bottom, #ffffff, #f0f4ff)",
   }
 }));
 
@@ -108,20 +90,32 @@ const PriorityIndicator = styled(Box)(({ priority, theme }) => ({
   position: "absolute",
   top: 0,
   right: 0,
-  width: "80px",
-  height: "40px",
+  width: "90px",
+  height: "45px",
   borderRadius: "0 12px 0 25px",
   backgroundColor: 
     priority === "high" ? theme.palette.error.main :
     priority === "medium" ? theme.palette.warning.main : 
     theme.palette.success.main,
   zIndex: 10,
-  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+  boxShadow: priority === "high" ? "0 3px 8px rgba(211, 47, 47, 0.3)" : 
+             priority === "medium" ? "0 3px 8px rgba(237, 108, 2, 0.3)" : 
+             "0 3px 8px rgba(46, 125, 50, 0.3)",
+  opacity: 0.85,
+  "&:after": {
+    content: '""',
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: "100%",
+    height: "40%",
+    background: "linear-gradient(to top, rgba(255,255,255,0.2), transparent)",
+  }
 }));
 
 const TaskTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
-  fontSize: "0.95rem",
+  fontSize: "1.05rem",
   marginBottom: theme.spacing(1),
   lineHeight: 1.4,
   display: "-webkit-box",
@@ -183,7 +177,7 @@ const TaskCard = ({
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = useRef();
-
+  
   const {
     attributes,
     listeners,
@@ -199,19 +193,25 @@ const TaskCard = ({
   const cardStyle = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1000 : 1,
+    filter: isDragging ? 'drop-shadow(0 8px 20px rgba(0,0,0,0.25))' : 'none',
   };
   
   // Chi tiết button click handler
   const handleDetailClick = (e) => {
     // Ensure the event doesn't trigger card behavior
-    e.stopPropagation();
-    
-    // Call onEdit directly
-    if (typeof onEdit === 'function') {
-      onEdit(task);
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
     }
+    
+    // Call onEdit directly with the event
+    if (typeof onEdit === 'function') {
+      onEdit(task, e);
+    }
+    
+    return false;
   };
   
   // Handlers
@@ -409,41 +409,32 @@ const TaskCard = ({
 
   return (
     <TaskCardContainer
-        ref={setNodeRef}
+      ref={setNodeRef}
       style={cardStyle}
+      {...attributes}
     >
       <CardContent sx={{ p: 0 }}>
         {/* Drag handle header */}
-        <DragHandle 
-          isDragging={isDragging} 
-        {...attributes}
-        {...listeners}
-      >
-          <DragIndicatorIcon 
-            sx={{ 
-              fontSize: '1.3rem', 
-              mr: 1.5,
-              color: isDragging ? 'primary.main' : 'inherit',
-              animation: isDragging ? 'pulse 1.5s infinite' : 'none',
-              '@keyframes pulse': {
-                '0%': { opacity: 0.6 },
-                '50%': { opacity: 1 },
-                '100%': { opacity: 0.6 }
-              }
-            }} 
-          />
+        <Box 
+          sx={{
+            px: 2, 
+            pt: 2, 
+            pb: 2, 
+            position: 'relative',
+          }}
+        >
           <Typography 
             variant="subtitle1" 
             sx={{ 
               fontWeight: 'bold', 
               flexGrow: 1,
               wordBreak: 'break-word',
-              color: isDragging ? 'primary.main' : 'text.primary',
+              color: 'text.primary',
             }}
           >
             {task.title}
           </Typography>
-        </DragHandle>
+        </Box>
         
         {/* Priority indicator */}
         <Tooltip 
@@ -513,6 +504,11 @@ const TaskCard = ({
                 right: 8, 
                 zIndex: 50,
               }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                return false;
+              }}
             >
               {actionButtons}
             </Box>
@@ -529,27 +525,19 @@ const TaskCard = ({
           >
             {/* User assigned to task */}
             <Box sx={{ display: "flex", alignItems: "center" }}>
-              {task.assignedTo ? (
-                <Tooltip title={task.assignedTo.name || task.assignedTo.username || "Người dùng"}>
-                  <Avatar
-                    src={task.assignedTo.avatar}
-                    alt={task.assignedTo.name || task.assignedTo.username}
-                    sx={{ width: 24, height: 24 }}
-                  />
-                </Tooltip>
+              {task.assignees && task.assignees.length > 0 ? (
+                <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.75rem' } }}>
+                  {task.assignees.map((assignee, index) => (
+                    <Tooltip key={assignee._id || assignee.userId || `assignee-${index}`} title={assignee.name || assignee.email || assignee.user?.name || assignee.user?.email || "Người dùng"}>
+                      <Avatar src={assignee.avatar || assignee.user?.avatar}>
+                        {(assignee.name || assignee.email || assignee.user?.name || assignee.user?.email || "?").charAt(0)}
+                      </Avatar>
+                    </Tooltip>
+                  ))}
+                </AvatarGroup>
               ) : (
-                <Tooltip title="Chưa phân công">
-                  <Avatar
-                  sx={{
-                      width: 24, 
-                      height: 24, 
-                      fontSize: '0.8rem',
-                      bgcolor: 'grey.300',
-                      color: 'grey.700'
-                    }}
-                  >
-                    <PersonOffIcon sx={{ fontSize: '0.9rem' }} />
-                  </Avatar>
+                <Tooltip title="Chưa gán cho ai">
+                  <PersonOffIcon color="disabled" fontSize="small" />
                 </Tooltip>
               )}
             </Box>
@@ -617,11 +605,17 @@ const TaskCard = ({
                 startIcon={<VisibilityIcon />}
                 onClick={handleDetailClick}
                 sx={{
-                  borderRadius: "4px",
+                  borderRadius: "6px",
                   textTransform: "none",
-                  fontSize: "0.7rem",
-                  py: 0.5,
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+                  fontSize: "0.75rem",
+                  py: 0.6,
+                  fontWeight: "bold",
+                  boxShadow: '0 3px 6px rgba(0,0,0,0.15)',
+                  backgroundImage: 'linear-gradient(to right, #1976d2, #2196f3)',
+                  "&:hover": {
+                    boxShadow: '0 4px 10px rgba(33, 150, 243, 0.3)',
+                    backgroundImage: 'linear-gradient(to right, #1565c0, #1976d2)',
+                  }
                 }}
               >
                 CHI TIẾT

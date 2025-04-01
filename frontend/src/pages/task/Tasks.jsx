@@ -1,52 +1,54 @@
 import React, { useState, useEffect } from "react";
 import {
-  Box,
   Typography,
+  Box,
   Grid,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Button,
   CircularProgress,
+  Tabs,
+  Tab,
   IconButton,
+  Menu,
+  MenuItem,
+  TextField,
+  Select,
+  FormControl,
+  InputLabel,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  Chip,
   Stack,
-  Divider,
   Snackbar,
   Alert,
-  Avatar,
-  AvatarGroup,
+  Paper,
   Tooltip,
-  ToggleButtonGroup,
-  ToggleButton,
+  Chip,
+  InputAdornment,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Tabs,
-  Tab,
+  TableContainer,
+  ToggleButtonGroup,
+  ToggleButton,
+  Divider,
+  Avatar,
+  AvatarGroup,
+  Badge,
+  Breadcrumbs,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
   List,
-  ListItem, 
+  ListItem,
   ListItemText,
   ListItemAvatar,
   ListItemIcon,
-  ListItemSecondaryAction,
-  InputAdornment,
-  Badge,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails
+  ListItemSecondaryAction
 } from "@mui/material";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -118,15 +120,19 @@ const Tasks = () => {
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuth();
   const { canDeleteTask, canEditTask } = usePermissions();
+  
   const [tasks, setTasks] = useState({
     todo: [],
     inProgress: [],
     review: [],
     done: [],
   });
+  const [loading, setLoading] = useState(true);
+  const [showFilter, setShowFilter] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [activeContainer, setActiveContainer] = useState(null);
   const [viewMode, setViewMode] = useState("kanban");
   const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -147,16 +153,16 @@ const Tasks = () => {
     description: "",
     priority: "medium",
     status: "todo",
-    dueDate: "",
+    startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+    dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
     assignees: [],
     tags: [],
+    estimate: "",
   });
   const [newComment, setNewComment] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [detailView, setDetailView] = useState("comments");
-  const [activeId, setActiveId] = useState(null);
-  const [activeContainer, setActiveContainer] = useState(null);
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [detailTab, setDetailTab] = useState(0);
   const [taskComments, setTaskComments] = useState([]);
@@ -166,6 +172,12 @@ const Tasks = () => {
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = React.useRef();
+  const [showActivity, setShowActivity] = useState(false);
+  const [activityData, setActivityData] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [activeTask, setActiveTask] = useState(null);
+  const [hoverInfo, setHoverInfo] = useState(null);
 
   // Initialize sensors at the top level
   const sensors = useSensors(
@@ -348,16 +360,21 @@ const Tasks = () => {
         assignees: newTask.assignees || [],
         tags: newTask.tags || [],
         projectId: projectId,
-        sprint: sprintId
+        sprint: sprintId,
+        estimate: newTask.estimate,
+        startDate: newTask.startDate,
       };
       
       console.log("Formatted task payload:", JSON.stringify(taskPayload, null, 2));
+      console.log("Task status khi gửi lên server:", taskPayload.status);
       
       const result = await createTask(projectId, sprintId, taskPayload);
       if (result.success) {
+        // Cập nhật đúng danh sách tasks dựa trên trạng thái
+        const statusKey = taskPayload.status;
         setTasks((prevTasks) => ({
           ...prevTasks,
-          todo: [...prevTasks.todo, result.data],
+          [statusKey]: [...prevTasks[statusKey], result.data],
         }));
         setOpenCreateDialog(false);
         setNewTask({
@@ -365,9 +382,11 @@ const Tasks = () => {
           description: "",
           priority: "medium",
           status: "todo",
-          dueDate: "",
+          startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+          dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
           assignees: [],
           tags: [],
+          estimate: "",
         });
         showSnackbar(result.message);
       } else {
@@ -634,112 +653,136 @@ const Tasks = () => {
     }
   };
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
+  const handleDragCancel = () => {
+    setIsDragActive(false);
+    setActiveTask(null);
+  };
 
-    if (!active || !over) return;
-
-    const taskId = active.id;
-    const sourceContainer = active.data.current.container;
-    const destinationContainer = over.data.current?.container;
-
-    // Nếu kéo thả trong cùng một container, cập nhật vị trí
-    if (sourceContainer === destinationContainer) {
-      setTasks((prev) => {
-        const updatedTasks = { ...prev };
-        const container = sourceContainer;
-        const oldIndex = updatedTasks[container].findIndex(
-          (task) => task._id === taskId
-        );
-        const newIndex = updatedTasks[container].findIndex(
-          (task) => task._id === over.id
-        );
-
-        // Di chuyển task đến vị trí mới
-        const [movedTask] = updatedTasks[container].splice(oldIndex, 1);
-        updatedTasks[container].splice(newIndex, 0, movedTask);
-
-        return updatedTasks;
-      });
+  const handleDragEnd = async (event, taskId, targetColumnId) => {
+    setIsDragActive(false);
+    
+    if (!activeTask || !targetColumnId || activeTask.sourceColumnId === targetColumnId) {
+      setActiveTask(null);
       return;
     }
-
-    // Nếu kéo thả sang container khác
+    
+    // Map column IDs to statuses
+    const statusMap = {
+      'todo': 'todo',
+      'inProgress': 'inProgress',
+      'review': 'review',
+      'done': 'done'
+    };
+    
+    const newStatus = statusMap[targetColumnId];
+    if (!newStatus) {
+      console.error("Invalid target column ID:", targetColumnId);
+      setActiveTask(null);
+      return;
+    }
+    
+    const taskToUpdate = activeTask.task;
+    if (!taskToUpdate || !taskToUpdate._id) {
+      console.error("No valid task to update");
+      setActiveTask(null);
+      return;
+    }
+    
+    // Optimistically update UI
     try {
-      // Optimistically update UI
-      setTasks((prev) => {
-        const updatedTasks = { ...prev };
-        const taskIndex = updatedTasks[sourceContainer].findIndex(
-          (task) => task._id === taskId
-        );
-
-        if (taskIndex !== -1) {
-          const [movedTask] = updatedTasks[sourceContainer].splice(
-            taskIndex,
-            1
-          );
-          movedTask.status = destinationContainer;
-
-          // Tìm vị trí thả trong container đích
-          const destinationIndex = updatedTasks[destinationContainer].findIndex(
-            (task) => task._id === over.id
-          );
-
-          // Nếu không tìm thấy vị trí thả (thả vào khoảng trống), thêm vào cuối
-          if (destinationIndex === -1) {
-            updatedTasks[destinationContainer].push(movedTask);
-          } else {
-            // Chèn task vào vị trí thả
-            updatedTasks[destinationContainer].splice(
-              destinationIndex,
-              0,
-              movedTask
-            );
-          }
-        }
-
-        return updatedTasks;
-      });
-
-      // Update task status in the backend
-      if (!projectId || !sprintId) {
-        console.error("Missing projectId or sprintId for updateTaskStatus:", { projectId, sprintId, taskId });
-        enqueueSnackbar("Không thể cập nhật trạng thái: Thiếu thông tin dự án hoặc sprint", { variant: "error" });
-        return;
+      // Clone tasks object
+      const updatedTasks = JSON.parse(JSON.stringify(tasks));
+      
+      // Remove task from source column
+      updatedTasks[activeTask.sourceColumnId] = updatedTasks[activeTask.sourceColumnId].filter(
+        t => t._id !== taskToUpdate._id
+      );
+      
+      // Add task to target column with updated status
+      const updatedTask = { ...taskToUpdate, status: newStatus };
+      updatedTasks[targetColumnId].push(updatedTask);
+      
+      // Update state
+      setTasks(updatedTasks);
+      
+      // Update server
+      const result = await updateTaskStatus(
+        projectId,
+        sprintId,
+        taskToUpdate._id,
+        newStatus
+      );
+      
+      if (!result.success) {
+        throw new Error(result.message || "Failed to update task status");
       }
-
-      console.log("Updating task status with params:", { projectId, sprintId, taskId, status: destinationContainer });
-      const result = await updateTaskStatus(projectId, sprintId, taskId, destinationContainer);
-
-      if (result.success) {
-        enqueueSnackbar(result.message, { variant: "success" });
-      } else {
-        throw new Error(result.message);
-      }
+      
+      showSnackbar("Trạng thái công việc đã được cập nhật", "success");
     } catch (error) {
       console.error("Error updating task status:", error);
-      enqueueSnackbar(
-        error.message || "Không thể cập nhật trạng thái. Vui lòng thử lại.",
-        {
-          variant: "error",
-        }
+      showSnackbar(
+        "Không thể cập nhật trạng thái công việc. Vui lòng thử lại.",
+        "error"
       );
-      // Revert the change if the API call fails
+      
+      // Revert changes
       fetchTasks();
+    } finally {
+      setActiveTask(null);
     }
   };
 
-  const handleDragStart = (event) => {
-    const { active } = event;
-    if (active) {
-      setActiveId(active.id);
-      setActiveContainer(active.data.current.container);
+  const handleDragStart = (event, task, sourceColumnId) => {
+    if (!event || !task) {
+      console.warn("Dữ liệu bị thiếu trong handleDragStart:", { event, task });
+      return;
+    }
+    
+    setIsDragActive(true);
+    setActiveTask({
+      task,
+      sourceColumnId
+    });
+    
+    event.dataTransfer.setData('application/json', JSON.stringify({
+      task,
+      sourceColumnId
+    }));
+    
+    if (event.dataTransfer.effectAllowed) {
+      event.dataTransfer.effectAllowed = 'move';
     }
   };
-
-  // Render task card với button từ ActionButtons
+  
+  const handleDragOver = (event, columnId) => {
+    if (!event || !isDragActive || !activeTask) {
+      return;
+    }
+    
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  };
+  
+  // Render task cards cho từng cột
   const renderTaskCards = (columnTasks, status) => {
-    return columnTasks.map((task) => (
+    if (!columnTasks || columnTasks.length === 0) {
+      return (
+        <Box
+          sx={{
+            p: 2,
+            textAlign: "center",
+            color: "text.secondary",
+            backgroundColor: "rgba(0,0,0,0.02)",
+            borderRadius: "10px",
+            mt: 2
+          }}
+        >
+          <Typography variant="body2">Chưa có công việc nào</Typography>
+        </Box>
+      );
+    }
+
+    return columnTasks.map((task, index) => (
       <Box
         key={task._id || `task-${status}-${Math.random().toString(36).substr(2, 9)}`}
         sx={{
@@ -751,6 +794,7 @@ const Tasks = () => {
           "&:hover .action-buttons": {
             opacity: 1,
           },
+          mb: 2
         }}
       >
         <TaskCard
@@ -758,9 +802,7 @@ const Tasks = () => {
           task={task}
           container={status}
           project={project}
-          onEdit={(task) => {
-            handleViewTaskDetail(task);
-          }}
+          onEdit={handleViewTaskDetail}
           onDelete={handleDeleteTask}
           onAddComment={handleAddComment}
           onAddAttachment={handleAddAttachment}
@@ -788,15 +830,7 @@ const Tasks = () => {
                 <ActionButtons
                   canEdit={canEditTask ? canEditTask(task, project) : true}
                   canDelete={canDeleteTask ? canDeleteTask(task, project) : true}
-                  onEdit={(e) => {
-                    if (e) {
-                      e.stopPropagation();
-                      e.preventDefault();
-                    }
-                    setSelectedTask(task);
-                    setOpenEditDialog(true);
-                    return false;
-                  }}
+                  onEdit={(e) => handleEditButtonClick(task, e)}
                   onDelete={(e) => {
                     if (e) {
                       e.stopPropagation();
@@ -805,14 +839,15 @@ const Tasks = () => {
                     handleDeleteTask(task._id);
                     return false;
                   }}
-                  editTooltip="Bạn không có quyền chỉnh sửa công việc này"
-                  deleteTooltip="Bạn không có quyền xóa công việc này"
+                  editTooltip="Chỉnh sửa công việc"
+                  deleteTooltip="Xóa công việc"
                   useIcons={true}
                   size="small"
                 />
               </Box>
             </Box>
           }
+          index={index}
         />
       </Box>
     ));
@@ -835,7 +870,13 @@ const Tasks = () => {
   };
 
   // Hàm xử lý hiển thị chi tiết task
-  const handleViewTaskDetail = async (task) => {
+  const handleViewTaskDetail = async (task, event) => {
+    // Ngăn việc xử lý sự kiện khác nếu có event
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    
     console.log("Opening task detail dialog:", task);
     setSelectedTask(task);
     setOpenDetailDialog(true);
@@ -970,6 +1011,18 @@ const Tasks = () => {
     if (newMode !== null) {
       setViewMode(newMode);
     }
+  };
+
+  // Hàm chỉnh sửa task
+  const handleEditButtonClick = (task, event) => {
+    console.log("Handle edit button click", task);
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    setSelectedTask(task);
+    setOpenEditDialog(true);
+    return false;
   };
 
   if (loading) {
@@ -1116,15 +1169,7 @@ const Tasks = () => {
                     <ActionButtons
                       canEdit={canEditTask ? canEditTask(task, project) : true}
                       canDelete={canDeleteTask ? canDeleteTask(task, project) : true}
-                      onEdit={(e) => {
-                        if (e) {
-                          e.stopPropagation();
-                          e.preventDefault();
-                        }
-                        setSelectedTask(task);
-                        setOpenEditDialog(true);
-                        return false;
-                      }}
+                      onEdit={(e) => handleEditButtonClick(task, e)}
                       onDelete={(e) => {
                         if (e) {
                           e.stopPropagation();
@@ -1133,8 +1178,8 @@ const Tasks = () => {
                         handleDeleteTask(task._id);
                         return false;
                       }}
-                      editTooltip="Bạn không có quyền chỉnh sửa công việc này"
-                      deleteTooltip="Bạn không có quyền xóa công việc này"
+                      editTooltip="Chỉnh sửa công việc"
+                      deleteTooltip="Xóa công việc"
                       useIcons={true}
                       size="small"
                     />
@@ -1211,7 +1256,20 @@ const Tasks = () => {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setOpenCreateDialog(true)}
+          onClick={() => {
+            setNewTask({
+              name: "",
+              description: "",
+              priority: "medium",
+              status: "todo",
+              startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+              dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+              assignees: [],
+              tags: [],
+              estimate: "",
+            });
+            setOpenCreateDialog(true);
+          }}
         >
           Tạo công việc mới
         </Button>
@@ -1305,13 +1363,15 @@ const Tasks = () => {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragCancel={handleDragCancel}
         >
           <Grid container spacing={3}>
             <Grid item xs={12} md={3}>
               <Card
                 sx={{
                   minHeight: "calc(100vh - 300px)",
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "#f8f9fc",
                   borderRadius: "20px",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                   border: "1px solid rgba(66, 165, 245, 0.2)",
@@ -1323,40 +1383,67 @@ const Tasks = () => {
                 }}
               >
                 <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(66, 165, 245, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "12px",
+                        backgroundColor: "rgba(66, 165, 245, 0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr: 2,
+                      }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          color: "#1976d2",
+                          fontWeight: 600,
+                          fontSize: "1.2rem",
+                        }}
+                      >
+                        {tasks.todo.length}
+                      </Typography>
+                    </Box>
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#1976d2",
                         fontWeight: 600,
-                        fontSize: "1.2rem",
+                        color: "#1a1a1a",
+                        fontSize: "1.1rem",
                       }}
                     >
-                      {tasks.todo.length}
+                      Chưa bắt đầu
                     </Typography>
                   </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "todo",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{ 
+                      color: "#1976d2",
+                      '&:hover': {
+                        backgroundColor: "rgba(66, 165, 245, 0.1)"
+                      }
                     }}
                   >
-                    Chưa bắt đầu
-                  </Typography>
+                    <AddIcon />
+                  </IconButton>
                 </Box>
                 <SortableContext
                   items={tasks.todo.map((task) => task._id)}
@@ -1372,7 +1459,7 @@ const Tasks = () => {
               <Card
                 sx={{
                   minHeight: "calc(100vh - 300px)",
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "#f8f9fc",
                   borderRadius: "20px",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                   border: "1px solid rgba(255, 152, 0, 0.2)",
@@ -1384,40 +1471,67 @@ const Tasks = () => {
                 }}
               >
                 <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(255, 152, 0, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "12px",
+                        backgroundColor: "rgba(255, 152, 0, 0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr: 2,
+                      }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          color: "#f57c00",
+                          fontWeight: 600,
+                          fontSize: "1.2rem",
+                        }}
+                      >
+                        {tasks.inProgress.length}
+                      </Typography>
+                    </Box>
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#f57c00",
                         fontWeight: 600,
-                        fontSize: "1.2rem",
+                        color: "#1a1a1a",
+                        fontSize: "1.1rem",
                       }}
                     >
-                      {tasks.inProgress.length}
+                      Đang thực hiện
                     </Typography>
                   </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "inProgress",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{ 
+                      color: "#f57c00",
+                      '&:hover': {
+                        backgroundColor: "rgba(255, 152, 0, 0.1)"
+                      }
                     }}
                   >
-                    Đang thực hiện
-                  </Typography>
+                    <AddIcon />
+                  </IconButton>
                 </Box>
                 <SortableContext
                   items={tasks.inProgress.map((task) => task._id)}
@@ -1433,7 +1547,7 @@ const Tasks = () => {
               <Card
                 sx={{
                   minHeight: "calc(100vh - 300px)",
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "#f8f9fc",
                   borderRadius: "20px",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                   border: "1px solid rgba(171, 71, 188, 0.2)",
@@ -1445,40 +1559,67 @@ const Tasks = () => {
                 }}
               >
                 <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(171, 71, 188, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "12px",
+                        backgroundColor: "rgba(171, 71, 188, 0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr: 2,
+                      }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          color: "#7b1fa2",
+                          fontWeight: 600,
+                          fontSize: "1.2rem",
+                        }}
+                      >
+                        {tasks.review.length}
+                      </Typography>
+                    </Box>
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#7b1fa2",
                         fontWeight: 600,
-                        fontSize: "1.2rem",
+                        color: "#1a1a1a",
+                        fontSize: "1.1rem",
                       }}
                     >
-                      {tasks.review.length}
+                      Đang kiểm tra
                     </Typography>
                   </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "review",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{ 
+                      color: "#7b1fa2",
+                      '&:hover': {
+                        backgroundColor: "rgba(171, 71, 188, 0.1)"
+                      }
                     }}
                   >
-                    Đang kiểm tra
-                  </Typography>
+                    <AddIcon />
+                  </IconButton>
                 </Box>
                 <SortableContext
                   items={tasks.review.map((task) => task._id)}
@@ -1494,7 +1635,7 @@ const Tasks = () => {
               <Card
                 sx={{
                   minHeight: "calc(100vh - 300px)",
-                  backgroundColor: "#ffffff",
+                  backgroundColor: "#f8f9fc",
                   borderRadius: "20px",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                   border: "1px solid rgba(76, 175, 80, 0.2)",
@@ -1506,40 +1647,67 @@ const Tasks = () => {
                 }}
               >
                 <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(76, 175, 80, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "12px",
+                        backgroundColor: "rgba(76, 175, 80, 0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr: 2,
+                      }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          color: "#2e7d32",
+                          fontWeight: 600,
+                          fontSize: "1.2rem",
+                        }}
+                      >
+                        {tasks.done.length}
+                      </Typography>
+                    </Box>
                     <Typography
                       variant="h6"
                       sx={{
-                        color: "#2e7d32",
                         fontWeight: 600,
-                        fontSize: "1.2rem",
+                        color: "#1a1a1a",
+                        fontSize: "1.1rem",
                       }}
                     >
-                      {tasks.done.length}
+                      Hoàn thành
                     </Typography>
                   </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "done",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{ 
+                      color: "#2e7d32",
+                      '&:hover': {
+                        backgroundColor: "rgba(76, 175, 80, 0.1)"
+                      }
                     }}
                   >
-                    Hoàn thành
-                  </Typography>
+                    <AddIcon />
+                  </IconButton>
                 </Box>
                 <SortableContext
                   items={tasks.done.map((task) => task._id)}
@@ -1751,15 +1919,52 @@ const Tasks = () => {
                 <MenuItem key="high" value="high">Cao</MenuItem>
               </Select>
             </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Trạng thái</InputLabel>
+              <Select
+                value={newTask.status}
+                label="Trạng thái"
+                onChange={(e) =>
+                  setNewTask({ ...newTask, status: e.target.value })
+                }
+              >
+                <MenuItem key="todo" value="todo">Chưa bắt đầu</MenuItem>
+                <MenuItem key="inProgress" value="inProgress">Đang thực hiện</MenuItem>
+                <MenuItem key="review" value="review">Đang kiểm tra</MenuItem>
+                <MenuItem key="done" value="done">Hoàn thành</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Thời gian khởi tạo"
+              type="datetime-local"
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              value={newTask.startDate}
+              onChange={(e) =>
+                setNewTask({ ...newTask, startDate: e.target.value })
+              }
+            />
             <TextField
               label="Ngày hết hạn"
-              type="date"
+              type="datetime-local"
               fullWidth
               InputLabelProps={{ shrink: true }}
               value={newTask.dueDate}
               onChange={(e) =>
                 setNewTask({ ...newTask, dueDate: e.target.value })
               }
+            />
+            <TextField
+              label="Ước lượng thời gian (giờ)"
+              type="number"
+              fullWidth
+              value={newTask.estimate}
+              onChange={(e) =>
+                setNewTask({ ...newTask, estimate: e.target.value })
+              }
+              InputProps={{
+                endAdornment: <InputAdornment position="end">giờ</InputAdornment>,
+              }}
             />
             <FormControl fullWidth>
               <InputLabel>Người thực hiện</InputLabel>
@@ -1793,7 +1998,7 @@ const Tasks = () => {
               onChange={(e) =>
                 setNewTask({
                   ...newTask,
-                  tags: e.target.value.split(",").map((tag, index) => tag.trim()),
+                  tags: e.target.value.split(",").map((tag) => tag.trim()),
                 })
               }
             />
@@ -1812,109 +2017,6 @@ const Tasks = () => {
             }
           >
             Tạo
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={openEditDialog}
-        onClose={() => setOpenEditDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Chỉnh sửa công việc</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Tiêu đề"
-              fullWidth
-              value={selectedTask?.name || ""}
-              onChange={(e) =>
-                setSelectedTask({ ...selectedTask, name: e.target.value })
-              }
-            />
-            <TextField
-              label="Mô tả"
-              fullWidth
-              multiline
-              rows={4}
-              value={selectedTask?.description || ""}
-              onChange={(e) =>
-                setSelectedTask({
-                  ...selectedTask,
-                  description: e.target.value,
-                })
-              }
-            />
-            <FormControl fullWidth>
-              <InputLabel>Độ ưu tiên</InputLabel>
-              <Select
-                value={selectedTask?.priority || "medium"}
-                label="Độ ưu tiên"
-                onChange={(e) =>
-                  setSelectedTask({ ...selectedTask, priority: e.target.value })
-                }
-              >
-                <MenuItem key="low" value="low">Thấp</MenuItem>
-                <MenuItem key="medium" value="medium">Trung bình</MenuItem>
-                <MenuItem key="high" value="high">Cao</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              label="Ngày hết hạn"
-              type="date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              value={selectedTask?.dueDate || ""}
-              onChange={(e) =>
-                setSelectedTask({ ...selectedTask, dueDate: e.target.value })
-              }
-            />
-            <FormControl fullWidth>
-              <InputLabel>Người thực hiện</InputLabel>
-              <Select
-                multiple
-                value={selectedTask?.assignees || []}
-                label="Người thực hiện"
-                onChange={(e) =>
-                  setSelectedTask({
-                    ...selectedTask,
-                    assignees: e.target.value,
-                  })
-                }
-              >
-                {sprintMembers.length > 0 ? (
-                  sprintMembers.map((member, index) => (
-                    <MenuItem key={member._id || member.id || `edit-member-${index}`} value={member.user?._id || member.userId}>
-                      {member.user?.name || member.user?.email || member.userName || "Người dùng không xác định"}
-                    </MenuItem>
-                  ))
-                ) : (
-                  project?.members?.map((member, index) => (
-                    <MenuItem key={member._id || `edit-project-member-${index}`} value={member.user?._id}>
-                      {member.user?.name || member.user?.email || "Người dùng không xác định"}
-                    </MenuItem>
-                  ))
-                )}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Tags (phân tách bằng dấu phẩy)"
-              fullWidth
-              value={selectedTask?.tags?.join(", ") || ""}
-              onChange={(e) =>
-                setSelectedTask({
-                  ...selectedTask,
-                  tags: e.target.value.split(",").map((tag, index) => tag.trim()),
-                })
-              }
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenEditDialog(false)}>Hủy</Button>
-          <Button onClick={handleEditTask} variant="contained">
-            Cập nhật
           </Button>
         </DialogActions>
       </Dialog>

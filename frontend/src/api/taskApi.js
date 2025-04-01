@@ -99,8 +99,19 @@ export const createTask = async (projectId, sprintId, taskData) => {
 
 // Cập nhật công việc
 export const updateTask = async (projectId, sprintId, taskId, taskData) => {
-  const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`, taskData);
-  return response.data;
+  try {
+    console.log(`Updating task ${taskId} with data:`, taskData);
+    
+    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`, taskData);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating task:", error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || "Không thể cập nhật công việc",
+      error: error
+    };
+  }
 };
 
 // Xóa công việc
@@ -111,8 +122,42 @@ export const deleteTask = async (projectId, sprintId, taskId) => {
 
 // Cập nhật trạng thái công việc
 export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
-  const response = await API.patch(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/status`, { status });
-  return response.data;
+  try {
+    console.log(`Updating task status to: ${status} for task ${taskId}`);
+    
+    // Kiểm tra các tham số
+    if (!projectId || !sprintId || !taskId) {
+      console.error("Missing required parameters:", { projectId, sprintId, taskId });
+      return { 
+        success: false, 
+        message: "Thiếu thông tin cần thiết cho việc cập nhật trạng thái",
+      };
+    }
+    
+    // Đảm bảo status hợp lệ
+    if (!["todo", "inProgress", "review", "done"].includes(status)) {
+      console.error("Invalid status value:", status);
+      return {
+        success: false,
+        message: "Giá trị trạng thái không hợp lệ",
+      };
+    }
+    
+    // Sử dụng API endpoint dành riêng cho việc cập nhật trạng thái
+    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/status`, { 
+      status: status
+    });
+    
+    console.log('Status update response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating task status:", error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || "Không thể cập nhật trạng thái công việc",
+      error: error
+    };
+  }
 };
 
 // Gán công việc

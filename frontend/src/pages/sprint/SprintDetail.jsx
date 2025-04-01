@@ -58,6 +58,7 @@ import {
   removeMemberFromSprint,
   getAvailableUsersForSprint,
   getSprints,
+  updateSprint,
 } from "../../api/sprintApi";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import TaskSelectionDialog from "../../components/sprints/TaskSelectionDialog";
@@ -299,6 +300,41 @@ const SprintDetail = () => {
       fetchSprintMembers();
     }
   }, [sprint, refresh]);
+
+  // Thêm useEffect để tự động cập nhật trạng thái sprint thành "hoàn thành" khi đến hạn
+  useEffect(() => {
+    const autoUpdateSprintStatus = async () => {
+      if (sprint && sprint.status !== 'completed' && sprint.status !== 'cancelled') {
+        const endDate = new Date(sprint.endDate);
+        const now = new Date();
+        
+        // Nếu ngày hiện tại vượt qua ngày kết thúc của sprint
+        if (now > endDate) {
+          try {
+            console.log("Sprint đã hết hạn, đang cập nhật trạng thái...");
+            
+            // Chuẩn bị dữ liệu cập nhật
+            const updatedSprintData = {
+              ...sprint,
+              status: 'completed'
+            };
+            
+            // Gọi API cập nhật sprint
+            const response = await updateSprint(projectId, sprintId, updatedSprintData);
+            
+            if (response.success) {
+              enqueueSnackbar("Sprint đã được tự động cập nhật thành Hoàn thành", { variant: "info" });
+              setRefresh(prev => prev + 1); // Làm mới dữ liệu
+            }
+          } catch (error) {
+            console.error("Lỗi khi tự động cập nhật trạng thái sprint:", error);
+          }
+        }
+      }
+    };
+
+    autoUpdateSprintStatus();
+  }, [sprint, projectId, sprintId]);
 
   // Fetch danh sách thành viên của sprint
   const fetchSprintMembers = async () => {
@@ -1018,6 +1054,7 @@ const SprintDetail = () => {
           sprint={sprint}
           isEditing
           disabled={!canEditSprint(sprint?.project)}
+          showMemberSelection={false}
         />
       )}
 
@@ -1031,7 +1068,7 @@ const SprintDetail = () => {
         <DialogTitle key="add-member-title" sx={{ pb: 1 }}>Thêm thành viên vào Sprint</DialogTitle>
         <DialogContent key="add-member-content" sx={{ pt: 2 }}>
           <Typography key="add-member-text" variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Chọn thành viên để thêm vào sprint. Người dùng chưa thuộc dự án sẽ tự động được thêm vào dự án với vai trò Thành viên.
+            Chỉ có thể thêm những người đã ở trong dự án
           </Typography>
           
           {loadingProjectMembers ? (

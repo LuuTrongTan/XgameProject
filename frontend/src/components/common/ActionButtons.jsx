@@ -50,6 +50,7 @@ const ActionButtons = ({
 
   // Kiểm tra null/undefined với các handler
   const handleEdit = (event) => {
+    console.log("ActionButtons handleEdit called");
     if (event) {
       event.stopPropagation();
       event.preventDefault();
@@ -61,6 +62,7 @@ const ActionButtons = ({
   };
 
   const handleDelete = (event) => {
+    console.log("ActionButtons handleDelete called");
     if (event) {
       event.stopPropagation();
       event.preventDefault();
@@ -74,7 +76,7 @@ const ActionButtons = ({
   // IconButton style - sử dụng icon nhỏ
   if (useIcons) {
     return (
-      <Box sx={{ display: "flex", ...sx }} onClick={(e) => e.stopPropagation()}>
+      <Box sx={{ display: "flex", ...sx }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}>
         {canEdit && (
           <Tooltip title={editTooltip}>
             <IconButton

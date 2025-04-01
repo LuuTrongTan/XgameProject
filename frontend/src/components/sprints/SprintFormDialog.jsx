@@ -11,13 +11,16 @@ import {
   Select,
   MenuItem,
   Box,
+  Typography,
 } from "@mui/material";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { vi } from "date-fns/locale";
+import MemberSelection from "../common/MemberSelection";
 import { createSprint, updateSprint } from "../../api/sprintApi";
 import { useSnackbar } from "notistack";
+import { getProjectMembers } from "../../api/projectApi";
 
 const SprintFormDialog = ({ 
   open, 
@@ -27,7 +30,8 @@ const SprintFormDialog = ({
   sprint, 
   projectId,
   isEditing = false,
-  disabled = false
+  disabled = false,
+  showMemberSelection = true
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const [formData, setFormData] = useState({
@@ -36,8 +40,11 @@ const SprintFormDialog = ({
     startDate: null,
     endDate: null,
     status: "planning",
+    members: [],
   });
   const [loading, setLoading] = useState(false);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [loadingProjectMembers, setLoadingProjectMembers] = useState(false);
 
   useEffect(() => {
     if (sprint) {
@@ -47,6 +54,7 @@ const SprintFormDialog = ({
         startDate: sprint.startDate ? new Date(sprint.startDate) : null,
         endDate: sprint.endDate ? new Date(sprint.endDate) : null,
         status: sprint.status || "planning",
+        members: sprint.members || [],
       });
     } else {
       // Đặt giá trị mặc định cho ngày bắt đầu là ngày hiện tại
@@ -61,9 +69,33 @@ const SprintFormDialog = ({
         startDate: today,
         endDate: endDate,
         status: "planning",
+        members: [],
       });
     }
   }, [sprint]);
+
+  // Fetch project members when dialog opens
+  useEffect(() => {
+    if (open && projectId && showMemberSelection) {
+      fetchProjectMembers();
+    }
+  }, [open, projectId, showMemberSelection]);
+
+  const fetchProjectMembers = async () => {
+    try {
+      setLoadingProjectMembers(true);
+      const response = await getProjectMembers(projectId);
+      if (response.success) {
+        setProjectMembers(response.data);
+      } else {
+        console.error("Không thể lấy danh sách thành viên dự án:", response.message);
+      }
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách thành viên dự án:", error);
+    } finally {
+      setLoadingProjectMembers(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -142,6 +174,13 @@ const SprintFormDialog = ({
     }
   };
 
+  const handleMembersChange = (newMembers) => {
+    setFormData((prev) => ({
+      ...prev,
+      members: newMembers,
+    }));
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>
@@ -200,6 +239,28 @@ const SprintFormDialog = ({
                 <MenuItem value="cancelled">Đã hủy</MenuItem>
               </Select>
             </FormControl>
+
+            {showMemberSelection && (
+              <Box sx={{ mt: 2 }}>
+                <MemberSelection
+                  members={formData.members}
+                  onMembersChange={handleMembersChange}
+                  showRoleSelection={false}
+                  title="Thành viên Sprint"
+                  mode={projectMembers.length > 0 ? "project" : "all"}
+                  projectMembers={projectMembers}
+                  disabled={disabled}
+                />
+                {loadingProjectMembers && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Đang tải danh sách thành viên dự án...
+                  </Typography>
+                )}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Chỉ có thể chọn những người đã tham gia dự án
+                </Typography>
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

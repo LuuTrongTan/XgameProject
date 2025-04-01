@@ -538,17 +538,31 @@ export const updateTask = async (req, res) => {
 // Cập nhật trạng thái
 export const updateStatus = async (req, res) => {
   try {
-    const { task, error } = await checkTaskPermission(
-      req.params.id,
-      req.user.id
-    );
-    if (error) {
-      return res.status(403).json({
+    console.log("=== DEBUG UPDATE STATUS ===");
+    console.log("Request params:", req.params);
+    console.log("Task ID from params:", req.params.taskId);
+    console.log("Request user:", req.user?.id);
+    
+    // Sử dụng taskId từ URL
+    const taskId = req.params.taskId || req.params.id;
+    
+    if (!taskId) {
+      return res.status(400).json({
         success: false,
-        message: error,
+        message: "Task ID is required",
       });
     }
-
+    
+    // Kiểm tra task tồn tại
+    const task = await Task.findById(taskId);
+    
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Công việc không tồn tại",
+      });
+    }
+    
     const { status } = req.body;
     if (!status || !["todo", "inProgress", "review", "done"].includes(status)) {
       return res.status(400).json({
@@ -558,7 +572,7 @@ export const updateStatus = async (req, res) => {
     }
 
     // Kiểm tra dependencies nếu chuyển sang đang thực hiện
-    if (status === "inProgress") {
+    if (status === "inProgress" && typeof task.checkDependencies === 'function') {
       const { canStart, pendingBlockers } = await task.checkDependencies();
       if (!canStart) {
         return res.status(400).json({
@@ -578,14 +592,16 @@ export const updateStatus = async (req, res) => {
     await task.save();
 
     // Gửi thông báo cập nhật trạng thái
-    global.io.emit("task_status_updated", {
-      taskId: task._id,
-      newStatus: status,
-      updater: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
+    if (global.io) {
+      global.io.emit("task_status_updated", {
+        taskId: task._id,
+        newStatus: status,
+        updater: {
+          id: req.user?.id,
+          name: req.user?.name,
+        },
+      });
+    }
 
     res.json({
       success: true,
