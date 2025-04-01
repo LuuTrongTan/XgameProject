@@ -27,6 +27,7 @@ import {
   ListItemAvatar,
   Avatar,
   Autocomplete,
+  LinearProgress,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
@@ -40,6 +41,13 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import PersonRemoveIcon from "@mui/icons-material/PersonRemove";
+import PersonIcon from "@mui/icons-material/Person";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import TodayIcon from "@mui/icons-material/Today";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import TimerIcon from "@mui/icons-material/Timer";
+import GroupIcon from "@mui/icons-material/Group";
+import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import {
   getSprintById,
   deleteSprint,
@@ -49,6 +57,7 @@ import {
   addMemberToSprint,
   removeMemberFromSprint,
   getAvailableUsersForSprint,
+  getSprints,
 } from "../../api/sprintApi";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import TaskSelectionDialog from "../../components/sprints/TaskSelectionDialog";
@@ -79,6 +88,8 @@ const getStatusColor = (status) => {
       return "success";
     case "completed":
       return "secondary";
+    case "cancelled":
+      return "error";
     default:
       return "default";
   }
@@ -92,6 +103,8 @@ const getStatusLabel = (status) => {
       return "Đang thực hiện";
     case "completed":
       return "Hoàn thành";
+    case "cancelled":
+      return "Đã hủy";
     default:
       return status;
   }
@@ -149,6 +162,28 @@ const getPriorityText = (priority) => {
   }
 };
 
+// Tính toán tiến độ sprint dựa trên thời gian
+const calculateTimeProgress = (startDate, endDate) => {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const now = new Date().getTime();
+  
+  if (now <= start) return 0;
+  if (now >= end) return 100;
+  
+  const total = end - start;
+  const elapsed = now - start;
+  return Math.round((elapsed / total) * 100);
+};
+
+// Tính toán tiến độ task hoàn thành
+const calculateTaskProgress = (tasks) => {
+  if (!tasks || tasks.length === 0) return 0;
+  
+  const completedTasks = tasks.filter(task => task.status === 'done').length;
+  return Math.round((completedTasks / tasks.length) * 100);
+};
+
 const SprintDetail = () => {
   const { projectId, sprintId } = useParams();
   const navigate = useNavigate();
@@ -203,6 +238,15 @@ const SprintDetail = () => {
           throw new Error("Không thể tải thông tin dự án");
         }
 
+        // Lấy danh sách sprint để lấy thông tin chính xác về số lượng task
+        const sprintsResponse = await getSprints(projectId);
+        let currentSprintFromList = null;
+        
+        if (sprintsResponse.success && Array.isArray(sprintsResponse.data)) {
+          currentSprintFromList = sprintsResponse.data.find(s => s._id === sprintId);
+          console.log("Sprint từ danh sách:", currentSprintFromList);
+        }
+
         // Lấy thông tin sprint
         const response = await getSprintById(projectId, sprintId);
 
@@ -213,8 +257,15 @@ const SprintDetail = () => {
         // Gắn thông tin project vào sprint để kiểm tra phân quyền
         const sprintData = {
           ...response.data,
-          project: projectData // Đảm bảo sprint có đủ thông tin project
+          project: projectData, // Đảm bảo sprint có đủ thông tin project
         };
+        
+        // Nếu có thông tin từ danh sách sprint, sử dụng số lượng task từ đó
+        if (currentSprintFromList && currentSprintFromList.tasks) {
+          sprintData.tasks = currentSprintFromList.tasks;
+        }
+        
+        console.log("Chi tiết sprint sau khi cập nhật:", sprintData);
         
         // Kiểm tra quyền truy cập sử dụng usePermissions hook
         const hasViewPermission = canViewSprint(sprintData);
@@ -490,11 +541,19 @@ const SprintDetail = () => {
     if (!selectedTask) return;
 
     try {
+      // Hiển thị thông báo rằng tính năng chưa được hỗ trợ
+      enqueueSnackbar("Tính năng gỡ task khỏi sprint chưa được hỗ trợ. Vui lòng liên hệ đội phát triển.", {
+        variant: "warning",
+      });
+      
+      // Đoạn code gọi API - giữ lại nhưng comment lại để tham khảo sau này
+      /* 
       await removeTaskFromSprint(projectId, sprintId, selectedTask._id);
       enqueueSnackbar("Task đã được gỡ khỏi sprint thành công", {
         variant: "success",
       });
       setRefresh((prev) => prev + 1);
+      */
     } catch (error) {
       enqueueSnackbar(error.message || "Không thể gỡ task khỏi sprint", {
         variant: "error",
@@ -582,6 +641,7 @@ const SprintDetail = () => {
     return (
       <Box sx={{ display: 'flex', gap: 1 }}>
         <Button
+          key="view-tasks-button"
           variant="contained"
           color="primary"
           size="small"
@@ -638,84 +698,166 @@ const SprintDetail = () => {
     );
   }
 
+  // Tính toán tiến độ theo thời gian và tiến độ task
+  // CHỈ tính khi sprint không phải null
+  const timeProgress = calculateTimeProgress(sprint.startDate, sprint.endDate);
+  const taskProgress = calculateTaskProgress(sprint.tasks);
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-        <BackButton label="Quay lại" onClick={goBack} />
+      <Box sx={{ display: "flex", alignItems: "center", mb: 3 }} key="back-button-container">
+        <BackButton key="back-button" label="Quay lại" onClick={goBack} />
       </Box>
 
       <Box
+        key="header-container"
         sx={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          mb: 3,
+          flexWrap: "wrap",
+          gap: 2,
+          mb: 4,
         }}
       >
-        <Typography variant="h4" component="h1">
-          {sprint.name}
-        </Typography>
-        {renderActionButtons()}
+        <Box key="header-title">
+          <Typography key="sprint-title" variant="h4" component="h1" gutterBottom>
+            {sprint.name}
+          </Typography>
+          <Chip
+            key="status-chip"
+            label={getStatusLabel(sprint.status)}
+            color={getStatusColor(sprint.status)}
+            size="small"
+            sx={{ mb: 1 }}
+          />
+        </Box>
+        <Box key="action-buttons">
+          {renderActionButtons()}
+        </Box>
       </Box>
 
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
-            <Typography variant="h6" gutterBottom>
-              Mô tả
-            </Typography>
-            <Typography variant="body1" paragraph>
-              {sprint.description}
-            </Typography>
+      <Paper key="sprint-detail-paper" elevation={2} sx={{ p: 3, mb: 4 }}>
+        <Grid key="sprint-detail-grid" container spacing={3}>
+          <Grid key="sprint-detail-left" item xs={12}>
+            <Box key="description-box" sx={{ mb: 3 }}>
+              <Typography key="description-title" variant="h6" gutterBottom>
+                Mô tả
+              </Typography>
+              <Typography key="description-content" variant="body1" sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1 }}>
+                {sprint.description || "Không có mô tả"}
+              </Typography>
+            </Box>
 
             {sprint.goal && (
-              <>
-                <Typography variant="h6" gutterBottom>
+              <Box key="goal-box" sx={{ mb: 3 }}>
+                <Typography key="goal-title" variant="h6" gutterBottom>
                   Mục tiêu
                 </Typography>
-                <Typography variant="body1" paragraph>
+                <Typography key="goal-content" variant="body1" sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1 }}>
                   {sprint.goal}
                 </Typography>
-              </>
+              </Box>
             )}
-          </Grid>
 
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
+            <Card key="info-card" sx={{ mb: 2 }}>
+              <CardContent key="info-card-content">
+                <Typography key="info-title" variant="h6" gutterBottom>
                   Thông tin Sprint
                 </Typography>
-                <Divider sx={{ mb: 2 }} />
+                <Divider key="info-divider-1" sx={{ mb: 2 }} />
 
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Trạng thái
-                    </Typography>
-                    <Chip
-                      label={getStatusLabel(sprint.status)}
-                      color={getStatusColor(sprint.status)}
-                      size="small"
-                      sx={{ mt: 0.5 }}
-                    />
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Thời gian
-                    </Typography>
-                    <Typography variant="body1">
+                <Stack key="info-stack" spacing={2}>
+                  <Box key="time-info">
+                    <Box key="time-label-box" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <CalendarTodayIcon key="time-icon" fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Typography key="time-label" variant="body2" color="text.secondary">
+                        Thời gian
+                      </Typography>
+                    </Box>
+                    <Typography key="time-value" variant="body1">
                       {formatDate(sprint.startDate)} -{" "}
                       {formatDate(sprint.endDate)}
                     </Typography>
                   </Box>
 
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Số lượng task
+                  <Divider key="progress-divider" />
+                  
+                  <Box key="progress-section" sx={{ pt: 1 }}>
+                    <Box key="progress-title-box" sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <TimerIcon key="progress-icon" fontSize="small" color="primary" sx={{ mr: 1 }} />
+                      <Typography key="progress-title" variant="subtitle2">
+                        Tiến trình Sprint
+                      </Typography>
+                    </Box>
+                    
+                    <Box key="time-progress-box" sx={{ mb: 2 }}>
+                      <Box key="time-progress-label" sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, alignItems: 'center' }}>
+                        <Typography key="time-progress-text" variant="body2" color="text.secondary">
+                          Tiến độ thời gian
+                        </Typography>
+                        <Typography key="time-progress-value" variant="body2" fontWeight="medium">
+                          {timeProgress}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        key="time-progress-bar"
+                        variant="determinate" 
+                        value={timeProgress} 
+                        color={timeProgress >= 100 ? "success" : "primary"}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Typography key="time-progress-date" variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                      </Typography>
+                    </Box>
+                    
+                    <Box key="task-progress-box" sx={{ mb: 1 }}>
+                      <Box key="task-progress-label" sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, alignItems: 'center' }}>
+                        <Typography key="task-progress-text" variant="body2" color="text.secondary">
+                          Tiến độ công việc
+                        </Typography>
+                        <Typography key="task-progress-value" variant="body2" fontWeight="medium">
+                          {taskProgress}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        key="task-progress-bar"
+                        variant="determinate" 
+                        value={taskProgress} 
+                        color="success"
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Box key="task-progress-detail" sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, alignItems: 'center' }}>
+                        <Typography key="task-progress-count" variant="caption" color="text.secondary">
+                          {sprint.tasks ? sprint.tasks.filter(task => task.status === 'done').length : 0}/{sprint.tasks ? sprint.tasks.length : 0} task hoàn thành
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+                  
+                  <Divider key="stats-divider" />
+                  
+                  <Box key="members-count-box">
+                    <Box key="members-count-label" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <GroupIcon key="members-count-icon" fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Typography key="members-count-text" variant="body2" color="text.secondary">
+                        Số lượng thành viên
+                      </Typography>
+                    </Box>
+                    <Typography key="members-count-value" variant="body1">
+                      {getCurrentMembers().length} thành viên
                     </Typography>
-                    <Typography variant="body1">
+                  </Box>
+                  
+                  <Box key="tasks-count-box">
+                    <Box key="tasks-count-label" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                      <AssignmentIcon key="tasks-count-icon" fontSize="small" color="action" sx={{ mr: 1 }} />
+                      <Typography key="tasks-count-text" variant="body2" color="text.secondary">
+                        Số lượng task
+                      </Typography>
+                    </Box>
+                    <Typography key="tasks-count-value" variant="body1">
                       {sprint.tasks ? sprint.tasks.length : 0} nhiệm vụ
                     </Typography>
                   </Box>
@@ -727,8 +869,9 @@ const SprintDetail = () => {
       </Paper>
 
       {/* Phần Thành viên Sprint */}
-      <Paper elevation={1} sx={{ p: 3, mb: 4 }}>
+      <Paper key="members-paper" elevation={1} sx={{ p: 3, mb: 4 }}>
         <Box
+          key="members-header"
           sx={{
             display: "flex",
             justifyContent: "space-between",
@@ -736,13 +879,17 @@ const SprintDetail = () => {
             mb: 2,
           }}
         >
-          <Typography variant="h5" fontWeight="500">Thành viên Sprint</Typography>
+          <Box key="members-title-box" sx={{ display: 'flex', alignItems: 'center' }}>
+            <GroupIcon key="members-icon" sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography key="members-title" variant="h5" fontWeight="500">Thành viên Sprint</Typography>
+          </Box>
           {canManageSprintMembers(sprint) && (
             <Button
+              key="add-member-button"
               variant="contained"
               color="primary"
               size="small"
-              startIcon={<PersonAddIcon />}
+              startIcon={<PersonAddIcon key="add-member-icon" />}
               onClick={handleOpenAddMemberDialog}
             >
               THÊM THÀNH VIÊN
@@ -751,16 +898,16 @@ const SprintDetail = () => {
         </Box>
 
         {loadingMembers ? (
-          <Box sx={{ display: "flex", justifyContent: "center", my: 2 }}>
-            <CircularProgress size={24} />
+          <Box key="loading-members" sx={{ display: "flex", justifyContent: "center", my: 2 }}>
+            <CircularProgress key="loading-indicator" size={24} />
           </Box>
         ) : getCurrentMembers().length > 0 ? (
-          <List>
-            {getCurrentMembers().map((member) => {
+          <List key="members-list" sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+            {getCurrentMembers().map((member, index) => {
               const userInfo = getMemberUser(member);
               return (
                 <MemberItem
-                  key={userInfo?._id || userInfo?.id}
+                  key={userInfo?._id || userInfo?.id || `member-${index}`}
                   user={userInfo}
                   member={member}
                   canRemove={canManageSprintMembers(sprint)}
@@ -771,9 +918,92 @@ const SprintDetail = () => {
             })}
           </List>
         ) : (
-          <Box sx={{ textAlign: 'center', py: 3 }}>
-            <Typography variant="body1" color="text.secondary">
+          <Box key="no-members" sx={{ textAlign: 'center', py: 3, bgcolor: 'background.paper', borderRadius: 1 }}>
+            <Typography key="no-members-text" variant="body1" color="text.secondary">
               Chưa có thành viên nào trong sprint này. Hãy thêm thành viên!
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+
+      {/* Phần Nhiệm vụ trong Sprint */}
+      <Paper key="tasks-paper" elevation={1} sx={{ p: 3, mb: 4 }}>
+        <Box
+          key="tasks-header"
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          <Box key="tasks-title-box" sx={{ display: 'flex', alignItems: 'center' }}>
+            <AssignmentIcon key="tasks-icon" sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography key="tasks-title" variant="h5" fontWeight="500">Nhiệm vụ Sprint</Typography>
+          </Box>
+          <Button
+            key="manage-tasks-button"
+            variant="contained"
+            color="primary"
+            size="small"
+            onClick={() => navigate(`/projects/${projectId}/tasks?sprint=${sprintId}`)}
+          >
+            QUẢN LÝ NHIỆM VỤ
+          </Button>
+        </Box>
+
+        {sprint.tasks && sprint.tasks.length > 0 ? (
+          <List key="tasks-list" sx={{ bgcolor: 'background.paper', borderRadius: 1 }}>
+            {sprint.tasks.map((task, index) => (
+              <ListItem
+                key={task._id || `task-${index}`}
+                button
+                onClick={() => handleTaskClick(task._id)}
+                sx={{ 
+                  borderLeft: '4px solid', 
+                  borderColor: getPriorityColor(task.priority) + '.main',
+                  mb: 1,
+                  borderRadius: 1,
+                  '&:hover': { bgcolor: 'action.hover', boxShadow: 1 }
+                }}
+              >
+                <ListItemIcon key={`task-icon-${task._id || index}`}>
+                  {getTaskStatusIcon(task.status)}
+                </ListItemIcon>
+                <ListItemText
+                  key={`task-text-${task._id || index}`}
+                  primary={
+                    <Typography key={`task-title-${task._id || index}`} variant="subtitle2">
+                      {task.title}
+                    </Typography>
+                  }
+                  secondary={
+                    <Typography key={`task-subtitle-${task._id || index}`} variant="body2" color="text.secondary">
+                      {getTaskStatusText(task.status)} - Mức ưu tiên: {getPriorityText(task.priority)}
+                    </Typography>
+                  }
+                />
+                {canManageSprintMembers(sprint) && (
+                  <IconButton
+                    key={`task-remove-${task._id || index}`}
+                    edge="end"
+                    aria-label="remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenRemoveTaskDialog(task);
+                    }}
+                    sx={{ opacity: 0.6, '&:hover': { opacity: 1 } }}
+                  >
+                    <RemoveCircleOutlineIcon key={`task-remove-icon-${task._id || index}`} color="error" />
+                  </IconButton>
+                )}
+              </ListItem>
+            ))}
+          </List>
+        ) : (
+          <Box key="no-tasks" sx={{ textAlign: 'center', py: 3, bgcolor: 'background.paper', borderRadius: 1 }}>
+            <Typography key="no-tasks-text" variant="body1" color="text.secondary">
+              Chưa có nhiệm vụ nào trong sprint này.
             </Typography>
           </Box>
         )}
@@ -798,18 +1028,19 @@ const SprintDetail = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle sx={{ pb: 1 }}>Thêm thành viên vào Sprint</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <DialogTitle key="add-member-title" sx={{ pb: 1 }}>Thêm thành viên vào Sprint</DialogTitle>
+        <DialogContent key="add-member-content" sx={{ pt: 2 }}>
+          <Typography key="add-member-text" variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Chọn thành viên để thêm vào sprint. Người dùng chưa thuộc dự án sẽ tự động được thêm vào dự án với vai trò Thành viên.
           </Typography>
           
           {loadingProjectMembers ? (
-            <Box sx={{ display: "flex", justifyContent: "center", my: 2 }}>
-              <CircularProgress size={24} />
+            <Box key="loading-box" sx={{ display: "flex", justifyContent: "center", my: 2 }}>
+              <CircularProgress key="loading-progress" size={24} />
             </Box>
           ) : (
             <SprintMemberSelection
+              key="member-selection"
               sprintMembers={[]}
               onSprintMembersChange={handleSprintMembersChange}
               projectMembers={projectMembers}
@@ -817,28 +1048,53 @@ const SprintDetail = () => {
             />
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCloseAddMemberDialog} color="inherit">Đóng</Button>
+        <DialogActions key="add-member-actions" sx={{ px: 3, pb: 2 }}>
+          <Button key="close-add-member" onClick={handleCloseAddMemberDialog} color="inherit">Đóng</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openDeleteDialog} onClose={handleCloseDeleteDialog}>
-        <DialogTitle>Xóa Sprint</DialogTitle>
-        <DialogContent>
-          <Typography>
+        <DialogTitle key="delete-title">Xóa Sprint</DialogTitle>
+        <DialogContent key="delete-content">
+          <Typography key="delete-message">
             Bạn có chắc chắn muốn xóa sprint "{sprint?.name}"? Tất cả các nhiệm
             vụ sẽ được gỡ khỏi sprint này, nhưng không bị xóa. Hành động này
             không thể hoàn tác.
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDeleteDialog}>Hủy</Button>
+        <DialogActions key="delete-actions">
+          <Button key="cancel-delete" onClick={handleCloseDeleteDialog}>Hủy</Button>
           <Button
+            key="confirm-delete"
             onClick={handleDeleteSprint}
             color="error"
             disabled={!canDeleteSprint(sprint?.project)}
           >
             Xóa
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog xác nhận gỡ task khỏi sprint */}
+      <Dialog open={openRemoveTaskDialog} onClose={handleCloseRemoveTaskDialog}>
+        <DialogTitle key="dialog-title">Tính năng chưa được hỗ trợ</DialogTitle>
+        <DialogContent key="dialog-content">
+          <Typography key="warning-text" color="warning.main" gutterBottom>
+            Tính năng gỡ task khỏi sprint hiện chưa được hỗ trợ trên backend.
+          </Typography>
+          <Typography key="info-text">
+            Bạn có thể tiếp tục thử chức năng này, nhưng thay đổi sẽ không được lưu lại.
+            Vui lòng liên hệ đội phát triển để triển khai tính năng này.
+          </Typography>
+        </DialogContent>
+        <DialogActions key="dialog-actions">
+          <Button key="cancel-remove-task" onClick={handleCloseRemoveTaskDialog}>Đóng</Button>
+          <Button
+            key="confirm-remove-task"
+            onClick={handleRemoveTask}
+            color="warning"
+          >
+            Thử nghiệm
           </Button>
         </DialogActions>
       </Dialog>

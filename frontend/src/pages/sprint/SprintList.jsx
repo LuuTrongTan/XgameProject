@@ -68,6 +68,8 @@ const getStatusColor = (status) => {
       return "success";
     case "completed":
       return "secondary";
+    case "cancelled":
+      return "error";
     default:
       return "default";
   }
@@ -81,6 +83,8 @@ const getStatusLabel = (status) => {
       return "Đang thực hiện";
     case "completed":
       return "Hoàn thành";
+    case "cancelled":
+      return "Đã hủy";
     default:
       return status;
   }
@@ -106,6 +110,14 @@ const getProgressColor = (progress, status) => {
   if (progress < 50) return "info";
   if (progress < 75) return "warning";
   return "error";
+};
+
+// Tính toán tiến độ task hoàn thành
+const calculateTaskProgress = (tasks) => {
+  if (!tasks || tasks.length === 0) return 0;
+  
+  const completedTasks = tasks.filter(task => task.status === 'done').length;
+  return Math.round((completedTasks / tasks.length) * 100);
 };
 
 const SprintList = () => {
@@ -341,61 +353,75 @@ const SprintList = () => {
         <Box sx={{ 
           borderBottom: 1, 
           borderColor: 'divider',
-          display: 'flex',
           mb: 2
         }}>
-          <Button
-            sx={{
-              borderRadius: 0,
-              borderBottom: statusFilter === 'all' ? 2 : 0,
-              borderColor: statusFilter === 'all' ? 'primary.main' : 'transparent',
-              color: statusFilter === 'all' ? 'primary.main' : 'text.primary',
-              px: 3,
-              py: 1
-            }}
-            onClick={() => setStatusFilter('all')}
-          >
-            TẤT CẢ
-          </Button>
-          <Button
-            sx={{
-              borderRadius: 0,
-              borderBottom: statusFilter === 'active' ? 2 : 0,
-              borderColor: statusFilter === 'active' ? 'primary.main' : 'transparent',
-              color: statusFilter === 'active' ? 'primary.main' : 'text.primary',
-              px: 3,
-              py: 1
-            }}
-            onClick={() => setStatusFilter('active')}
-          >
-            ĐANG HOẠT ĐỘNG
-          </Button>
-          <Button
-            sx={{
-              borderRadius: 0,
-              borderBottom: statusFilter === 'completed' ? 2 : 0,
-              borderColor: statusFilter === 'completed' ? 'primary.main' : 'transparent',
-              color: statusFilter === 'completed' ? 'primary.main' : 'text.primary',
-              px: 3,
-              py: 1
-            }}
-            onClick={() => setStatusFilter('completed')}
-          >
-            HOÀN THÀNH
-          </Button>
-          <Button
-            sx={{
-              borderRadius: 0,
-              borderBottom: statusFilter === 'planning' ? 2 : 0,
-              borderColor: statusFilter === 'planning' ? 'primary.main' : 'transparent',
-              color: statusFilter === 'planning' ? 'primary.main' : 'text.primary',
-              px: 3,
-              py: 1
-            }}
-            onClick={() => setStatusFilter('planning')}
-          >
-            LÊN KẾ HOẠCH
-          </Button>
+          <Box sx={{ display: 'flex', overflow: 'auto', whiteSpace: 'nowrap' }}>
+            <Button
+              sx={{
+                borderRadius: 0,
+                borderBottom: statusFilter === 'all' ? 2 : 0,
+                borderColor: statusFilter === 'all' ? 'primary.main' : 'transparent',
+                color: statusFilter === 'all' ? 'primary.main' : 'text.primary',
+                px: 3,
+                py: 1
+              }}
+              onClick={() => setStatusFilter('all')}
+            >
+              TẤT CẢ
+            </Button>
+            <Button
+              sx={{
+                borderRadius: 0,
+                borderBottom: statusFilter === 'planning' ? 2 : 0,
+                borderColor: statusFilter === 'planning' ? 'primary.main' : 'transparent',
+                color: statusFilter === 'planning' ? 'primary.main' : 'text.primary',
+                px: 3,
+                py: 1
+              }}
+              onClick={() => setStatusFilter('planning')}
+            >
+              LÊN KẾ HOẠCH
+            </Button>
+            <Button
+              sx={{
+                borderRadius: 0,
+                borderBottom: statusFilter === 'active' ? 2 : 0,
+                borderColor: statusFilter === 'active' ? 'primary.main' : 'transparent',
+                color: statusFilter === 'active' ? 'primary.main' : 'text.primary',
+                px: 3,
+                py: 1
+              }}
+              onClick={() => setStatusFilter('active')}
+            >
+              ĐANG HOẠT ĐỘNG
+            </Button>
+            <Button
+              sx={{
+                borderRadius: 0,
+                borderBottom: statusFilter === 'completed' ? 2 : 0,
+                borderColor: statusFilter === 'completed' ? 'primary.main' : 'transparent',
+                color: statusFilter === 'completed' ? 'primary.main' : 'text.primary',
+                px: 3,
+                py: 1
+              }}
+              onClick={() => setStatusFilter('completed')}
+            >
+              HOÀN THÀNH
+            </Button>
+            <Button
+              sx={{
+                borderRadius: 0,
+                borderBottom: statusFilter === 'cancelled' ? 2 : 0,
+                borderColor: statusFilter === 'cancelled' ? 'primary.main' : 'transparent',
+                color: statusFilter === 'cancelled' ? 'primary.main' : 'text.primary',
+                px: 3,
+                py: 1
+              }}
+              onClick={() => setStatusFilter('cancelled')}
+            >
+              ĐÃ HỦY
+            </Button>
+          </Box>
         </Box>
         
         <TextField
@@ -520,7 +546,7 @@ const SprintList = () => {
 
                       <Box sx={{ mb: 2 }}>
                         <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                          Tiến độ Sprint
+                          Tiến độ thời gian
                         </Typography>
                         <LinearProgress 
                           variant="determinate" 
@@ -530,6 +556,23 @@ const SprintList = () => {
                         />
                         <Typography variant="caption" color="text.secondary" align="right" display="block">
                           {progress}%
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                          Tiến độ sprint
+                        </Typography>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={sprint.tasks && sprint.tasks.length > 0 ? calculateTaskProgress(sprint.tasks) : 0} 
+                          color="success"
+                          sx={{ height: 8, borderRadius: 4, mb: 0.5 }}
+                        />
+                        <Typography variant="caption" color="text.secondary" align="right" display="block">
+                          {sprint.tasks && sprint.tasks.length > 0 ? 
+                            `${calculateTaskProgress(sprint.tasks)}% (${sprint.tasks.filter(task => task.status === 'done').length}/${sprint.tasks.length})` : 
+                            '0% (0/0)'}
                         </Typography>
                       </Box>
 
