@@ -19,18 +19,23 @@ const CustomAvatar = ({ user, project, sx, variant, ...props }) => {
     return item.name ? item.name.charAt(0).toUpperCase() : "?";
   };
 
+  const avatarSrc = getAvatarSrc();
+  const hasCustomAvatar = avatarSrc !== "/placeholder.png";
+
   return (
     <MuiAvatar
-      src={getAvatarSrc()}
+      src={avatarSrc}
       alt={user?.name || project?.name || "Avatar"}
       variant={variant || "square"}
       sx={{
-        bgcolor: "primary.main",
+        bgcolor: hasCustomAvatar ? undefined : "primary.main",
         width: "100%",
         height: "100%",
         borderRadius:
           variant === "rounded" ? "8px" : variant === "square" ? "0" : "50%",
         overflow: "hidden",
+        border: hasCustomAvatar ? 'none' : '2px solid #2196f3',
+        color: hasCustomAvatar ? undefined : 'white',
         "& img": {
           objectFit: "cover",
           width: "100%",

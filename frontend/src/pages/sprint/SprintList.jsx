@@ -18,11 +18,30 @@ import {
   CircularProgress,
   Alert,
   Stack,
+  TextField,
+  MenuItem,
+  LinearProgress,
+  InputAdornment,
+  Avatar,
+  AvatarGroup,
+  CardActionArea,
+  Paper,
+  Badge,
+  OutlinedInput,
+  Select,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AssignmentIcon from "@mui/icons-material/Assignment";
+import SearchIcon from "@mui/icons-material/Search";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import PersonIcon from "@mui/icons-material/Person";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { getSprints, deleteSprint, getProjectById } from "../../api/sprintApi";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import { useSnackbar } from "notistack";
@@ -67,11 +86,34 @@ const getStatusLabel = (status) => {
   }
 };
 
+// Tính toán tiến độ sprint dựa trên ngày bắt đầu và kết thúc
+const calculateProgress = (startDate, endDate) => {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const now = new Date().getTime();
+  
+  if (now <= start) return 0;
+  if (now >= end) return 100;
+  
+  const total = end - start;
+  const elapsed = now - start;
+  return Math.round((elapsed / total) * 100);
+};
+
+// Lấy màu cho thanh tiến độ
+const getProgressColor = (progress, status) => {
+  if (status === "completed") return "success";
+  if (progress < 50) return "info";
+  if (progress < 75) return "warning";
+  return "error";
+};
+
 const SprintList = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const [sprints, setSprints] = useState([]);
+  const [filteredSprints, setFilteredSprints] = useState([]);
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -83,10 +125,37 @@ const SprintList = () => {
   const { user } = useAuth();
   const { canCreateSprint, canEditSprint, canDeleteSprint, canViewSprint } =
     usePermissions();
+    
+  // Thêm state cho tìm kiếm và lọc
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     fetchData();
-  }, [projectId]);
+  }, [projectId, refresh]);
+  
+  // Effect để lọc sprint theo search và filter
+  useEffect(() => {
+    if (!sprints) return;
+    
+    let result = [...sprints];
+    
+    // Lọc theo trạng thái nếu không phải "all"
+    if (statusFilter !== "all") {
+      result = result.filter(sprint => sprint.status === statusFilter);
+    }
+    
+    // Lọc theo từ khóa tìm kiếm
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      result = result.filter(sprint => 
+        sprint.name.toLowerCase().includes(searchLower) || 
+        (sprint.description && sprint.description.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    setFilteredSprints(result);
+  }, [sprints, searchTerm, statusFilter]);
 
   const fetchData = async () => {
     try {
@@ -109,6 +178,7 @@ const SprintList = () => {
           canViewSprint(sprint)
         );
         setSprints(filteredSprints);
+        setFilteredSprints(filteredSprints);
       } else {
         setError(sprintsResponse.message || "Không thể tải danh sách sprint");
       }
@@ -213,6 +283,14 @@ const SprintList = () => {
     navigate(`/projects/${projectId}`);
   };
 
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
+  };
+  
+  const handleStatusFilterChange = (event) => {
+    setStatusFilter(event.target.value);
+  };
+
   const hasManagePermission = (projectRole) => {
     return projectRole === "admin" || projectRole === "project_manager";
   };
@@ -230,7 +308,7 @@ const SprintList = () => {
       <BackButton onClick={handleBackClick} />
 
       <Box
-        sx={{ display: "flex", justifyContent: "space-between", mb: 4, mt: 2 }}
+        sx={{ display: "flex", justifyContent: "space-between", mb: 2, mt: 2 }}
       >
         <Typography variant="h4" component="h1">
           Danh sách Sprint
@@ -251,11 +329,89 @@ const SprintList = () => {
                 onClick={handleOpenCreateDialog}
                 disabled={project?.projectRole === "member"}
               >
-                TẠO SPRINT MỚI
+                Tạo Sprint mới
               </Button>
             </span>
           </Tooltip>
         )}
+      </Box>
+      
+      {/* Bộ lọc kiểu mới - giống như trang danh sách dự án */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ 
+          borderBottom: 1, 
+          borderColor: 'divider',
+          display: 'flex',
+          mb: 2
+        }}>
+          <Button
+            sx={{
+              borderRadius: 0,
+              borderBottom: statusFilter === 'all' ? 2 : 0,
+              borderColor: statusFilter === 'all' ? 'primary.main' : 'transparent',
+              color: statusFilter === 'all' ? 'primary.main' : 'text.primary',
+              px: 3,
+              py: 1
+            }}
+            onClick={() => setStatusFilter('all')}
+          >
+            TẤT CẢ
+          </Button>
+          <Button
+            sx={{
+              borderRadius: 0,
+              borderBottom: statusFilter === 'active' ? 2 : 0,
+              borderColor: statusFilter === 'active' ? 'primary.main' : 'transparent',
+              color: statusFilter === 'active' ? 'primary.main' : 'text.primary',
+              px: 3,
+              py: 1
+            }}
+            onClick={() => setStatusFilter('active')}
+          >
+            ĐANG HOẠT ĐỘNG
+          </Button>
+          <Button
+            sx={{
+              borderRadius: 0,
+              borderBottom: statusFilter === 'completed' ? 2 : 0,
+              borderColor: statusFilter === 'completed' ? 'primary.main' : 'transparent',
+              color: statusFilter === 'completed' ? 'primary.main' : 'text.primary',
+              px: 3,
+              py: 1
+            }}
+            onClick={() => setStatusFilter('completed')}
+          >
+            HOÀN THÀNH
+          </Button>
+          <Button
+            sx={{
+              borderRadius: 0,
+              borderBottom: statusFilter === 'planning' ? 2 : 0,
+              borderColor: statusFilter === 'planning' ? 'primary.main' : 'transparent',
+              color: statusFilter === 'planning' ? 'primary.main' : 'text.primary',
+              px: 3,
+              py: 1
+            }}
+            onClick={() => setStatusFilter('planning')}
+          >
+            LÊN KẾ HOẠCH
+          </Button>
+        </Box>
+        
+        <TextField
+          placeholder="Tìm sprint theo tên..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+          size="small"
+          sx={{ width: 250 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon color="action" />
+              </InputAdornment>
+            ),
+          }}
+        />
       </Box>
 
       {error && (
@@ -264,115 +420,167 @@ const SprintList = () => {
         </Alert>
       )}
 
-      {sprints.length === 0 && !loading && !error ? (
+      {filteredSprints.length === 0 && !loading && !error ? (
         <Card sx={{ minWidth: 275, mb: 2 }}>
           <CardContent>
-            <Typography variant="h6" align="center" gutterBottom>
-              Dự án chưa có sprint nào.
-            </Typography>
-            {hasManagePermission(project?.projectRole) && (
-              <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-                <Tooltip
-                  title={
-                    project?.projectRole === "member"
-                      ? "Bạn không có quyền tạo sprint mới"
-                      : ""
-                  }
-                >
-                  <span>
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              {searchTerm || statusFilter !== 'all' ? (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Không tìm thấy sprint nào phù hợp với điều kiện tìm kiếm
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Typography variant="h6" gutterBottom>
+                    Dự án chưa có sprint nào.
+                  </Typography>
+                  {hasManagePermission(project?.projectRole) && (
                     <Button
                       variant="contained"
                       color="primary"
                       startIcon={<AddIcon />}
                       onClick={handleOpenCreateDialog}
                       disabled={project?.projectRole === "member"}
+                      sx={{ mt: 2 }}
                     >
-                      TẠO SPRINT ĐẦU TIÊN
+                      Tạo Sprint đầu tiên
                     </Button>
-                  </span>
-                </Tooltip>
-              </Box>
-            )}
+                  )}
+                </>
+              )}
+            </Box>
           </CardContent>
         </Card>
       ) : (
         <Grid container spacing={3}>
-          {sprints.map((sprint) => (
-            <Grid item xs={12} sm={6} md={4} key={sprint._id}>
-              <Card
-                sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  cursor: "pointer",
-                  "&:hover": {
-                    boxShadow: 4,
-                  },
-                }}
-                onClick={() => handleSprintClick(sprint._id)}
-              >
-                <Box
+          {filteredSprints.map((sprint) => {
+            const progress = calculateProgress(sprint.startDate, sprint.endDate);
+            const progressColor = getProgressColor(progress, sprint.status);
+            
+            return (
+              <Grid item xs={12} sm={6} md={4} key={sprint._id}>
+                <Card
                   sx={{
+                    height: "100%",
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    p: 2,
-                    borderBottom: "1px solid rgba(0,0,0,0.1)",
+                    flexDirection: "column",
+                    transition: "all 0.3s ease",
+                    "&:hover": {
+                      transform: "translateY(-4px)",
+                      boxShadow: 6,
+                    },
+                    position: "relative",
+                    borderTop: `4px solid ${sprint.status === 'planning' ? '#2196f3' : sprint.status === 'active' ? '#4caf50' : '#9c27b0'}`,
                   }}
                 >
-                  <Typography variant="h6">{sprint.name}</Typography>
-                  {hasManagePermission(project?.projectRole) && (
-                    <ActionButtons
-                      canEdit={true}
-                      canDelete={true}
-                      onEdit={(e) => handleOpenEditDialog(e, sprint)}
-                      onDelete={(e) => handleOpenDeleteDialog(e, sprint)}
-                      useIcons={true}
-                      size="small"
-                    />
-                  )}
-                </Box>
-                <CardContent sx={{ flexGrow: 1, pt: 1 }}>
-                  <Chip
-                    label={getStatusLabel(sprint.status)}
-                    color={getStatusColor(sprint.status)}
-                    size="small"
-                    sx={{ mb: 2 }}
-                  />
-
-                  <Typography variant="body2" color="text.secondary">
-                    {sprint.description}
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mt: 2,
-                    }}
+                  <CardActionArea 
+                    onClick={() => handleSprintClick(sprint._id)}
+                    sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
                   >
-                    <Typography variant="body2" color="text.secondary">
-                      Từ: {formatDate(sprint.startDate)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Đến: {formatDate(sprint.endDate)}
-                    </Typography>
-                  </Box>
+                    <CardContent sx={{ p: 3, flexGrow: 1 }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1 }}>
+                        <Chip
+                          label={getStatusLabel(sprint.status)}
+                          color={getStatusColor(sprint.status)}
+                          size="small"
+                          sx={{ mb: 1 }}
+                        />
+                        
+                        {hasManagePermission(project?.projectRole) && (
+                          <ActionButtons
+                            canEdit={true}
+                            canDelete={true}
+                            onEdit={(e) => handleOpenEditDialog(e, sprint)}
+                            onDelete={(e) => handleOpenDeleteDialog(e, sprint)}
+                            useIcons={true}
+                            size="small"
+                          />
+                        )}
+                      </Box>
 
-                  <Box sx={{ display: "flex", alignItems: "center", mt: 2 }}>
-                    <AssignmentIcon
-                      fontSize="small"
-                      color="action"
-                      sx={{ mr: 1 }}
-                    />
-                    <Typography variant="body2" color="text.secondary">
-                      {sprint.tasks ? sprint.tasks.length : 0} nhiệm vụ
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+                      <Typography variant="h6" gutterBottom noWrap title={sprint.name}>
+                        {sprint.name}
+                      </Typography>
+
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary"
+                        sx={{
+                          mb: 2,
+                          display: '-webkit-box',
+                          overflow: 'hidden',
+                          WebkitBoxOrient: 'vertical',
+                          WebkitLineClamp: 2,
+                          height: '40px',
+                        }}
+                      >
+                        {sprint.description || 'Không có mô tả'}
+                      </Typography>
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                          Tiến độ Sprint
+                        </Typography>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={progress} 
+                          color={progressColor}
+                          sx={{ height: 8, borderRadius: 4, mb: 0.5 }}
+                        />
+                        <Typography variant="caption" color="text.secondary" align="right" display="block">
+                          {progress}%
+                        </Typography>
+                      </Box>
+
+                      <Divider sx={{ my: 1.5 }} />
+
+                      <Grid container spacing={1}>
+                        <Grid item xs={12}>
+                          <Box sx={{ display: "flex", alignItems: "center" }}>
+                            <CalendarTodayIcon
+                              fontSize="small"
+                              color="action"
+                              sx={{ mr: 1 }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                              {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        
+                        <Grid item xs={6}>
+                          <Box sx={{ display: "flex", alignItems: "center" }}>
+                            <AssignmentIcon
+                              fontSize="small"
+                              color="action"
+                              sx={{ mr: 1 }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                              {sprint.tasks ? sprint.tasks.length : 0} nhiệm vụ
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        
+                        <Grid item xs={6}>
+                          <Box sx={{ display: "flex", alignItems: "center" }}>
+                            <PersonIcon
+                              fontSize="small"
+                              color="action"
+                              sx={{ mr: 1 }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                              {sprint.members ? sprint.members.length : 0} thành viên
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
 

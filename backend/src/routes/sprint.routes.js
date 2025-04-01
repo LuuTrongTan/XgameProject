@@ -11,6 +11,7 @@ import {
   addMemberToSprint,
   removeMemberFromSprint,
   getAvailableUsersForSprint,
+  getUserSprints
 } from "../controllers/sprint.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
@@ -86,6 +87,20 @@ const debugUserInfo = (req, res, next) => {
  *   name: Sprints
  *   description: Quản lý sprint
  */
+
+/**
+ * @swagger
+ * /api/sprints/user:
+ *   get:
+ *     summary: Lấy tất cả sprint của người dùng hiện tại
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách sprint của người dùng
+ */
+router.get("/user", protect, getUserSprints);
 
 /**
  * @swagger

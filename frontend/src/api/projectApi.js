@@ -252,3 +252,42 @@ export const getProjectMembers = async (projectId) => {
     throw error;
   }
 };
+
+/**
+ * Thêm nhiều thành viên vào dự án cùng một lúc
+ * @param {string} projectId - ID của dự án
+ * @param {Array} members - Mảng thành viên cần thêm [{email, role}]
+ * @returns {Promise<Object>} - Kết quả từ API
+ */
+export const addMultipleMembers = async (projectId, members) => {
+  try {
+    const response = await API.post(`/projects/${projectId}/members/batch`, { members });
+    return response.data;
+  } catch (error) {
+    console.error('Error adding multiple members:', error);
+    
+    // Nếu API không hỗ trợ batch, thực hiện từng thành viên một
+    const results = [];
+    for (const member of members) {
+      try {
+        if (member.status === 'pending') {
+          // Gửi lời mời qua email
+          const result = await inviteMember(projectId, member.email, member.role);
+          results.push(result);
+        } else {
+          // Thêm trực tiếp
+          const result = await addMember(projectId, member.email, member.role);
+          results.push(result);
+        }
+      } catch (memberError) {
+        console.error(`Error adding member ${member.email}:`, memberError);
+      }
+    }
+    
+    return {
+      success: results.length > 0,
+      message: `Đã thêm ${results.length}/${members.length} thành viên`,
+      data: results
+    };
+  }
+};

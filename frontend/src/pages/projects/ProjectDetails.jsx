@@ -49,6 +49,7 @@ import {
   archiveProject,
   restoreProject,
   removeMemberFromProject,
+  addMultipleMembers,
 } from "../../api/projectApi";
 import { getSprints } from "../../api/sprintApi";
 import { useSnackbar } from "notistack";
@@ -60,6 +61,7 @@ import ActionButtons from "../../components/common/ActionButtons";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import MemberSelection from "../../components/common/MemberSelection";
 import MemberItem from "../../components/common/MemberItem";
+import ProjectMemberSelector from "../../components/projects/ProjectMemberSelector";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -107,6 +109,10 @@ const ProjectDetails = () => {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [editFormErrors, setEditFormErrors] = useState({
+    name: "",
+    description: "",
+  });
 
   // Kiểm tra xác thực khi mount và khi thay đổi user
   useEffect(() => {
@@ -178,6 +184,11 @@ const ProjectDetails = () => {
           autoHideDuration: 5000,
         });
         setEditDialogOpen(false);
+        return;
+      }
+
+      // Validate form trước khi submit
+      if (!validateEditForm()) {
         return;
       }
 
@@ -418,33 +429,85 @@ const ProjectDetails = () => {
 
   const handleMembersChange = async (newMembers) => {
     try {
+      // So sánh danh sách cũ và mới để xác định thao tác
+      const currentMemberIds = new Set(members.map(member => 
+        member.user ? member.user._id : (member.id || member._id)
+      ));
+      
+      // Lấy id của các thành viên mới
+      const newMemberIds = new Set(newMembers.map(member => member.id || member._id));
+      
+      // Kiểm tra xem có phải đang xóa thành viên không
+      const isRemoving = members.length > newMembers.length;
+      
+      if (isRemoving) {
+        console.log("Đang xóa thành viên...");
+        // Tìm id của thành viên đã bị xóa
+        const removedMemberIds = [...currentMemberIds].filter(id => !newMemberIds.has(id));
+        
+        if (removedMemberIds.length > 0) {
+          // Cập nhật UI trước
+          setMembers(newMembers);
+          // Gọi API để xóa từng thành viên
+          for (const memberId of removedMemberIds) {
+            await removeMemberFromProject(projectId, memberId);
+          }
+          
+          // Cập nhật lại thông tin project sau khi xóa thành công
+          const updatedProject = await getProjectById(project._id);
+          setProject(updatedProject.data);
+          setMembers(updatedProject.data.members);
+          
+          enqueueSnackbar('Đã xóa thành viên khỏi dự án', { variant: 'success' });
+        }
+        return;
+      }
+      
+      // Xử lý trường hợp thêm thành viên
       // Lọc ra các thành viên mới được thêm vào
+      const existingMemberIds = members.map(member => 
+        member.user ? member.user._id : (member.id || member._id)
+      );
+      const existingMemberEmails = members.map(member => 
+        member.user ? member.user.email : member.email
+      );
+      
       const addedMembers = newMembers.filter(
-        newMember => !members.some(
-          member => (member.id || member.email) === (newMember.id || newMember.email)
-        )
+        newMember => {
+          const memberId = newMember.id || newMember._id;
+          // Kiểm tra cả id và email để tránh trùng lặp
+          return !existingMemberIds.includes(memberId) && 
+                !existingMemberEmails.includes(newMember.email);
+        }
       );
 
-      // Thêm từng thành viên mới vào project
-      for (const member of addedMembers) {
-        if (member.status === 'pending') {
-          // Gửi lời mời qua email
-          await inviteMember(project._id, member.email, member.role);
-        } else {
-          // Thêm trực tiếp
-          await addMember(project._id, member.email, member.role);
-        }
+      if (addedMembers.length === 0) {
+        console.log("Không có thành viên mới nào được thêm vào");
+        enqueueSnackbar('Không có thành viên mới nào được thêm vào', { variant: 'info' });
+        return;
       }
 
+      // Thêm nhiều thành viên cùng lúc
+      console.log("Thêm thành viên mới:", addedMembers);
+      
+      const preparedMembers = addedMembers.map(member => ({
+        email: member.email,
+        role: member.role,
+        status: member.status
+      }));
+      
+      const response = await addMultipleMembers(project._id, preparedMembers);
+      
       // Cập nhật lại thông tin project
       const updatedProject = await getProjectById(project._id);
       setProject(updatedProject.data);
       setMembers(updatedProject.data.members);
       
+      setInviteDialogOpen(false); // Đóng dialog sau khi thêm thành công
       enqueueSnackbar('Thêm thành viên thành công', { variant: 'success' });
     } catch (error) {
       console.error('Error updating members:', error);
-      enqueueSnackbar(error.message || 'Có lỗi xảy ra khi thêm thành viên', { variant: 'error' });
+      enqueueSnackbar(error.message || 'Có lỗi xảy ra khi cập nhật thành viên', { variant: 'error' });
     }
   };
 
@@ -476,6 +539,70 @@ const ProjectDetails = () => {
       console.error("Error removing member:", error);
       enqueueSnackbar(error.message || "Không thể xóa thành viên", { variant: "error" });
     }
+  };
+
+  // Chuẩn bị dữ liệu members cho ProjectMemberSelector
+  const formatMembersForSelector = (projectMembers) => {
+    if (!projectMembers || !Array.isArray(projectMembers)) return [];
+    
+    return projectMembers.map(member => {
+      // Format theo cấu trúc mà ProjectMemberSelector mong đợi
+      if (member.user) {
+        return {
+          id: member.user._id,
+          _id: member.user._id,
+          email: member.user.email,
+          name: member.user.name || member.user.username || (member.user.email ? member.user.email.split('@')[0] : "Người dùng"),
+          avatar: member.user.avatar,
+          role: member.role,
+          status: 'active'
+        };
+      }
+      
+      // Nếu đã có dạng chuẩn
+      return {
+        id: member._id || member.id,
+        _id: member._id || member.id,
+        email: member.email,
+        name: member.name || member.username || (member.email ? member.email.split('@')[0] : "Người dùng"),
+        avatar: member.avatar,
+        role: member.role || 'member',
+        status: member.status || 'active'
+      };
+    });
+  };
+
+  // Validate dữ liệu form chỉnh sửa
+  const validateEditForm = () => {
+    const newErrors = {};
+    let isValid = true;
+    
+    // Validate name (3-100 ký tự)
+    if (!editForm.name) {
+      newErrors.name = "Tên dự án là bắt buộc";
+      isValid = false;
+    } else if (editForm.name.trim().length < 3) {
+      newErrors.name = "Tên dự án phải có ít nhất 3 ký tự";
+      isValid = false;
+    } else if (editForm.name.trim().length > 100) {
+      newErrors.name = "Tên dự án không được quá 100 ký tự";
+      isValid = false;
+    }
+    
+    // Validate description (5-2000 ký tự)
+    if (!editForm.description) {
+      newErrors.description = "Mô tả dự án là bắt buộc";
+      isValid = false;
+    } else if (editForm.description.trim().length < 5) {
+      newErrors.description = "Mô tả dự án phải có ít nhất 5 ký tự";
+      isValid = false;
+    } else if (editForm.description.trim().length > 2000) {
+      newErrors.description = "Mô tả dự án không được quá 2000 ký tự";
+      isValid = false;
+    }
+    
+    setEditFormErrors(newErrors);
+    return isValid;
   };
 
   if (authLoading || loading) {
@@ -559,11 +686,9 @@ const ProjectDetails = () => {
       <DialogTitle>Thêm thành viên</DialogTitle>
       <DialogContent>
         <Box sx={{ mt: 2 }}>
-          <MemberSelection
-            members={members}
+          <ProjectMemberSelector
+            members={formatMembersForSelector(members)}
             onMembersChange={handleMembersChange}
-            showRoleSelection={true}
-            mode="all"
             title="Thêm thành viên vào dự án"
             excludeCurrentUser={true}
           />
@@ -577,6 +702,70 @@ const ProjectDetails = () => {
 
   return (
     <Box sx={{ p: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 4 }}>
+        <BackButton label="Quay lại" onClick={() => navigate('/projects')} />
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            color="primary"
+            size="small"
+            startIcon={<TimelineIcon />}
+            onClick={() => navigate(`/projects/${projectId}/sprints`)}
+          >
+            Danh sách Sprint
+          </Button>
+          
+          {/* Status change and action buttons */}
+          <Stack direction="row" spacing={1}>
+            {project.archived ? (
+              <Tooltip
+                title={
+                  canArchiveProject(project)
+                    ? "Khôi phục dự án"
+                    : "Bạn không có quyền khôi phục dự án này"
+                }
+              >
+                <Button
+                  startIcon={<UnarchiveIcon />}
+                  variant="outlined"
+                  color="success"
+                  onClick={() => setRestoreDialogOpen(true)}
+                >
+                  Khôi phục
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip
+                title={
+                  canArchiveProject(project)
+                    ? "Lưu trữ dự án"
+                    : "Bạn không có quyền lưu trữ dự án này"
+                }
+              >
+                <Button
+                  startIcon={<ArchiveIcon />}
+                  variant="outlined"
+                  color="warning"
+                  onClick={() => setArchiveDialogOpen(true)}
+                >
+                  Lưu trữ
+                </Button>
+              </Tooltip>
+            )}
+
+            <ActionButtons
+              canEdit={canEditProject(project)}
+              canDelete={canDeleteProject(project)}
+              onEdit={() => setEditDialogOpen(true)}
+              onDelete={() => setDeleteDialogOpen(true)}
+              editTooltip="Bạn không có quyền chỉnh sửa dự án này"
+              deleteTooltip="Bạn không có quyền xóa dự án này"
+              variant="outlined"
+            />
+          </Stack>
+        </Box>
+      </Box>
+
       {error && (
         <Alert
           severity={error.type || "error"}
@@ -589,9 +778,6 @@ const ProjectDetails = () => {
 
       {project && (
         <>
-          {/* Back Button */}
-          <BackButton onClick={() => navigate("/projects")} />
-
           {/* Header */}
           <Box
             sx={{
@@ -736,65 +922,6 @@ const ProjectDetails = () => {
                 </Box>
               </Box>
             </Box>
-            <Stack direction="row" spacing={1}>
-              {!project.isArchived ? (
-                canArchiveProject(project) ? (
-                  <Button
-                    startIcon={<ArchiveIcon />}
-                    variant="outlined"
-                    color="warning"
-                    onClick={() => setArchiveDialogOpen(true)}
-                  >
-                    Lưu trữ
-                  </Button>
-                ) : (
-                  <Tooltip title="Bạn không có quyền lưu trữ dự án này">
-                    <span>
-                      <Button
-                        startIcon={<ArchiveIcon />}
-                        variant="outlined"
-                        color="warning"
-                        disabled
-                      >
-                        Lưu trữ
-                      </Button>
-                    </span>
-                  </Tooltip>
-                )
-              ) : canArchiveProject(project) ? (
-                <Button
-                  startIcon={<UnarchiveIcon />}
-                  variant="outlined"
-                  color="success"
-                  onClick={() => setRestoreDialogOpen(true)}
-                >
-                  Khôi phục
-                </Button>
-              ) : (
-                <Tooltip title="Bạn không có quyền khôi phục dự án này">
-                  <span>
-                    <Button
-                      startIcon={<UnarchiveIcon />}
-                      variant="outlined"
-                      color="success"
-                      disabled
-                    >
-                      Khôi phục
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-
-              <ActionButtons
-                canEdit={canEditProject(project)}
-                canDelete={canDeleteProject(project)}
-                onEdit={() => setEditDialogOpen(true)}
-                onDelete={() => setDeleteDialogOpen(true)}
-                editTooltip="Bạn không có quyền chỉnh sửa dự án này"
-                deleteTooltip="Bạn không có quyền xóa dự án này"
-                variant="outlined"
-              />
-            </Stack>
           </Box>
 
           <Grid container spacing={3}>
@@ -915,9 +1042,18 @@ const ProjectDetails = () => {
                   label="Tên dự án"
                   fullWidth
                   value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, name: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setEditForm({ ...editForm, name: e.target.value });
+                    // Xóa lỗi khi người dùng nhập
+                    if (editFormErrors.name) {
+                      setEditFormErrors(prev => ({
+                        ...prev,
+                        name: ""
+                      }));
+                    }
+                  }}
+                  error={Boolean(editFormErrors.name)}
+                  helperText={editFormErrors.name}
                 />
                 <TextField
                   label="Mô tả"
@@ -925,9 +1061,18 @@ const ProjectDetails = () => {
                   multiline
                   rows={4}
                   value={editForm.description}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, description: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setEditForm({ ...editForm, description: e.target.value });
+                    // Xóa lỗi khi người dùng nhập
+                    if (editFormErrors.description) {
+                      setEditFormErrors(prev => ({
+                        ...prev,
+                        description: ""
+                      }));
+                    }
+                  }}
+                  error={Boolean(editFormErrors.description)}
+                  helperText={editFormErrors.description}
                 />
                 <TextField
                   select

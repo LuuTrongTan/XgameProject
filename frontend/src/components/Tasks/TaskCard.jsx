@@ -540,7 +540,7 @@ const TaskCard = ({
               ) : (
                 <Tooltip title="Chưa phân công">
                   <Avatar
-                    sx={{ 
+                  sx={{
                       width: 24, 
                       height: 24, 
                       fontSize: '0.8rem',
@@ -607,7 +607,7 @@ const TaskCard = ({
             >
               {project?.name || "Dự án"}
             </Typography>
-            
+
             {/* Action buttons at bottom right */}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
@@ -629,7 +629,7 @@ const TaskCard = ({
               
               {/* Expand button - đặt ở góc phải dưới */}
               <IconButton 
-                size="small" 
+                size="small"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleExpandClick(e);
@@ -703,7 +703,7 @@ const TaskCard = ({
                   label="Lịch sử" 
                   id="task-tab-2" 
                   aria-controls="task-tabpanel-2"
-                  sx={{ 
+                    sx={{
                     minHeight: '36px', 
                     fontSize: '0.75rem',
                     px: 1,
@@ -715,7 +715,7 @@ const TaskCard = ({
                 />
               </Tabs>
             </Box>
-            
+
             {/* Tab Comments */}
             <Box
               role="tabpanel"

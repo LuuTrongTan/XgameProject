@@ -135,6 +135,7 @@ export const getProjects = async (req, res) => {
 // Lấy thông tin chi tiết của một dự án
 export const getProjectById = async (req, res) => {
   try {
+    // Đảm bảo populate đầy đủ thông tin user
     const project = await Project.findById(req.params.id)
       .populate("owner", "name email avatar")
       .populate("members.user", "name email avatar position department")
@@ -594,7 +595,7 @@ export const addMember = async (req, res) => {
     const { email, role } = req.body;
     const project = await Project.findById(req.params.id).populate(
       "members.user",
-      "email"
+      "email name avatar"
     );
 
     if (!project) {
@@ -668,7 +669,7 @@ export const addMember = async (req, res) => {
         project: project._id,
         member: {
           id: user._id,
-          name: user.name,
+          name: user.name || email,
           email: user.email,
           role: role,
         },

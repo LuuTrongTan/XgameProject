@@ -27,7 +27,7 @@ import {
 } from "@mui/icons-material";
 import { createProject } from "../../api/projectApi";
 import FileUpload from "../../components/common/FileUpload";
-import MemberSelection from "../../components/common/MemberSelection";
+import ProjectMemberSelector from "../../components/projects/ProjectMemberSelector";
 import { ROLES, getRoleName, PROJECT_STATUS } from "../../config/constants";
 
 const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
@@ -41,6 +41,42 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [errors, setErrors] = useState({
+    name: "",
+    description: "",
+  });
+
+  const validateForm = () => {
+    const newErrors = {};
+    let isValid = true;
+    
+    // Validate name (3-100 ký tự)
+    if (!formData.name) {
+      newErrors.name = "Tên dự án là bắt buộc";
+      isValid = false;
+    } else if (formData.name.trim().length < 3) {
+      newErrors.name = "Tên dự án phải có ít nhất 3 ký tự";
+      isValid = false;
+    } else if (formData.name.trim().length > 100) {
+      newErrors.name = "Tên dự án không được quá 100 ký tự";
+      isValid = false;
+    }
+    
+    // Validate description (5-2000 ký tự)
+    if (!formData.description) {
+      newErrors.description = "Mô tả dự án là bắt buộc";
+      isValid = false;
+    } else if (formData.description.trim().length < 5) {
+      newErrors.description = "Mô tả dự án phải có ít nhất 5 ký tự";
+      isValid = false;
+    } else if (formData.description.trim().length > 2000) {
+      newErrors.description = "Mô tả dự án không được quá 2000 ký tự";
+      isValid = false;
+    }
+    
+    setErrors(newErrors);
+    return isValid;
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -48,6 +84,14 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
       ...prev,
       [name]: value,
     }));
+    
+    // Clear error when typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: ""
+      }));
+    }
   };
 
   const handleFileSelect = (file) => {
@@ -118,6 +162,12 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate form trước khi submit
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     setSuccessMessage(null);
@@ -164,6 +214,8 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
               onChange={handleInputChange}
               required
               fullWidth
+              error={Boolean(errors.name)}
+              helperText={errors.name}
             />
 
             <TextField
@@ -175,6 +227,8 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
               fullWidth
               multiline
               rows={4}
+              error={Boolean(errors.description)}
+              helperText={errors.description}
             />
 
             <FormControl fullWidth>
@@ -201,11 +255,10 @@ const CreateProjectDialog = ({ open, onClose, onSuccess }) => {
 
             <Divider sx={{ my: 2 }} />
 
-            <MemberSelection
+            <ProjectMemberSelector
               members={members}
               onMembersChange={setMembers}
-              showRoleSelection={true}
-              mode="all"
+              title="Thêm thành viên vào dự án mới"
             />
           </Box>
         </DialogContent>

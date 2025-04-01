@@ -76,12 +76,24 @@ const UserSelectionDialog = ({
     try {
       if (availableUsers && availableUsers.length > 0) {
         // Đã có sẵn danh sách người dùng từ props
+        console.log("Available users from props:", JSON.stringify(availableUsers, null, 2));
+        
         setUsers(availableUsers.map(member => {
           // Xử lý cấu trúc dữ liệu khác nhau
           const user = member.user || member;
+          
+          // Log chi tiết để debug
+          console.log("Processing user:", {
+            id: user._id || user.id,
+            name: user.name,
+            hasName: !!user.name,
+            email: user.email,
+            avatar: user.avatar ? '[has avatar]' : '[no avatar]'
+          });
+          
           return {
             _id: user._id || user.id,
-            name: user.name,
+            name: user.name, // Giữ nguyên name từ API
             email: user.email,
             avatar: user.avatar,
             role: member.role || user.role || "member"
@@ -92,7 +104,26 @@ const UserSelectionDialog = ({
         // Không có danh sách sẵn, gọi API lấy tất cả người dùng
         const response = await getAllUsers();
         if (response.success) {
-          setUsers(response.data);
+          console.log("Users from API:", JSON.stringify(response.data, null, 2));
+          
+          // Hiển thị tên trực tiếp từ API
+          const processedUsers = response.data.map(user => {
+            // Log chi tiết để debug
+            console.log("Processing API user:", {
+              id: user._id,
+              name: user.name,
+              hasName: !!user.name,
+              email: user.email,
+              avatar: user.avatar ? '[has avatar]' : '[no avatar]'
+            });
+            
+            return {
+              ...user,
+              name: user.name // Giữ nguyên name từ API
+            };
+          });
+          
+          setUsers(processedUsers);
         } else {
           setError(response.message);
         }
@@ -125,8 +156,8 @@ const UserSelectionDialog = ({
   };
 
   const handleSubmit = () => {
-    console.log("selectedMembers before processing:", selectedMembers);
-    console.log("available users:", users);
+    console.log("selectedMembers before processing:", JSON.stringify(selectedMembers, null, 2));
+    console.log("available users:", JSON.stringify(users, null, 2));
     
     const selectedUsersWithRoles = selectedMembers.map((member) => {
       const user = users.find((u) => u._id === member.userId);
@@ -135,24 +166,36 @@ const UserSelectionDialog = ({
         return {
           id: member.userId,
           _id: member.userId,
-          name: "Unknown User",
+          name: "Người dùng",
           email: "",
-          role: member.role,
+          role: member.role || "member",
         };
       }
       
-      // Đảm bảo tất cả các trường quan trọng đều có giá trị
+      // Log chi tiết để debug
+      console.log("Processing for submit:", {
+        id: user._id,
+        name: user.name,
+        hasName: !!user.name,
+        typeOfName: typeof user.name,
+        email: user.email
+      });
+      
+      // Dùng tên từ email nếu không có tên
+      const displayName = user.name || (user.email ? user.email.split('@')[0] : "Người dùng");
+      
+      // Giữ nguyên name từ API nếu có, không cần thêm fallback
       return {
         id: user._id,
         _id: user._id,
-        name: user.name || "Unknown",
+        name: displayName,
         email: user.email || "", // Email là bắt buộc cho API addMember
         avatar: user.avatar,
-        role: member.role,
+        role: member.role || "member",
       };
     });
     
-    console.log("UserSelectionDialog - Submitting selected users:", selectedUsersWithRoles);
+    console.log("UserSelectionDialog - Submitting selected users:", JSON.stringify(selectedUsersWithRoles, null, 2));
     onSubmit(selectedUsersWithRoles);
     onClose(); // Close dialog after submission
   };
@@ -253,10 +296,12 @@ const UserSelectionDialog = ({
                       disableRipple
                     />
                     <ListItemAvatar>
-                      <Avatar src={user.avatar}>{user.name?.[0]}</Avatar>
+                      <Avatar src={user.avatar}>
+                        {user.name?.[0] || user.email?.[0] || '?'}
+                      </Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={user.name || "Chưa có tên"}
+                      primary={user.name || (user.email ? user.email.split('@')[0] : "Chưa có tên")}
                       secondary={user.email}
                       primaryTypographyProps={{
                         variant: "body1",

@@ -4,14 +4,14 @@ import api from "./api";
 export const getAllUsers = async () => {
   try {
     const response = await api.get("/users");
-    return response.data;
+    console.log("API response from getAllUsers:", response.data);
+    if (response.data && response.data.success) {
+      return response.data;
+    }
+    return { success: false, message: "Không thể lấy danh sách người dùng" };
   } catch (error) {
     console.error("Error in getAllUsers:", error);
-    return {
-      success: false,
-      message: "Không thể lấy danh sách người dùng",
-      error: error.message,
-    };
+    return { success: false, message: error.response?.data?.message || "Lỗi khi tải danh sách người dùng" };
   }
 };
 

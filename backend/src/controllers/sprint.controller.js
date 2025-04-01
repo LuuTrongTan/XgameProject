@@ -967,3 +967,102 @@ export const getAvailableUsersForSprint = async (req, res) => {
     });
   }
 };
+
+// Lấy tất cả sprint của người dùng hiện tại
+export const getUserSprints = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log("=== DEBUG getUserSprints Controller ===");
+    console.log("UserId:", userId);
+
+    // Tìm tất cả sprint mà người dùng là thành viên
+    const memberSprints = await Sprint.find({
+      "members.user": userId
+    })
+    .populate("project", "name description avatar avatarBase64")
+    .populate("createdBy", "name email avatar")
+    .sort({ startDate: 1 });
+
+    console.log("Found Member Sprints:", memberSprints.length);
+
+    // Tìm tất cả dự án mà người dùng tham gia với vai trò owner, admin hoặc project manager
+    const userProjects = await Project.find({
+      $or: [
+        { owner: userId },
+        { "members.user": userId, "members.role": { $in: [ROLES.ADMIN, ROLES.PROJECT_MANAGER] } }
+      ]
+    }).select("_id");
+
+    console.log("Found User Projects:", userProjects.length);
+    const projectIds = userProjects.map(p => p._id);
+
+    // Tìm tất cả sprint trong các dự án mà người dùng có quyền admin/manager
+    const managerSprints = await Sprint.find({
+      project: { $in: projectIds },
+      "members.user": { $ne: userId } // Lấy các sprint mà người dùng chưa là thành viên
+    })
+    .populate("project", "name description avatar avatarBase64")
+    .populate("createdBy", "name email avatar")
+    .sort({ startDate: 1 });
+
+    console.log("Found Manager Sprints:", managerSprints.length);
+
+    // Kết hợp 2 danh sách và loại bỏ trùng lặp
+    const allSprintIds = new Set();
+    const allSprints = [];
+
+    memberSprints.forEach(sprint => {
+      if (!allSprintIds.has(sprint._id.toString())) {
+        allSprintIds.add(sprint._id.toString());
+        allSprints.push({
+          ...sprint.toObject(),
+          userRole: "member"
+        });
+      }
+    });
+
+    managerSprints.forEach(sprint => {
+      if (!allSprintIds.has(sprint._id.toString())) {
+        allSprintIds.add(sprint._id.toString());
+        allSprints.push({
+          ...sprint.toObject(),
+          userRole: "manager"
+        });
+      }
+    });
+
+    // Thêm số lượng task cho mỗi sprint
+    const sprintsWithTaskCount = await Promise.all(
+      allSprints.map(async (sprint) => {
+        const taskCount = await Task.countDocuments({ sprint: sprint._id });
+        const completedTaskCount = await Task.countDocuments({
+          sprint: sprint._id,
+          status: "done",
+        });
+        return {
+          ...sprint,
+          taskCount: {
+            total: taskCount,
+            completed: completedTaskCount,
+          },
+        };
+      })
+    );
+
+    console.log("Total User Sprints:", sprintsWithTaskCount.length);
+    console.log("=== END DEBUG getUserSprints Controller ===");
+
+    return res.json({
+      success: true,
+      data: sprintsWithTaskCount,
+      message: "Lấy danh sách sprint của người dùng thành công",
+    });
+  } catch (error) {
+    console.error("Error in getUserSprints:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi server",
+      error: error.message
+    });
+  }
+};

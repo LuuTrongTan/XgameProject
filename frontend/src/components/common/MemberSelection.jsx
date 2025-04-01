@@ -94,7 +94,7 @@ const MemberSelection = ({
   };
 
   const handleUserSelect = (selectedUsers) => {
-    console.log("MemberSelection - Selected users from dialog:", selectedUsers);
+    console.log("MemberSelection - Selected users from dialog:", JSON.stringify(selectedUsers, null, 2));
     
     // Kiểm tra xem selectedUsers có dữ liệu không
     if (!selectedUsers || selectedUsers.length === 0) {
@@ -108,37 +108,65 @@ const MemberSelection = ({
         console.error("User missing email:", user);
       }
       
+      // Log chi tiết từng user để debug
+      console.log("Processing selected user:", {
+        id: user._id || user.id,
+        name: user.name,
+        hasName: !!user.name,
+        typeOfName: typeof user.name,
+        email: user.email,
+        role: user.role
+      });
+      
+      // Dùng tên từ email nếu không có tên
+      const displayName = user.name || (user.email ? user.email.split('@')[0] : "Người dùng");
+      
       return {
         id: user._id || user.id,
         _id: user._id || user.id,
-        name: user.name || "Unknown User",
-        email: user.email || "", // Email là bắt buộc cho API addMember
-        role: showRoleSelection ? user.role : ROLES.MEMBER,
+        name: displayName,
+        email: user.email || "", 
+        role: showRoleSelection ? (user.role || "member") : "member",
         status: 'active'
       };
     });
     
-    console.log("MemberSelection - New members after processing:", newMembers);
+    console.log("MemberSelection - New members after processing:", JSON.stringify(newMembers, null, 2));
 
     // Loại bỏ các thành viên trùng lặp
     const uniqueMembers = [...members];
     const existingIds = new Set(members.map(m => m.id || m._id));
+    const existingEmails = new Set(members.map(m => m.email));
     
     newMembers.forEach(newMember => {
       const memberId = newMember.id || newMember._id;
-      if (memberId && !existingIds.has(memberId)) {
+      const memberEmail = newMember.email;
+      
+      // Kiểm tra cả ID và email để tránh trùng lặp
+      if (!existingIds.has(memberId) && !existingEmails.has(memberEmail)) {
         uniqueMembers.push(newMember);
         existingIds.add(memberId);
+        existingEmails.add(memberEmail);
       }
     });
     
-    console.log("MemberSelection - Final member list:", uniqueMembers);
+    console.log("MemberSelection - Final member list:", JSON.stringify(uniqueMembers, null, 2));
     onMembersChange(uniqueMembers);
     setOpenUserDialog(false);
   };
 
-  const handleRemoveMember = (memberId) => {
-    onMembersChange(members.filter(member => (member.id || member.email) !== memberId));
+  const handleRemoveMember = (memberIdentifier) => {
+    console.log("Removing member with identifier:", memberIdentifier);
+    // Lọc thành viên với điều kiện chính xác
+    const filteredMembers = members.filter(member => {
+      // Kiểm tra các trường có thể chứa ID
+      const memberId = member.id || member._id;
+      // Nếu id hoặc email khớp với identifier, loại bỏ thành viên này
+      return memberId !== memberIdentifier && member.email !== memberIdentifier;
+    });
+    
+    console.log("Members after removal:", filteredMembers);
+    onMembersChange(filteredMembers);
   };
 
   return (
@@ -231,11 +259,19 @@ const MemberSelection = ({
             key={member.id || member.email}
             avatar={
               <Avatar src={member.avatar}>
-                {(member.name || member.email)?.[0]}
+                {(member.name || member.email || "?")[0]}
               </Avatar>
             }
-            label={`${member.name || member.email}${showRoleSelection ? ` (${getRoleName(member.role)})` : ''} - ${member.status === 'pending' ? 'Đang chờ' : 'Đã thêm'}`}
-            onDelete={() => handleRemoveMember(member.id || member.email)}
+            label={`${member.name || member.email || "Người dùng"}${
+              showRoleSelection 
+                ? ` (${getRoleName(member.role) || "Thành viên"})` 
+                : ''
+            }${member.status === 'pending' ? ' - Đang chờ' : ''}`}
+            onDelete={() => {
+              console.log("Delete clicked for member:", member);
+              const id = member.id || member._id;
+              handleRemoveMember(id);
+            }}
             color={member.status === 'pending' ? 'warning' : 'primary'}
             sx={{ maxWidth: '100%' }}
           />
