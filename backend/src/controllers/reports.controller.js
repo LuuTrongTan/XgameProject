@@ -1,7 +1,7 @@
 import Task from "../models/task.model.js";
 import Project from "../models/project.model.js";
 import User from "../models/user.model.js";
-import Timelog from "../models/timelogs.model.js";
+import Timelog from "../models/timelog.model.js";
 import { PERMISSIONS } from "../config/constants.js";
 
 // Helper function để kiểm tra quyền truy cập báo cáo

@@ -28,6 +28,58 @@ export const getProjectById = async (projectId) => {
   }
 };
 
+// Lấy chi tiết project (version cải tiến với error handling)
+export const getProjectDetails = async (projectId) => {
+  try {
+    const response = await API.get(`/projects/${projectId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching project details:", error);
+    
+    // Check if it's a network error
+    if (error.message === "Network Error") {
+      return {
+        success: false,
+        message: "Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối.",
+        isNetworkError: true
+      };
+    }
+    
+    // Return a structured error response
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || "Không thể tải thông tin dự án",
+      status: error.response?.status
+    };
+  }
+};
+
+// Lấy danh sách sprint của project
+export const getProjectSprints = async (projectId) => {
+  try {
+    const response = await API.get(`/projects/${projectId}/sprints`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching project sprints:", error);
+    
+    // Check if it's a network error
+    if (error.message === "Network Error") {
+      return {
+        success: false,
+        message: "Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối.",
+        isNetworkError: true
+      };
+    }
+    
+    // Return a structured error response
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message || "Không thể tải danh sách sprint",
+      status: error.response?.status
+    };
+  }
+};
+
 // Tạo project mới
 export const createProject = async (projectData) => {
   try {

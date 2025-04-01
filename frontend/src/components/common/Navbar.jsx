@@ -29,6 +29,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 // React Router và Context
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import WebSocketIndicator from "./WebSocketIndicator";
 
 /**
  * @param {Object} props - Component props
@@ -178,6 +179,9 @@ const Navbar = ({ onDrawerToggle }) => {
 
         {/* Phần bên phải - Thông báo và thông tin user */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {/* WebSocket Indicator */}
+          <WebSocketIndicator />
+          
           {/* Nút thông báo với badge */}
           <Tooltip title="Thông báo">
             <IconButton

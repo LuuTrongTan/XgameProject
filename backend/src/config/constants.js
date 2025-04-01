@@ -33,3 +33,18 @@ export const PERMISSIONS = {
   DELETE_DOCUMENT: "delete_document",
   VIEW_DOCUMENT: "view_document",
 };
+
+// Định nghĩa các trạng thái task
+export const TASK_STATUSES = {
+  TODO: "todo",
+  IN_PROGRESS: "inProgress",
+  REVIEW: "review",
+  DONE: "done"
+};
+
+// Định nghĩa các mức độ ưu tiên
+export const PRIORITY_LEVELS = {
+  LOW: "low",
+  MEDIUM: "medium",
+  HIGH: "high"
+};

@@ -1,118 +1,125 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import {
-  Typography,
+  Container,
   Box,
+  Typography,
+  Paper,
   Grid,
+  Button,
+  IconButton,
+  Chip,
+  Avatar,
+  AvatarGroup,
   Card,
   CardContent,
-  Button,
-  CircularProgress,
-  Tabs,
-  Tab,
-  IconButton,
-  Menu,
-  MenuItem,
-  TextField,
-  Select,
   FormControl,
   InputLabel,
+  Select,
+  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Stack,
-  Snackbar,
-  Alert,
-  Paper,
-  Tooltip,
-  Chip,
-  InputAdornment,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TableContainer,
-  ToggleButtonGroup,
-  ToggleButton,
+  TextField,
+  CircularProgress,
   Divider,
-  Avatar,
-  AvatarGroup,
-  Badge,
-  Breadcrumbs,
+  Stack,
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tabs,
+  Tab,
+  Badge,
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar,
   ListItemIcon,
-  ListItemSecondaryAction
+  ListItemAvatar,
+  ListItemSecondaryAction,
+  InputAdornment,
+  Snackbar,
+  Alert,
+  Tooltip,
+  Drawer,
+  Link,
+  ToggleButtonGroup,
+  ToggleButton,
+  Table,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableBody,
+  TableCell
 } from "@mui/material";
-import { useParams, useNavigate } from "react-router-dom";
+import {
+  Add as AddIcon,
+  FilterList as FilterListIcon,
+  Search as SearchIcon,
+  Close as CloseIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Comment as CommentIcon,
+  AttachFile as AttachFileIcon,
+  Send as SendIcon,
+  History as HistoryIcon,
+  InsertDriveFile as InsertDriveFileIcon,
+  CloudUpload as CloudUploadIcon,
+  CloudDownload as CloudDownloadIcon,
+  MoreVert as MoreVertIcon,
+  ExpandMore as ExpandMoreIcon,
+  ArrowBack as ArrowBackIcon,
+  GridView as GridViewIcon,
+  ViewList as ViewListIcon
+} from "@mui/icons-material";
+import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 import {
   DndContext,
-  closestCorners,
-  KeyboardSensor,
+  closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
-  closestCenter,
   DragOverlay,
+  KeyboardSensor
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
   verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates
 } from "@dnd-kit/sortable";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import AddIcon from "@mui/icons-material/Add";
-import GridViewIcon from "@mui/icons-material/GridView";
-import ViewListIcon from "@mui/icons-material/ViewList";
-import CommentIcon from "@mui/icons-material/Comment";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
-import HistoryIcon from "@mui/icons-material/History";
-import SendIcon from "@mui/icons-material/Send";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { getProjectById } from "../../api/projectApi";
+import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import {
   getSprintTasks,
+  getTaskById,
   createTask,
-  updateTaskStatus,
-  addTaskComment,
-  addTaskAttachment,
-  deleteTask,
   updateTask,
+  deleteTask,
+  updateTaskStatus,
   getTaskComments,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+  addTaskAttachment,
   getTaskAttachments,
+  deleteTaskAttachment,
   getTaskAuditLogs
 } from "../../api/taskApi";
 import { getSprintMembers } from "../../api/sprintApi";
-import TaskCard from "../../components/Tasks/TaskCard";
-import axios from "axios";
-import { useSnackbar } from "notistack";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
 import { useAuth } from "../../contexts/AuthContext";
+import { useSnackbar } from "notistack";
+import TaskCard from "../../components/Tasks/TaskCard";
+import Column from "../../components/Tasks/Column";
 import { usePermissions } from "../../hooks/usePermissions";
 import ActionButtons from "../../components/common/ActionButtons";
-import TaskCommentForm from '../../components/TaskCommentForm';
+import { getProjectById } from "../../api/projectApi";
 
-// Định nghĩa labels và colors cho các mức độ ưu tiên
 const priorityLabels = {
   low: "Thấp",
   medium: "Trung bình",
   high: "Cao",
-};
-
-const priorityColors = {
-  low: "#4caf50", // Xanh lá
-  medium: "#ff9800", // Cam
-  high: "#f44336", // Đỏ
 };
 
 const Tasks = () => {
@@ -144,11 +151,6 @@ const Tasks = () => {
   const [sprintId, setSprintId] = useState("");
   const [sprints, setSprints] = useState([]);
   const [sprintMembers, setSprintMembers] = useState([]);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "success",
-  });
   const [newTask, setNewTask] = useState({
     name: "",
     description: "",
@@ -189,6 +191,62 @@ const Tasks = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Các hàm tiện ích và handlers cần được khai báo trước khi sử dụng trong hooks
+  const showSnackbar = (message, severity = "success") => {
+    enqueueSnackbar(message, { variant: severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    // Không cần thiết với notistack
+  };
+
+  // Fetch sprint members
+  const fetchSprintMembers = async (projectId, sprintId) => {
+    try {
+      console.log("Fetching sprint members for sprint:", sprintId);
+      const result = await getSprintMembers(projectId, sprintId);
+      if (result.success) {
+        setSprintMembers(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching sprint members:", error);
+    }
+  };
+
+  // Fetch tasks
+  const fetchTasks = async () => {
+    try {
+      const tasksResult = await getSprintTasks(projectId, sprintId);
+      
+      if (tasksResult.success) {
+        const tasksArray = Array.isArray(tasksResult.data) ? tasksResult.data : [];
+        
+        // Đảm bảo mỗi task có đầy đủ các trường cần thiết
+        const processedTasks = tasksArray.map((task) => ({
+          ...task,
+          status: task.status || "todo",
+          priority: task.priority || "medium",
+          assignees: task.assignees || [],
+          tags: task.tags || [],
+          comments: task.comments || [],
+          attachments: task.attachments || [],
+        }));
+
+        setTasks({
+          todo: processedTasks.filter((task) => task.status === "todo"),
+          inProgress: processedTasks.filter((task) => task.status === "inProgress"),
+          review: processedTasks.filter((task) => task.status === "review"),
+          done: processedTasks.filter((task) => task.status === "done"),
+        });
+      } else {
+        showSnackbar(tasksResult.message || "Không thể tải dữ liệu công việc", "error");
+      }
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      showSnackbar("Lỗi khi tải dữ liệu công việc", "error");
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -324,14 +382,6 @@ const Tasks = () => {
     }
   }, [openCreateDialog, openEditDialog]);
 
-  const showSnackbar = (message, severity = "success") => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-
   const handleStatusFilterChange = (event) => {
     setStatusFilter(event.target.value);
   };
@@ -346,7 +396,7 @@ const Tasks = () => {
         showSnackbar("Không thể tạo công việc, thiếu thông tin dự án hoặc sprint", "error");
         return;
       }
-
+      
       // Validate dữ liệu đầu vào
       if (!newTask.name || newTask.name.length < 3) {
         showSnackbar("Tiêu đề công việc phải từ 3 ký tự trở lên", "error");
@@ -360,13 +410,13 @@ const Tasks = () => {
 
       // Chuẩn bị dữ liệu
       const taskData = {
-        title: newTask.name,
+        title: newTask.name, // Đổi từ name sang title để khớp với API
         description: newTask.description,
         status: newTask.status || "todo",
         priority: newTask.priority || "medium",
         startDate: newTask.startDate || new Date().toISOString(),
         dueDate: newTask.dueDate || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        estimatedTime: Number(newTask.estimatedTime) || 0, // Sửa tên trường thành estimatedTime
+        estimatedTime: Number(newTask.estimatedTime) || 0,
         assignees: newTask.assignees || [],
         tags: newTask.tags ? (typeof newTask.tags === 'string' ? newTask.tags.split(',').map(tag => tag.trim()) : newTask.tags) : [],
       };
@@ -390,7 +440,7 @@ const Tasks = () => {
           priority: "medium",
           startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
           dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-          estimatedTime: 0, // Sửa tên trường thành estimatedTime
+          estimatedTime: 0,
           assignees: [],
           tags: []
         });
@@ -413,7 +463,7 @@ const Tasks = () => {
         showSnackbar("Không thể cập nhật công việc: Thiếu thông tin dự án hoặc sprint", "error");
         return;
       }
-      
+
       // Đảm bảo selectedTask tồn tại
       if (!selectedTask) {
         console.error("No selected task to update");
@@ -464,8 +514,8 @@ const Tasks = () => {
       
       // Debug API request
       console.log("Making API request with:", {
-        projectId,
-        sprintId,
+        projectId, 
+        sprintId, 
         taskId,
         payload: JSON.stringify(taskPayload)
       });
@@ -513,8 +563,8 @@ const Tasks = () => {
         return newTasks;
       });
       
-      setOpenEditDialog(false);
-      setSelectedTask(null);
+        setOpenEditDialog(false);
+        setSelectedTask(null);
       showSnackbar("Cập nhật công việc thành công", "success");
     } catch (err) {
       console.error("Error updating task:", err);
@@ -652,82 +702,65 @@ const Tasks = () => {
       );
     }
 
-    return columnTasks.map((task, index) => (
-      <Box
-        key={task._id || `task-${status}-${Math.random().toString(36).substr(2, 9)}`}
-        sx={{
-          position: "relative",
-          "& .action-buttons": {
-            opacity: 0,
-            transition: "opacity 0.2s",
-          },
-          "&:hover .action-buttons": {
-            opacity: 1,
-          },
-          mb: 2
-        }}
-      >
-        <TaskCard
-          key={task._id || `taskcard-${status}-${Math.random().toString(36).substr(2, 9)}`}
-          task={task}
-          container={status}
-          project={project}
-          onEdit={handleViewTaskDetail}
-          onDelete={handleDeleteTask}
-          onAddComment={handleAddComment}
-          onAddAttachment={handleAddAttachment}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          actionButtons={
-            <Box
-              className="action-buttons"
-              sx={{ 
-                position: "absolute", 
-                top: 8, 
-                right: 8, 
-                zIndex: 999,
-                backgroundColor: "rgba(255,255,255,0.95)",
-                borderRadius: "8px",
-                padding: "3px",
-                boxShadow: "0 3px 8px rgba(0,0,0,0.15)",
-                border: "1px solid rgba(0,0,0,0.05)"
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                return false;
-              }}
-            >
-              <Box display="flex" gap={1}>
-                <ActionButtons
-                  canEdit={canEditTask ? canEditTask(task, project) : true}
-                  canDelete={canDeleteTask ? canDeleteTask(task, project) : true}
-                  onEdit={(e) => handleEditButtonClick(task, e)}
-                  onDelete={(e) => {
-                    if (e) {
-                      e.stopPropagation();
-                      e.preventDefault();
-                    }
-                    handleDeleteTask(task._id);
-                    return false;
-                  }}
-                  editTooltip="Chỉnh sửa công việc"
-                  deleteTooltip="Xóa công việc"
-                  useIcons={true}
-                  size="small"
-                />
-              </Box>
+    return columnTasks.map((task) => (
+      <TaskCard
+        key={task._id}
+        task={task}
+        container={status}
+        project={project}
+        onEdit={handleViewTaskDetail}
+        onDelete={handleDeleteTask}
+        onAddComment={handleAddComment}
+        onAddAttachment={handleAddAttachment}
+        actionButtons={
+          <Box
+            className="action-buttons"
+            sx={{ 
+              position: "absolute", 
+              top: 8, 
+              right: 8, 
+              zIndex: 999,
+              backgroundColor: "rgba(255,255,255,0.95)",
+              borderRadius: "8px",
+              padding: "3px",
+              boxShadow: "0 3px 8px rgba(0,0,0,0.15)",
+              border: "1px solid rgba(0,0,0,0.05)"
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              return false;
+            }}
+          >
+            <Box display="flex" gap={1}>
+              <ActionButtons
+                canEdit={canEditTask ? canEditTask(task, project) : true}
+                canDelete={canDeleteTask ? canDeleteTask(task, project) : true}
+                onEdit={(e) => handleEditButtonClick(task, e)}
+                onDelete={(e) => {
+                  if (e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }
+                  handleDeleteTask(task._id);
+                  return false;
+                }}
+                editTooltip="Chỉnh sửa công việc"
+                deleteTooltip="Xóa công việc"
+                useIcons={true}
+                size="small"
+              />
             </Box>
-          }
-          index={index}
-        />
-      </Box>
+          </Box>
+        }
+      />
     ));
   };
 
   // Render columns with droppable areas
   const renderTaskColumn = (title, count, color, statusId, icon, tasks) => (
     <Card
+      id={statusId}
       sx={{
         minHeight: "calc(100vh - 300px)",
         backgroundColor: "#f8f9fc",
@@ -739,12 +772,6 @@ const Tasks = () => {
           boxShadow: `0 12px 32px rgba(${color}, 0.15)`,
           border: `1px solid rgba(${color}, 0.4)`,
         },
-      }}
-      onDragOver={(e) => handleDragOver(e, statusId)}
-      onDrop={(e) => {
-        const taskId = e.dataTransfer.getData("text/plain");
-        console.log(`Drop event on column ${statusId}, task: ${taskId}`);
-        handleDragEnd(e, taskId, statusId);
       }}
     >
       <CardContent sx={{ p: 3 }}>
@@ -786,12 +813,7 @@ const Tasks = () => {
           </Box>
           {icon}
         </Box>
-        <SortableContext
-          items={tasks.map((task) => task._id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {renderTaskCards(tasks, statusId)}
-        </SortableContext>
+        {renderTaskCards(tasks, statusId)}
       </CardContent>
     </Card>
   );
@@ -1005,6 +1027,537 @@ const Tasks = () => {
     );
   };
 
+  // Thêm hàm xử lý tab chi tiết
+  const handleDetailTabChange = (event, newValue) => {
+    setDetailTab(newValue);
+    
+    // Load dữ liệu tương ứng với tab nếu chưa có hoặc cần làm mới
+    if (selectedTask && selectedTask._id) {
+      const taskId = selectedTask._id;
+      
+      console.log(`Tab changed to ${newValue} for task ${taskId}`);
+      
+      if (newValue === 0 && (!taskComments || taskComments.length === 0)) {
+        // Tab Comments
+        console.log("Loading comments from tab change");
+        loadTaskComments(taskId);
+      } else if (newValue === 1) {
+        // Tab Tệp đính kèm - Luôn tải lại để đảm bảo dữ liệu mới nhất
+        console.log("Loading attachments from tab change");
+        loadTaskAttachments(taskId);
+      } else if (newValue === 2) {
+        // Tab Lịch sử - Luôn tải lại để đảm bảo dữ liệu mới nhất
+        console.log("Loading history from tab change");
+        loadTaskHistory(taskId);
+      }
+    }
+  };
+
+  // Load bình luận của task
+  const loadTaskComments = async (taskId) => {
+    if (!taskId || !projectId || !sprintId) return;
+    
+    try {
+      setLoadingComments(true);
+      const result = await getTaskComments(projectId, sprintId, taskId);
+      if (result.success) {
+        setTaskComments(result.data || []);
+      }
+    } catch (error) {
+      console.error("Error loading task comments:", error);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  // Load tệp đính kèm của task
+  const loadTaskAttachments = async (taskId) => {
+    if (!taskId || !projectId || !sprintId) {
+      console.error("Cannot load attachments: Missing required parameters", { taskId, projectId, sprintId });
+      return;
+    }
+    
+    console.log("Loading attachments for task:", taskId, "in project:", projectId, "sprint:", sprintId);
+    
+    try {
+      setLoadingAttachments(true);
+      const result = await getTaskAttachments(projectId, sprintId, taskId);
+      console.log("Attachments API response:", result);
+      
+      if (result.success) {
+        setTaskAttachments(result.data || []);
+        console.log("Attachments loaded successfully:", result.data?.length || 0, "attachments");
+      } else {
+        console.error("Failed to load attachments:", result.message);
+        showSnackbar("Không thể tải tệp đính kèm: " + (result.message || "Lỗi không xác định"), "error");
+      }
+    } catch (error) {
+      console.error("Error loading task attachments:", error);
+      showSnackbar("Lỗi khi tải tệp đính kèm", "error");
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
+
+  // Load lịch sử thay đổi của task
+  const loadTaskHistory = async (taskId) => {
+    if (!taskId || !projectId || !sprintId) {
+      console.error("Cannot load history: Missing required parameters", { taskId, projectId, sprintId });
+      return;
+    }
+    
+    console.log("Loading history for task:", taskId, "in project:", projectId, "sprint:", sprintId);
+    
+    try {
+      setLoadingHistory(true);
+      const result = await getTaskAuditLogs(projectId, sprintId, taskId);
+      console.log("History API response:", result);
+      
+      if (result.success) {
+        setTaskHistory(result.data || []);
+        console.log("History loaded successfully:", result.data?.length || 0, "entries");
+      } else {
+        console.error("Failed to load history:", result.message);
+        showSnackbar("Không thể tải lịch sử thay đổi: " + (result.message || "Lỗi không xác định"), "error");
+      }
+    } catch (error) {
+      console.error("Error loading task history:", error);
+      showSnackbar("Lỗi khi tải lịch sử thay đổi", "error");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Xem chi tiết task
+  const handleViewTaskDetail = (task) => {
+    console.log("Opening task detail:", task);
+    setSelectedTask(task);
+    setOpenDetailDialog(true);
+    
+    // Reset các tab khi mở dialog
+    setDetailTab(0);
+    setTaskComments([]);
+    setTaskAttachments([]);
+    setTaskHistory([]);
+    
+    // Đảm bảo task có ID hợp lệ
+    if (task && task._id) {
+      const taskId = task._id;
+      console.log("Loading data for task:", taskId);
+      
+      // Tải tất cả dữ liệu của task ngay khi mở dialog
+      loadTaskComments(taskId);
+      loadTaskAttachments(taskId);
+      loadTaskHistory(taskId);
+    } else {
+      console.error("Cannot load task data: Invalid task ID", task);
+    }
+  };
+
+  // Gửi bình luận
+  const handleSendComment = async () => {
+    if (!newComment.trim() || !selectedTask || !selectedTask._id) return;
+    
+    try {
+      setCommentLoading(true);
+      await handleAddComment(selectedTask._id, newComment);
+      setNewComment("");
+    } catch (error) {
+      console.error("Error sending comment:", error);
+      showSnackbar("Không thể gửi bình luận", "error");
+    } finally {
+      setCommentLoading(false);
+    }
+  };
+
+  // Upload file
+  const handleFileUpload = async (event) => {
+    if (!event.target.files[0] || !selectedTask || !selectedTask._id) {
+      console.error("Cannot upload file: Missing file or task ID", {
+        hasFile: !!event.target.files[0],
+        taskId: selectedTask?._id
+      });
+      return;
+    }
+    
+    const file = event.target.files[0];
+    setSelectedFile(file);
+    
+    console.log("Uploading file:", file.name, "size:", file.size, "for task:", selectedTask._id);
+    
+    try {
+      setLoadingAttachments(true);
+      
+      // Tạo FormData và đính kèm file
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      // Log FormData để debug
+      console.log("FormData created with file:", file.name);
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + (pair[1] instanceof File ? pair[1].name : pair[1]));
+      }
+      
+      // Sử dụng addTaskAttachment với FormData
+      const response = await addTaskAttachment(projectId, sprintId, selectedTask._id, formData);
+      
+      console.log("File upload API response:", response);
+      
+      if (response.success) {
+        // Thêm tệp đính kèm mới vào danh sách
+        const newAttachment = response.data;
+        setTaskAttachments(prev => [...prev, newAttachment]);
+        showSnackbar("Tải lên tệp đính kèm thành công", "success");
+        
+        // Tải lại danh sách để đảm bảo dữ liệu mới nhất
+        setTimeout(() => loadTaskAttachments(selectedTask._id), 500);
+      } else {
+        console.error("File upload failed:", response.message);
+        showSnackbar(response.message || "Không thể tải lên tệp đính kèm", "error");
+      }
+    } catch (error) {
+      console.error("Failed to upload attachment:", error);
+      showSnackbar("Đã xảy ra lỗi khi tải lên tệp đính kèm: " + (error.message || "Lỗi không xác định"), "error");
+    } finally {
+      setLoadingAttachments(false);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  // Xử lý drag & drop
+  const handleDragStart = (event) => {
+    const { active } = event;
+    console.log("Drag start:", active.id);
+    
+    setActiveId(active.id);
+    
+    // Xác định container của task được kéo
+    let foundContainer = null;
+    let foundTask = null;
+    
+    Object.keys(tasks).forEach((container) => {
+      const task = tasks[container].find((task) => task._id === active.id);
+      if (task) {
+        foundContainer = container;
+        foundTask = task;
+      }
+    });
+    
+    setActiveContainer(foundContainer);
+    setActiveTask(foundTask);
+    setIsDragActive(true);
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    
+    setIsDragActive(false);
+    setActiveId(null);
+    setActiveContainer(null);
+    setActiveTask(null);
+    
+    // Nếu không có ID task hoặc target column, không làm gì
+    if (!active || !over) return;
+    
+    const taskId = active.id;
+    const targetStatusId = over.id;
+    
+    // Chỉ xử lý khi kéo vào một cột khác (todo, inProgress, review, done)
+    if (!['todo', 'inProgress', 'review', 'done'].includes(targetStatusId)) {
+      return;
+    }
+    
+    // Tìm container nguồn và task được kéo
+    let sourceContainerId = null;
+    let draggedTask = null;
+    
+    Object.keys(tasks).forEach((containerId) => {
+      const foundTask = tasks[containerId].find((task) => task._id === taskId);
+      if (foundTask) {
+        sourceContainerId = containerId;
+        draggedTask = foundTask;
+      }
+    });
+    
+    // Nếu không tìm thấy task hoặc container nguồn, không làm gì
+    if (!sourceContainerId || !draggedTask) return;
+    
+    // Nếu đã ở đúng container rồi, không cần cập nhật
+    if (sourceContainerId === targetStatusId) return;
+    
+    console.log(`Moving task ${taskId} from ${sourceContainerId} to ${targetStatusId}`);
+    
+    // Cập nhật UI ngay lập tức
+    setTasks((prevTasks) => {
+      // Tạo bản sao của state hiện tại
+      const newTasks = { ...prevTasks };
+      
+      // Xóa task khỏi container nguồn
+      newTasks[sourceContainerId] = newTasks[sourceContainerId].filter(
+        (task) => task._id !== taskId
+      );
+      
+      // Thêm task vào container đích với status mới
+      newTasks[targetStatusId] = [
+        ...newTasks[targetStatusId],
+        { ...draggedTask, status: targetStatusId },
+      ];
+      
+      return newTasks;
+    });
+    
+    // Gọi API để cập nhật status trong database
+    updateTaskStatus(projectId, sprintId, taskId, targetStatusId)
+      .then((response) => {
+        if (!response.success) {
+          console.error("Failed to update task status:", response.message);
+          showSnackbar("Không thể cập nhật trạng thái công việc", "error");
+          
+          // Rollback UI nếu API failed
+          setTasks((prevTasks) => {
+            const newTasks = { ...prevTasks };
+            
+            // Xóa task khỏi container đích
+            newTasks[targetStatusId] = newTasks[targetStatusId].filter(
+              (task) => task._id !== taskId
+            );
+            
+            // Thêm task trở lại container nguồn
+            newTasks[sourceContainerId] = [
+              ...newTasks[sourceContainerId],
+              { ...draggedTask, status: sourceContainerId },
+            ];
+            
+            return newTasks;
+          });
+        } else {
+          showSnackbar("Cập nhật trạng thái công việc thành công");
+        }
+      })
+      .catch((error) => {
+        console.error("Error updating task status:", error);
+        showSnackbar("Lỗi khi cập nhật trạng thái công việc", "error");
+        
+        // Rollback UI if error
+        setTasks((prevTasks) => {
+          const newTasks = { ...prevTasks };
+          
+          // Xóa task khỏi container đích
+          newTasks[targetStatusId] = newTasks[targetStatusId].filter(
+            (task) => task._id !== taskId
+          );
+          
+          // Thêm task trở lại container nguồn
+          newTasks[sourceContainerId] = [
+            ...newTasks[sourceContainerId],
+            { ...draggedTask, status: sourceContainerId },
+          ];
+          
+          return newTasks;
+        });
+      });
+  };
+
+  const handleDragCancel = () => {
+    setIsDragActive(false);
+    setActiveId(null);
+    setActiveContainer(null);
+  };
+
+  const handleAddAttachment = async (taskId, formData) => {
+    try {
+      if (!projectId || !sprintId) {
+        showSnackbar("Không thể thêm tệp đính kèm: Thiếu thông tin dự án hoặc sprint", "error");
+        return;
+      }
+
+      const response = await addTaskAttachment(projectId, sprintId, taskId, formData);
+      if (response.success) {
+        showSnackbar("Thêm tệp đính kèm thành công");
+        return response.data;
+      } else {
+        showSnackbar(response.message || "Không thể thêm tệp đính kèm", "error");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error adding attachment:", error);
+      showSnackbar("Lỗi khi thêm tệp đính kèm", "error");
+      return null;
+    }
+  };
+
+  {viewMode === "kanban" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={3}>
+              <SortableContext items={tasks.todo.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Chưa bắt đầu",
+                  tasks.todo.length,
+                  "25, 118, 210",
+                  "todo",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "todo",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#1976d2",
+                      '&:hover': {
+                        backgroundColor: "rgba(25, 118, 210, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.todo
+                )}
+              </SortableContext>
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <SortableContext items={tasks.inProgress.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Đang thực hiện",
+                  tasks.inProgress.length,
+                  "255, 152, 0",
+                  "inProgress",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "inProgress",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#ff9800",
+                      '&:hover': {
+                        backgroundColor: "rgba(255, 152, 0, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.inProgress
+                )}
+              </SortableContext>
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <SortableContext items={tasks.review.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Đang kiểm tra",
+                  tasks.review.length,
+                  "156, 39, 176",
+                  "review",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "review",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#9c27b0",
+                      '&:hover': {
+                        backgroundColor: "rgba(156, 39, 176, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.review
+                )}
+              </SortableContext>
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <SortableContext items={tasks.done.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Hoàn thành",
+                  tasks.done.length,
+                  "46, 125, 50",
+                  "done",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "done",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#2e7d32",
+                      '&:hover': {
+                        backgroundColor: "rgba(46, 125, 50, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.done
+                )}
+              </SortableContext>
+            </Grid>
+          </Grid>
+
+          {/* Hiển thị overlay khi kéo */}
+          <DragOverlay modifiers={[restrictToWindowEdges]}>
+            {activeId && activeTask ? (
+              <TaskCard task={activeTask} />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      ) : (
+        renderListView()
+      )}
+
   return (
     <Box p={3}>
       <Box
@@ -1133,299 +1686,163 @@ const Tasks = () => {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
           <Grid container spacing={2}>
             <Grid item xs={12} md={3}>
-              {renderTaskColumn(
-                "Chưa bắt đầu",
-                tasks.todo.length,
-                "25, 118, 210",
-                "todo",
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      ...newTask,
-                      status: "todo",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{ 
-                    color: "#1976d2",
-                    '&:hover': {
-                      backgroundColor: "rgba(25, 118, 210, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>,
-                tasks.todo
-              )}
+              <SortableContext items={tasks.todo.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Chưa bắt đầu",
+                  tasks.todo.length,
+                  "25, 118, 210",
+                  "todo",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "todo",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#1976d2",
+                      '&:hover': {
+                        backgroundColor: "rgba(25, 118, 210, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.todo
+                )}
+              </SortableContext>
             </Grid>
 
             <Grid item xs={12} md={3}>
-              {renderTaskColumn(
-                "Đang thực hiện",
-                tasks.inProgress.length,
-                "255, 152, 0",
-                "inProgress",
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      ...newTask,
-                      status: "inProgress",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{ 
-                    color: "#ff9800",
-                    '&:hover': {
-                      backgroundColor: "rgba(255, 152, 0, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>,
-                tasks.inProgress
-              )}
+              <SortableContext items={tasks.inProgress.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Đang thực hiện",
+                  tasks.inProgress.length,
+                  "255, 152, 0",
+                  "inProgress",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "inProgress",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#ff9800",
+                      '&:hover': {
+                        backgroundColor: "rgba(255, 152, 0, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.inProgress
+                )}
+              </SortableContext>
             </Grid>
 
             <Grid item xs={12} md={3}>
-              {renderTaskColumn(
-                "Đang kiểm tra",
-                tasks.review.length,
-                "156, 39, 176",
-                "review",
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      ...newTask,
-                      status: "review",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{ 
-                    color: "#9c27b0",
-                    '&:hover': {
-                      backgroundColor: "rgba(156, 39, 176, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>,
-                tasks.review
-              )}
+              <SortableContext items={tasks.review.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Đang kiểm tra",
+                  tasks.review.length,
+                  "156, 39, 176",
+                  "review",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "review",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#9c27b0",
+                      '&:hover': {
+                        backgroundColor: "rgba(156, 39, 176, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.review
+                )}
+              </SortableContext>
             </Grid>
 
             <Grid item xs={12} md={3}>
-              {renderTaskColumn(
-                "Hoàn thành",
-                tasks.done.length,
-                "76, 175, 80",
-                "done",
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      ...newTask,
-                      status: "done",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{ 
-                    color: "#2e7d32",
-                    '&:hover': {
-                      backgroundColor: "rgba(76, 175, 80, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>,
-                tasks.done
-              )}
+              <SortableContext items={tasks.done.map(task => task._id)} strategy={verticalListSortingStrategy}>
+                {renderTaskColumn(
+                  "Hoàn thành",
+                  tasks.done.length,
+                  "46, 125, 50",
+                  "done",
+                  <IconButton 
+                    onClick={() => {
+                      setNewTask({
+                        ...newTask,
+                        status: "done",
+                        name: "",
+                        description: "",
+                        priority: "medium",
+                        startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+                        assignees: [],
+                        tags: [],
+                        estimate: "",
+                      });
+                      setOpenCreateDialog(true);
+                    }}
+                    sx={{
+                      color: "#2e7d32",
+                      '&:hover': {
+                        backgroundColor: "rgba(46, 125, 50, 0.1)"
+                      }
+                    }}
+                  >
+                    <AddIcon />
+                  </IconButton>,
+                  tasks.done
+                )}
+              </SortableContext>
             </Grid>
           </Grid>
-          <DragOverlay>
-            {activeId ? (
-              <div
-                style={{
-                  backgroundColor: "#ffffff",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
-                  border: "2px solid #1976d2",
-                  transform: "rotate(2deg)",
-                  cursor: "grabbing",
-                  width: "300px",
-                  zIndex: 9999,
-                  opacity: 0.9,
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    mb: 1,
-                  }}
-                >
-                  <Typography
-                    variant="subtitle1"
-                    sx={{ fontWeight: 600, fontSize: "0.95rem" }}
-                  >
-                    {
-                      tasks[activeContainer]?.find(
-                        (task) => task._id === activeId
-                      )?.name
-                    }
-                  </Typography>
-                  <Chip
-                    size="small"
-                    label={
-                      priorityLabels[
-                        tasks[activeContainer]?.find(
-                          (task) => task._id === activeId
-                        )?.priority
-                      ]
-                    }
-                    sx={{
-                      backgroundColor: `${
-                        priorityColors[
-                          tasks[activeContainer]?.find(
-                            (task) => task._id === activeId
-                          )?.priority
-                        ]
-                      }20`,
-                      color:
-                        priorityColors[
-                          tasks[activeContainer]?.find(
-                            (task) => task._id === activeId
-                          )?.priority
-                        ],
-                      fontWeight: 500,
-                      fontSize: "0.75rem",
-                    }}
-                  />
-                </Box>
 
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: "#6c757d",
-                    fontSize: "0.85rem",
-                    mb: 1,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}
-                >
-                  {
-                    tasks[activeContainer]?.find((task) => task._id === activeId)
-                      ?.description
-                  }
-                </Typography>
-
-                <Box
-                  sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}
-                >
-                  <Chip
-                    icon={<span style={{ fontSize: "1rem" }}>🕒</span>}
-                    label={
-                      tasks[activeContainer]?.find(
-                        (task) => task._id === activeId
-                      )?.dueDate
-                        ? format(
-                            new Date(
-                              tasks[activeContainer]?.find(
-                                (task) => task._id === activeId
-                              )?.dueDate
-                            ),
-                            "dd/MM/yyyy",
-                            { locale: vi }
-                          )
-                        : "Chưa có hạn"
-                    }
-                    size="small"
-                    sx={{
-                      backgroundColor: "#f8f9fa",
-                      color: "#495057",
-                      fontWeight: 500,
-                      fontSize: "0.75rem",
-                      height: "24px",
-                      border: "1px solid #e9ecef",
-                    }}
-                  />
-                </Box>
-
-                {tasks[activeContainer]?.find((task) => task._id === activeId)
-                  ?.assignees?.length > 0 && (
-                  <Box sx={{ mt: 2 }}>
-                    <AvatarGroup
-                      max={3}
-                      sx={{
-                        "& .MuiAvatar-root": {
-                          width: 24,
-                          height: 24,
-                          fontSize: "0.75rem",
-                        },
-                      }}
-                    >
-                      {tasks[activeContainer]
-                        ?.find((task) => task._id === activeId)
-                        ?.assignees.map((assignee, index) => (
-                          <Avatar
-                            key={assignee?._id || `assignee-${index}`}
-                            alt={assignee?.fullName || assignee?.name || assignee?.email || "Unknown"}
-                            src={assignee?.avatar}
-                            sx={{
-                              backgroundColor: "#e9ecef",
-                              color: "#495057",
-                              fontSize: "0.8rem",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {(assignee?.fullName || assignee?.name || assignee?.email || "?").charAt(0)}
-                          </Avatar>
-                        ))}
-                    </AvatarGroup>
-                  </Box>
-                )}
-              </div>
+          {/* Hiển thị overlay khi kéo */}
+          <DragOverlay modifiers={[restrictToWindowEdges]}>
+            {activeId && activeTask ? (
+              <TaskCard task={activeTask} />
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -1592,24 +2009,42 @@ const Tasks = () => {
             <Typography variant="h6">
               {selectedTask?.name || selectedTask?.title}
             </Typography>
-            <Chip 
-              label={
-                selectedTask?.status === 'todo' ? 'Chưa bắt đầu' : 
-                selectedTask?.status === 'inProgress' ? 'Đang thực hiện' :
-                selectedTask?.status === 'review' ? 'Đang kiểm tra' : 'Hoàn thành'
-              }
-              size="small"
-              sx={{
-                backgroundColor: 
-                  selectedTask?.status === 'todo' ? 'rgba(66, 165, 245, 0.1)' :
-                  selectedTask?.status === 'inProgress' ? 'rgba(255, 152, 0, 0.1)' :
-                  selectedTask?.status === 'review' ? 'rgba(171, 71, 188, 0.1)' : 'rgba(76, 175, 80, 0.1)',
-                color: 
-                  selectedTask?.status === 'todo' ? '#1976d2' :
-                  selectedTask?.status === 'inProgress' ? '#f57c00' :
-                  selectedTask?.status === 'review' ? '#7b1fa2' : '#2e7d32',
-              }}
-            />
+            <Box>
+              <Chip 
+                label={
+                  selectedTask?.status === 'todo' ? 'Chưa bắt đầu' : 
+                  selectedTask?.status === 'inProgress' ? 'Đang thực hiện' :
+                  selectedTask?.status === 'review' ? 'Đang kiểm tra' : 'Hoàn thành'
+                }
+                size="small"
+                sx={{
+                  backgroundColor: 
+                    selectedTask?.status === 'todo' ? 'rgba(66, 165, 245, 0.1)' :
+                    selectedTask?.status === 'inProgress' ? 'rgba(255, 152, 0, 0.1)' :
+                    selectedTask?.status === 'review' ? 'rgba(171, 71, 188, 0.1)' : 'rgba(76, 175, 80, 0.1)',
+                  color: 
+                    selectedTask?.status === 'todo' ? '#1976d2' :
+                    selectedTask?.status === 'inProgress' ? '#f57c00' :
+                    selectedTask?.status === 'review' ? '#7b1fa2' : '#2e7d32',
+                  marginRight: 1
+                }}
+              />
+              <Chip 
+                label={
+                  selectedTask?.priority === 'low' ? 'Thấp' :
+                  selectedTask?.priority === 'medium' ? 'Trung bình' : 'Cao'
+                }
+                size="small"
+                sx={{
+                  backgroundColor: 
+                    selectedTask?.priority === 'low' ? 'rgba(76, 175, 80, 0.1)' :
+                    selectedTask?.priority === 'medium' ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                  color: 
+                    selectedTask?.priority === 'low' ? '#2e7d32' :
+                    selectedTask?.priority === 'medium' ? '#f57c00' : '#d32f2f',
+                }}
+              />
+            </Box>
           </Box>
         </DialogTitle>
         <DialogContent dividers>
@@ -1629,23 +2064,11 @@ const Tasks = () => {
                     </Grid>
                     <Grid item xs={12} sm={6}>
                       <Typography variant="subtitle2" color="text.secondary">
-                        Độ ưu tiên
+                        Ngày bắt đầu
                       </Typography>
-                      <Chip 
-                        label={
-                          selectedTask?.priority === 'low' ? 'Thấp' :
-                          selectedTask?.priority === 'medium' ? 'Trung bình' : 'Cao'
-                        }
-                        size="small"
-                        sx={{
-                          backgroundColor: 
-                            selectedTask?.priority === 'low' ? 'rgba(76, 175, 80, 0.1)' :
-                            selectedTask?.priority === 'medium' ? 'rgba(255, 152, 0, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-                          color: 
-                            selectedTask?.priority === 'low' ? '#2e7d32' :
-                            selectedTask?.priority === 'medium' ? '#f57c00' : '#d32f2f',
-                        }}
-                      />
+                      <Typography variant="body2">
+                        {selectedTask?.startDate ? format(new Date(selectedTask.startDate), "dd/MM/yyyy", { locale: vi }) : 'Chưa có'}
+                      </Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
                       <Typography variant="subtitle2" color="text.secondary">
@@ -1661,6 +2084,14 @@ const Tasks = () => {
                       </Typography>
                       <Typography variant="body2">
                         {selectedTask?.estimatedTime ? `${selectedTask.estimatedTime} giờ` : 'Chưa có ước tính'}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Thời gian đã làm
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedTask?.actualTime ? `${selectedTask.actualTime} giờ` : 'Chưa có dữ liệu'}
                       </Typography>
                     </Grid>
                     <Grid item xs={12}>
@@ -1701,299 +2132,251 @@ const Tasks = () => {
                         </Box>
                       </Grid>
                     )}
-                    <Grid item xs={12}>
-                      <Box display="flex" justifyContent="space-between" mt={1}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                          Người tạo: {selectedTask?.createdBy?.name || "Unknown"}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Ngày tạo: {selectedTask?.createdAt ? format(new Date(selectedTask.createdAt), "dd/MM/yyyy", { locale: vi }) : ''}
-                        </Typography>
-                      </Box>
-                    </Grid>
                   </Grid>
                 </AccordionDetails>
               </Accordion>
             </Box>
-            
-            {/* Tabs cho comments, files, lịch sử */}
-            <Box sx={{ width: '100%' }}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Tabs value={detailTab} onChange={handleDetailTabChange} aria-label="task tabs">
-                  <Tab 
-                    icon={
-                      <Badge 
-                        badgeContent={Array.isArray(taskComments) ? taskComments.length : 0} 
-                        color="primary" 
-                        sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
-                      >
-                        <CommentIcon />
-                      </Badge>
-                    } 
-                    label="Bình luận" 
-                    id="task-tab-0" 
-                    aria-controls="task-tabpanel-0" 
-                  />
-                  <Tab 
-                    icon={
-                      <Badge 
-                        badgeContent={Array.isArray(taskAttachments) ? taskAttachments.length : 0} 
-                        color="primary" 
-                        sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
-                      >
-                        <AttachFileIcon />
-                      </Badge>
-                    } 
-                    label="Tệp đính kèm" 
-                    id="task-tab-1" 
-                    aria-controls="task-tabpanel-1" 
-                  />
-                  <Tab 
-                    icon={<HistoryIcon />} 
-                    label="Lịch sử" 
-                    id="task-tab-2" 
-                    aria-controls="task-tabpanel-2" 
-                  />
-                </Tabs>
-              </Box>
-              
-              {/* Tab Comments */}
-              <Box
-                role="tabpanel"
-                hidden={detailTab !== 0}
-                id="task-tabpanel-0"
-                aria-labelledby="task-tab-0"
-                sx={{ py: 2 }}
+
+            {/* Tabs cho bình luận, tệp đính kèm, lịch sử */}
+            <Box>
+              <Tabs
+                value={detailTab}
+                onChange={handleDetailTabChange}
+                aria-label="task detail tabs"
+                variant="fullWidth"
+                sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
               >
-                {loadingComments ? (
-                  <Box display="flex" justifyContent="center" my={3}>
-                    <CircularProgress size={30} />
-                  </Box>
-                ) : (
-                  <>
-                    <List sx={{ width: '100%' }}>
-                      {(!taskComments || !Array.isArray(taskComments) || taskComments.length === 0) ? (
-                        <Box display="flex" justifyContent="center" my={2}>
-                          <Typography variant="body2" color="text.secondary">
-                            Chưa có bình luận nào.
-                          </Typography>
-                        </Box>
-                      ) : (
-                        Array.isArray(taskComments) && taskComments.map((comment, index) => (
-                          <ListItem
-                            key={comment._id || `comment-${index}`}
-                            alignItems="flex-start"
-                            sx={{ 
-                              py: 1,
-                              borderBottom: index < taskComments.length - 1 ? '1px solid #f0f0f0' : 'none'
-                            }}
-                          >
-                            <ListItemAvatar>
-                              <Avatar src={comment.user?.avatar}>
-                                {(comment.user?.name || "?").charAt(0)}
-                              </Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={
-                                <Box display="flex" justifyContent="space-between">
-                                  <Typography variant="subtitle2" component="span">
-                                    {comment.user?.name || "Người dùng"}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {comment.createdAt ? format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
-                                  </Typography>
-                                </Box>
-                              }
-                              secondary={
-                                <Typography
-                                  variant="body2"
-                                  color="text.primary"
-                                  sx={{ mt: 1, whiteSpace: 'pre-wrap' }}
-                                >
-                                  {comment.content}
-                                </Typography>
-                              }
-                            />
-                          </ListItem>
-                        ))
-                      )}
-                    </List>
-                    
-                    <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={2}
-                        placeholder="Thêm bình luận..."
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <IconButton 
-                                edge="end" 
-                                color="primary" 
-                                onClick={handleSendComment}
-                                disabled={!newComment.trim()}
-                              >
-                                <SendIcon />
-                              </IconButton>
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
+                <Tab label="Bình luận" sx={{ textTransform: 'none' }} />
+                <Tab label="Tệp đính kèm" sx={{ textTransform: 'none' }} />
+                <Tab label="Lịch sử" sx={{ textTransform: 'none' }} />
+              </Tabs>
+
+              {/* Tab nội dung */}
+              {detailTab === 0 && (
+                <Box>
+                  {/* Danh sách bình luận */}
+                  {loadingComments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress />
                     </Box>
-                  </>
-                )}
-              </Box>
-              
-              {/* Tab Tệp đính kèm */}
-              <Box
-                role="tabpanel"
-                hidden={detailTab !== 1}
-                id="task-tabpanel-1"
-                aria-labelledby="task-tab-1"
-                sx={{ py: 2 }}
-              >
-                {loadingAttachments ? (
-                  <Box display="flex" justifyContent="center" my={3}>
-                    <CircularProgress size={30} />
-                  </Box>
-                ) : (
-                  <>
-                    <List sx={{ width: '100%' }}>
-                      {(!taskAttachments || !Array.isArray(taskAttachments) || taskAttachments.length === 0) ? (
-                        <Box display="flex" justifyContent="center" my={2}>
-                          <Typography variant="body2" color="text.secondary">
-                            Chưa có tệp đính kèm nào.
-                          </Typography>
-                        </Box>
-                      ) : (
-                        Array.isArray(taskAttachments) && taskAttachments.map((attachment, index) => (
-                          <ListItem
-                            key={attachment._id || `attachment-${index}`}
-                            alignItems="center"
-                            sx={{ 
-                              py: 1,
-                              borderBottom: index < taskAttachments.length - 1 ? '1px solid #f0f0f0' : 'none'
-                            }}
-                          >
-                            <ListItemIcon>
-                              <InsertDriveFileIcon color="primary" />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={attachment.filename || "Tệp đính kèm"}
-                              secondary={
-                                <Box display="flex" justifyContent="space-between" alignItems="center">
-                                  <Typography variant="caption" color="text.secondary">
-                                    {attachment.size ? `${Math.round(attachment.size / 1024)} KB` : ''}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {attachment.createdAt ? format(new Date(attachment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
-                                  </Typography>
-                                </Box>
-                              }
-                            />
-                            <ListItemSecondaryAction>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                href={attachment.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Tải xuống
-                              </Button>
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                        ))
-                      )}
-                    </List>
-                    
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-                      <input
-                        accept="*/*"
-                        style={{ display: 'none' }}
-                        id="task-file-upload"
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                      />
-                      <label htmlFor="task-file-upload">
-                        <Button
-                          variant="contained"
-                          component="span"
-                          startIcon={<CloudUploadIcon />}
-                        >
-                          Tải lên tệp
-                        </Button>
-                      </label>
-                    </Box>
-                  </>
-                )}
-              </Box>
-              
-              {/* Tab Lịch sử */}
-              <Box
-                role="tabpanel"
-                hidden={detailTab !== 2}
-                id="task-tabpanel-2"
-                aria-labelledby="task-tab-2"
-                sx={{ py: 2 }}
-              >
-                {loadingHistory ? (
-                  <Box display="flex" justifyContent="center" my={3}>
-                    <CircularProgress size={30} />
-                  </Box>
-                ) : (
-                  <List sx={{ width: '100%' }}>
-                    {(!taskHistory || !Array.isArray(taskHistory) || taskHistory.length === 0) ? (
-                      <Box display="flex" justifyContent="center" my={2}>
-                        <Typography variant="body2" color="text.secondary">
-                          Chưa có lịch sử thay đổi nào.
-                        </Typography>
-                      </Box>
-                    ) : (
-                      Array.isArray(taskHistory) && taskHistory.map((item, index) => (
+                  ) : taskComments.length > 0 ? (
+                    <List>
+                      {taskComments.map((comment) => (
                         <ListItem
-                          key={item._id || `history-${index}`}
+                          key={comment._id}
                           alignItems="flex-start"
-                          sx={{ 
-                            py: 1,
-                            borderBottom: index < taskHistory.length - 1 ? '1px solid #f0f0f0' : 'none'
-                          }}
+                          sx={{ px: 0, py: 1, borderBottom: '1px solid #f0f0f0' }}
                         >
-                          <ListItemIcon>
-                            <HistoryIcon color="primary" />
-                          </ListItemIcon>
+                          <ListItemAvatar>
+                            <Avatar src={comment.user?.avatar}>
+                              {comment.user?.name?.charAt(0)}
+                            </Avatar>
+                          </ListItemAvatar>
                           <ListItemText
                             primary={
-                              <Box display="flex" justifyContent="space-between">
-                                <Typography variant="subtitle2" component="span">
-                                  {item.user?.name || "Người dùng"}
+                              <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="subtitle2">
+                                  {comment.user?.name || "Người dùng không xác định"}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                  {item.createdAt ? format(new Date(item.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
+                                  {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
                                 </Typography>
                               </Box>
                             }
                             secondary={
                               <Typography
                                 variant="body2"
-                                color="text.primary"
-                                sx={{ mt: 1 }}
+                                sx={{ mt: 1, whiteSpace: 'pre-wrap' }}
                               >
-                                {item.action || "Đã thực hiện một hành động"}
-                                {item.details && `: ${item.details}`}
+                                {comment.content}
                               </Typography>
                             }
                           />
                         </ListItem>
-                      ))
+                      ))}
+                    </List>
+                  ) : (
+                    <Box textAlign="center" py={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Chưa có bình luận nào
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Thêm bình luận mới */}
+                  <Box mt={2} display="flex" alignItems="flex-start">
+                    <Avatar 
+                      src={user?.avatar} 
+                      sx={{ mr: 1, width: 36, height: 36 }}
+                    >
+                      {user?.name?.charAt(0)}
+                    </Avatar>
+                    <TextField
+                      fullWidth
+                      placeholder="Thêm bình luận..."
+                      multiline
+                      minRows={2}
+                      maxRows={5}
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end" sx={{ alignSelf: 'flex-end' }}>
+                            <Button
+                              onClick={handleSendComment}
+                              disabled={!newComment.trim() || commentLoading}
+                              variant="contained"
+                              size="small"
+                              sx={{ minWidth: 'auto', p: '6px 12px' }}
+                            >
+                              {commentLoading ? (
+                                <CircularProgress size={16} color="inherit" />
+                              ) : (
+                                <SendIcon fontSize="small" />
+                              )}
+                            </Button>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Box>
+                </Box>
+              )}
+
+              {detailTab === 1 && (
+                <Box>
+                  {/* Danh sách tệp đính kèm */}
+                  {loadingAttachments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress />
+                    </Box>
+                  ) : taskAttachments.length > 0 ? (
+                    <List>
+                      {taskAttachments.map((attachment, index) => (
+                        <ListItem
+                          key={attachment._id || attachment.id || `attachment-${index}`}
+                          sx={{ px: 0, py: 1, borderBottom: index < taskAttachments.length - 1 ? '1px solid #f0f0f0' : 'none' }}
+                        >
+                          <ListItemIcon>
+                            <InsertDriveFileIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Link 
+                                href={attachment.url} 
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                underline="hover"
+                              >
+                                {attachment.name || "Tệp đính kèm"}
+                              </Link>
+                            }
+                            secondary={
+                              <Typography variant="caption" color="text.secondary">
+                                {attachment.size && `${Math.round(attachment.size / 1024)} KB`}
+                                {attachment.uploadedAt && ` · ${format(new Date(attachment.uploadedAt), "dd/MM/yyyy HH:mm", { locale: vi })}`}
+                              </Typography>
+                            }
+                          />
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            href={attachment.url}
+                            target="_blank"
+                            startIcon={<CloudDownloadIcon />}
+                          >
+                            Tải xuống
+                          </Button>
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Box textAlign="center" py={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Chưa có tệp đính kèm nào
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Tải lên tệp mới */}
+                  <Box mt={3} textAlign="center">
+                    <input
+                      type="file"
+                      id="task-attachment-upload"
+                      hidden
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                    />
+                    <label htmlFor="task-attachment-upload">
+                      <Button
+                        onClick={() => fileInputRef.current?.click()}
+                        variant="contained"
+                        component="span"
+                        startIcon={loadingAttachments ? (
+                          <CircularProgress size={16} color="inherit" />
+                        ) : (
+                          <CloudUploadIcon />
+                        )}
+                        disabled={loadingAttachments}
+                      >
+                        Tải lên tệp đính kèm
+                      </Button>
+                    </label>
+                    {selectedFile && (
+                      <Typography variant="caption" display="block" mt={1}>
+                        Đã chọn: {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
+                      </Typography>
                     )}
-                  </List>
-                )}
-              </Box>
+                  </Box>
+                </Box>
+              )}
+
+              {detailTab === 2 && (
+                <Box>
+                  {/* Lịch sử thay đổi */}
+                  {loadingHistory ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress />
+                    </Box>
+                  ) : taskHistory.length > 0 ? (
+                    <List>
+                      {taskHistory.map((entry, index) => (
+                        <ListItem
+                          key={entry._id || `history-${index}`}
+                          sx={{ px: 0, py: 1, borderBottom: index < taskHistory.length - 1 ? '1px solid #f0f0f0' : 'none' }}
+                        >
+                          <ListItemIcon>
+                            <HistoryIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box display="flex" justifyContent="space-between" alignItems="center">
+                                <Typography variant="body1">
+                                  {entry.user?.name || "Người dùng"} {entry.action}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {entry.timestamp && format(new Date(entry.timestamp), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                </Typography>
+                              </Box>
+                            }
+                            secondary={entry.details && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                {entry.details}
+                              </Typography>
+                            )}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Box textAlign="center" py={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Chưa có lịch sử thay đổi nào
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              )}
             </Box>
           </Stack>
         </DialogContent>
@@ -2178,17 +2561,6 @@ const Tasks = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

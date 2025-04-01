@@ -1,10 +1,11 @@
 import Task from "../models/task.model.js";
 import Project from "../models/project.model.js";
-import Timelog from "../models/timelogs.model.js";
+import Timelog from "../models/timelog.model.js";
 import Comment from "../models/comment.model.js";
 import { google } from "googleapis";
 import { calendar } from "../config/google.config.js";
 import { createNotification } from "./notification.controller.js";
+import User from "../models/user.model.js";
 
 // Validate dữ liệu đầu vào
 const validateTimelogData = (data) => {

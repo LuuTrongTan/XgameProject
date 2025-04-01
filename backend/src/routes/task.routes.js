@@ -1,5 +1,7 @@
 import express from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import {
   getTasks,
   getTaskById,
@@ -25,7 +27,25 @@ import { checkPermission } from "../middlewares/permission.middleware.js";
 import { PERMISSIONS } from "../config/constants.js";
 
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
+
+// Đảm bảo thư mục uploads tồn tại
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("Created uploads directory:", uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
+  }
+});
+
+const upload = multer({ storage: storage });
 
 /**
  * @swagger

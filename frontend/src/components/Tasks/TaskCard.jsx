@@ -26,6 +26,8 @@ import {
   CircularProgress,
   Badge,
   InputAdornment,
+  Grid,
+  Link,
 } from "@mui/material";
 import {
   ExpandMore as ExpandMoreIcon,
@@ -207,91 +209,67 @@ const TaskCard = ({
       pathSprintId = pathParts[sprintIdx + 1];
     }
     
+    // Combine all sources of info
     return {
       ...task,
-      projectId: task.projectId || task.project?._id || pathProjectId || project?._id,
-      sprintId: task.sprintId || task.sprint?._id || pathSprintId || sprintIdFromUrl,
+      projectId: task.projectId || pathProjectId || (project ? project._id : null),
+      sprintId: task.sprintId || pathSprintId || sprintIdFromUrl
     };
   }, [task, project]);
-  
+
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
     transition,
-    isDragging
+    isDragging,
   } = useSortable({
-    id: enhancedTask._id,
-    data: { task: enhancedTask, index, container }
+    id: task._id,
+    data: {
+      task,
+      container,
+      index,
+    },
   });
 
-  const cardStyle = {
+  const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.8 : 1,
+    opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
-    filter: isDragging ? 'drop-shadow(0 8px 20px rgba(0,0,0,0.25))' : 'none',
   };
-  
-  // Chi tiết button click handler
+
+  // Open card in edit mode
   const handleDetailClick = (e) => {
-    // Ensure the event doesn't trigger card behavior
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(task);
     }
-    
-    // Call onEdit directly with the event
-    if (typeof onEdit === 'function') {
-      onEdit(enhancedTask, e);
-    }
-    
-    return false;
   };
-  
-  // Handlers
+
+  // Toggle card expand state
   const handleExpandClick = (e) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    setExpanded(!expanded);
+    e.stopPropagation();
     
-    // Fetch data for the first tab when expanding
+    // If we're expanding, load data
     if (!expanded) {
-      // Set default tab
-      setExpandedTab(0);
-      
-      // Log task data for debugging
-      console.log("Task data in handleExpandClick:", { 
-        task: enhancedTask, 
-        project, 
-        container,
-        expandedTab
-      });
-      
-      // Load comments when first expanded
       fetchAllData();
     }
+    
+    setExpanded(!expanded);
   };
-  
+
+  // Handle tab change in expanded card view
   const handleTabChange = (event, newValue) => {
     setExpandedTab(newValue);
     
-    // Log task data for debugging
-    console.log("Task data in handleTabChange:", { 
-      task: enhancedTask, 
-      project, 
-      container,
-      newTabValue: newValue
-    });
-    
-    // Tải dữ liệu tương ứng với tab
-    if (newValue === 0) {
+    // Load data if not already loaded
+    if (newValue === 0 && comments.length === 0 && !loadingComments) {
       fetchComments();
-    } else if (newValue === 1) {
+    } else if (newValue === 1 && attachments.length === 0 && !loadingAttachments) {
       fetchAttachments();
-    } else if (newValue === 2) {
+    } else if (newValue === 2 && history.length === 0 && !loadingHistory) {
       fetchHistory();
     }
   };
@@ -605,15 +583,15 @@ const TaskCard = ({
   const getStatusColor = (status) => {
     switch (status) {
       case "todo":
-        return { bg: "#e3f2fd", color: "#1976d2" };
+        return { bg: "rgba(66, 165, 245, 0.1)", color: "#1976d2" };
       case "inProgress":
-        return { bg: "#fff8e1", color: "#f57c00" };
+        return { bg: "rgba(255, 152, 0, 0.1)", color: "#f57c00" };
       case "review":
-        return { bg: "#f3e5f5", color: "#7b1fa2" };
+        return { bg: "rgba(171, 71, 188, 0.1)", color: "#7b1fa2" };
       case "done":
-        return { bg: "#e8f5e9", color: "#2e7d32" };
+        return { bg: "rgba(76, 175, 80, 0.1)", color: "#2e7d32" };
       default:
-        return { bg: "#f5f5f5", color: "#757575" };
+        return { bg: "rgba(66, 165, 245, 0.1)", color: "#1976d2" };
     }
   };
 
@@ -644,50 +622,49 @@ const TaskCard = ({
         return "Không xác định";
     }
   };
-
-  // Format date helper
-  const formatDate = (dateString) => {
-    if (!dateString) return null;
-    
-    try {
-      const date = new Date(dateString);
-      return format(date, "dd/MM/yyyy", { locale: vi });
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return dateString;
+  
+  // Get priority color for display
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case "low":
+        return { bg: "rgba(76, 175, 80, 0.1)", color: "#2e7d32" };
+      case "medium":
+        return { bg: "rgba(255, 152, 0, 0.1)", color: "#f57c00" };
+      case "high":
+        return { bg: "rgba(244, 67, 54, 0.1)", color: "#d32f2f" };
+      default:
+        return { bg: "rgba(158, 158, 158, 0.1)", color: "#757575" };
     }
   };
 
-  // Get days remaining
+  // Format date with localization
+  const formatDate = (dateString) => {
+    if (!dateString) return "Không có";
+    
+    try {
+      return format(new Date(dateString), "dd/MM/yyyy", { locale: vi });
+    } catch (error) {
+      console.error("Date format error:", error);
+      return "Không hợp lệ";
+    }
+  };
+
+  // Calculate days remaining until due date
   const getDaysRemaining = (dueDate) => {
     if (!dueDate) return null;
     
     try {
-      const due = new Date(dueDate);
       const today = new Date();
-      
-      // Reset time to compare dates only
-      due.setHours(0, 0, 0, 0);
-      today.setHours(0, 0, 0, 0);
-      
+      const due = new Date(dueDate);
       const diffTime = due - today;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      if (diffDays < 0) {
-        return `Quá hạn ${Math.abs(diffDays)} ngày`;
-      } else if (diffDays === 0) {
-        return "Hết hạn hôm nay";
-      } else {
-        return `Còn ${diffDays} ngày`;
-      }
+      return diffDays;
     } catch (error) {
-      console.error("Error calculating days remaining:", error);
+      console.error("Date calculation error:", error);
       return null;
     }
   };
-
-  // Extracted for readability
-  const statusColor = getStatusColor(enhancedTask.status);
 
   // Xử lý sự kiện kéo thả
   const handleDragStart = (e) => {
@@ -706,590 +683,466 @@ const TaskCard = ({
   };
 
   return (
-    <TaskCardContainer
-      ref={setNodeRef}
-      style={cardStyle}
-      onClick={handleDetailClick}
-      draggable={true}
-      onDragStart={handleDragStart}
-      sx={{
-        cursor: 'grab',
-        '&:active': { cursor: 'grabbing' },
-      }}
-    >
-      {/* Status strip - top of card */}
-      <Box
-        sx={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "5px",
-          backgroundColor: getStatusColor(enhancedTask.status)?.bg || "#f5f5f5",
-          borderRadius: "12px 12px 0 0",
-        }}
-      />
-      
-      {/* Priority indicator - top right corner */}
-      {enhancedTask.priority && (
-        <PriorityIndicator priority={enhancedTask.priority} />
-      )}
-
-      {/* Main content */}
-      <CardContent sx={{ pt: 2.5, pb: 1.5 }}>
-        {/* Content */}
-        <Box>
-          {/* Action buttons position top right */}
-          {actionButtons}
+    <div ref={setNodeRef} style={style}>
+      <TaskCardContainer 
+        elevation={3}
+        onClick={handleDetailClick}
+        sx={isDragging ? { cursor: "grabbing" } : {}}
+      >
+        {/* Priority indicator at top-right corner */}
+        <PriorityIndicator priority={task.priority} />
+        
+        {/* Drag handle */}
+        <Box 
+          sx={{ 
+            position: "absolute", 
+            top: "10px", 
+            left: "10px", 
+            cursor: "grab",
+            color: "text.secondary", 
+            opacity: 0.5,
+            "&:hover": { opacity: 0.8 } 
+          }}
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <DragIndicatorIcon fontSize="small" />
+        </Box>
+        
+        <CardContent sx={{ pt: 3.5, pb: 1.5 }}>
+          {/* Task title */}
+          <TaskTitle variant="h6">
+            {task.title}
+          </TaskTitle>
           
-          {/* Card main content */}
-          <Box sx={{ pr: enhancedTask.priority ? 7 : 0 }}>
-            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 1 }}>
-              <StatusChip 
-                label={getStatusLabel(enhancedTask.status)} 
-                colorData={getStatusColor(enhancedTask.status)}
-                size="small"
-              />
-              
-              {/* Due date chip */}
-              {enhancedTask.dueDate && (
+          {/* Task description (truncated) */}
+          <TaskDescription variant="body2" color="text.secondary">
+            {task.description}
+          </TaskDescription>
+          
+          {/* Status chip */}
+          <StatusChip 
+            label={getStatusLabel(task.status)} 
+            size="small"
+            colorData={getStatusColor(task.status)}
+          />
+          
+          {/* Due date & assignees */}
+          <TaskInfoSection>
+            <Box display="flex" alignItems="center">
+              {task.dueDate && (
                 <Tooltip title="Ngày hết hạn">
-                  <Chip
-                    icon={<CalendarTodayIcon style={{ fontSize: "0.7rem" }} />}
-                    label={
-                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                        <Typography variant="caption" fontSize="0.7rem">
-                          {formatDate(enhancedTask.dueDate)}
-                        </Typography>
-                      </Box>
-                    }
-                    size="small"
-                    sx={{
-                      height: "22px",
-                      fontSize: "0.7rem",
-                      bgcolor: 'rgba(0,0,0,0.04)',
-                      color: 'text.secondary',
-                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
-                      '& .MuiChip-label': { px: 1 },
-                      borderRadius: "4px",
-                    }}
-                  />
+                  <Box display="flex" alignItems="center" mr={1.5}>
+                    <CalendarTodayIcon 
+                      fontSize="small" 
+                      sx={{ 
+                        fontSize: "0.85rem", 
+                        mr: 0.5, 
+                        color: "text.secondary" 
+                      }} 
+                    />
+                    <Typography variant="caption">
+                      {formatDate(task.dueDate)}
+                    </Typography>
+                  </Box>
                 </Tooltip>
               )}
             </Box>
             
-            {/* Task title */}
-            <TaskTitle variant="h6">
-              {enhancedTask.title || enhancedTask.name}
-            </TaskTitle>
-            
-            {/* Task description */}
-            <TaskDescription variant="body2">
-              {enhancedTask.description || "Không có mô tả"}
-            </TaskDescription>
-            
-            {/* Task details - assignees, tags, etc. */}
-            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+            <Box display="flex" alignItems="center">
               {/* Assignees */}
-              {enhancedTask.assignees && enhancedTask.assignees.length > 0 ? (
+              {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
                 <AvatarGroup 
-                  max={3} 
+                  max={2} 
                   sx={{ 
                     '& .MuiAvatar-root': { 
-                      width: 24, 
-                      height: 24, 
-                      fontSize: '0.75rem',
-                      border: '1px solid #fff'
-                    },
-                    mr: 1
+                      width: 22, 
+                      height: 22, 
+                      fontSize: '0.75rem', 
+                      border: '1px solid #fff' 
+                    } 
                   }}
                 >
-                  {enhancedTask.assignees.map((assignee, index) => {
-                    // Người dùng có thể là object hoặc string ID
-                    const name = assignee?.name || assignee?.fullName || assignee?.email || "Người dùng";
-                    const avatar = assignee?.avatar || assignee?.user?.avatar;
-                    const id = assignee?._id || assignee?.id || assignee?.user?._id || assignee;
-                    
-                    return (
-                      <Tooltip key={id || `assignee-${index}`} title={name}>
-                        <Avatar src={avatar}>
-                          {name.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </Tooltip>
-                    );
-                  })}
+                  {task.assignees.map((assignee, index) => (
+                    <Tooltip 
+                      key={assignee?._id || `${task._id}-assignee-${index}`} 
+                      title={assignee?.name || assignee?.email || "Người dùng không xác định"}
+                    >
+                      <Avatar 
+                        src={assignee?.avatar} 
+                        alt={assignee?.name}
+                        sx={{ width: 22, height: 22 }}
+                      >
+                        {((assignee?.name || assignee?.email || "?") || "?").charAt(0).toUpperCase()}
+                      </Avatar>
+                    </Tooltip>
+                  ))}
                 </AvatarGroup>
               ) : (
-                <Tooltip title="Chưa gán cho ai">
-                  <Chip
-                    icon={<PersonIcon style={{ fontSize: "0.7rem" }} />}
-                    label="Chưa gán"
-                    size="small"
-                    sx={{
-                      height: "22px",
-                      fontSize: "0.7rem",
-                      bgcolor: 'rgba(0,0,0,0.04)',
-                      color: 'text.secondary',
-                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
-                      '& .MuiChip-label': { px: 1 },
-                      borderRadius: "4px",
-                    }}
-                  />
-                </Tooltip>
-              )}
-              
-              {/* Estimate time */}
-              {enhancedTask.estimatedTime && Number(enhancedTask.estimatedTime) > 0 && (
-                <Tooltip title="Thời gian ước tính">
-                  <Chip
-                    icon={<AccessTimeIcon style={{ fontSize: "0.7rem" }} />}
-                    label={`${enhancedTask.estimatedTime}h`}
-                    size="small"
-                    sx={{
-                      height: "22px",
-                      fontSize: "0.7rem",
-                      bgcolor: 'rgba(0,0,0,0.04)',
-                      color: 'text.secondary',
-                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
-                      '& .MuiChip-label': { px: 1 },
-                      borderRadius: "4px",
-                    }}
-                  />
-                </Tooltip>
-              )}
-              
-              {/* Tags */}
-              {enhancedTask.tags && enhancedTask.tags.length > 0 && enhancedTask.tags.slice(0, 2).map((tag, index) => (
-                <Tooltip title="Tag" key={`tag-${index}`}>
-                  <Chip
-                    icon={<LabelIcon style={{ fontSize: "0.7rem" }} />}
-                    label={tag}
-                    size="small"
-                    sx={{
-                      height: "22px",
-                      fontSize: "0.7rem",
-                      bgcolor: 'rgba(156, 39, 176, 0.1)',
-                      color: '#7b1fa2',
-                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px', color: '#7b1fa2' },
-                      '& .MuiChip-label': { px: 1 },
-                      borderRadius: "4px",
-                    }}
-                  />
-                </Tooltip>
-              ))}
-              
-              {/* More tags indicator */}
-              {enhancedTask.tags && enhancedTask.tags.length > 2 && (
-                <Tooltip title={enhancedTask.tags.slice(2).join(', ')}>
-                  <Chip
-                    label={`+${enhancedTask.tags.length - 2}`}
-                    size="small"
-                    sx={{
-                      height: "22px",
-                      fontSize: "0.7rem",
-                      bgcolor: 'rgba(156, 39, 176, 0.05)',
-                      color: '#7b1fa2',
-                      '& .MuiChip-label': { px: 1 },
-                      borderRadius: "4px",
-                    }}
+                <Tooltip title="Chưa có người thực hiện">
+                  <PersonOffIcon 
+                    fontSize="small" 
+                    sx={{ 
+                      fontSize: "0.85rem", 
+                      color: "text.disabled" 
+                    }} 
                   />
                 </Tooltip>
               )}
             </Box>
-          </Box>
+          </TaskInfoSection>
           
-          {/* Footer with project name and action buttons */}
-          <Box sx={{ 
-            mt: 2, 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center'
-          }}>
-            {/* Project name */}
-            <Typography
-              variant="body2"
-              sx={{
-                fontSize: "0.75rem",
-                color: "text.secondary",
-                display: "flex",
-                alignItems: "center",
-                maxWidth: "50%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
+          {/* Task meta info */}
+          <Box 
+            display="flex" 
+            justifyContent="space-between"
+            alignItems="center"
+            mt={1}
+          >
+            {/* Comments, attachments, estimated time */}
+            <Box display="flex" alignItems="center">
+              <Tooltip title="Bình luận">
+                <Box 
+                  display="flex" 
+                  alignItems="center" 
+                  mr={1.5}
+                  sx={{ opacity: 0.6 }}
+                >
+                  <Badge 
+                    badgeContent={task.stats?.totalComments || 0} 
+                    color="primary"
+                    sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
+                  >
+                    <CommentIcon sx={{ fontSize: '0.9rem' }} />
+                  </Badge>
+                </Box>
+              </Tooltip>
+              
+              <Tooltip title="Tệp đính kèm">
+                <Box 
+                  display="flex" 
+                  alignItems="center" 
+                  mr={1.5}
+                  sx={{ opacity: 0.6 }}
+                >
+                  <Badge 
+                    badgeContent={task.stats?.totalAttachments || task.attachments?.length || 0} 
+                    color="primary"
+                    sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
+                  >
+                    <AttachFileIcon sx={{ fontSize: '0.9rem' }} />
+                  </Badge>
+                </Box>
+              </Tooltip>
+              
+              {task.estimatedTime && (
+                <Tooltip title="Thời gian ước tính">
+                  <Box 
+                    display="flex" 
+                    alignItems="center"
+                    sx={{ opacity: 0.6 }}
+                  >
+                    <AccessTimeIcon sx={{ fontSize: '0.9rem', mr: 0.3 }} />
+                    <Typography variant="caption">
+                      {task.estimatedTime}h
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              )}
+            </Box>
+            
+            {/* Expand button */}
+            <IconButton 
+              size="small" 
+              onClick={handleExpandClick}
+              sx={{ 
+                padding: 0.5, 
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s'
               }}
             >
-              {project?.name || "Dự án"}
-            </Typography>
-
-            {/* Action buttons at bottom right */}
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                size="small"
-                variant="contained"
-                color="primary"
-                startIcon={<VisibilityIcon />}
-                onClick={handleDetailClick}
-                sx={{
-                  borderRadius: "6px",
-                  textTransform: "none",
-                  fontSize: "0.75rem",
-                  py: 0.6,
-                  fontWeight: "bold",
-                  boxShadow: '0 3px 6px rgba(0,0,0,0.15)',
-                  backgroundImage: 'linear-gradient(to right, #1976d2, #2196f3)',
-                  "&:hover": {
-                    boxShadow: '0 4px 10px rgba(33, 150, 243, 0.3)',
-                    backgroundImage: 'linear-gradient(to right, #1565c0, #1976d2)',
-                  }
-                }}
-              >
-                CHI TIẾT
-              </Button>
-              
-              {/* Expand button - đặt ở góc phải dưới */}
-              <IconButton 
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExpandClick(e);
-                }}
-                sx={{
-                  transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.3s',
-                  width: 26,
-                  height: 26,
-                  backgroundColor: 'rgba(0,0,0,0.03)',
-                  '&:hover': {
-                    backgroundColor: 'rgba(0,0,0,0.08)',
-                  }
-                }}
-              >
-                <ExpandMoreIcon fontSize="small" />
-              </IconButton>
-            </Box>
+              <ExpandMoreIcon fontSize="small" />
+            </IconButton>
           </Box>
-        </Box>
-      </CardContent>
-      
-      {/* Expanded content - with class name for targeting */}
-      <Collapse in={expanded} timeout="auto" unmountOnExit className="expanded-content" onClick={(e) => e.stopPropagation()}>
-        <CardContent sx={{ pt: 1, pb: 1.5 }}>
-          <Divider sx={{ mb: 1.5 }} />
-          
-          {/* Tabs cho comments, files, lịch sử */}
-          <Box sx={{ width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }} onClick={(e) => e.stopPropagation()}>
+        </CardContent>
+        
+        {/* Expanded card details */}
+        <Collapse in={expanded} timeout="auto" unmountOnExit>
+          <CardContent sx={{ pt: 0, pb: 2 }}>
+            <Divider sx={{ mb: 2 }} />
+            
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
               <Tabs 
-                value={expandedTab} 
-                onChange={handleTabChange} 
-                aria-label="task detail tabs"
+                value={expandedTab}
+                onChange={handleTabChange}
                 variant="fullWidth"
-                sx={{ minHeight: '36px' }}
-                onClick={(e) => e.stopPropagation()}
+                textColor="primary"
+                indicatorColor="primary"
+                aria-label="task details tabs"
+                sx={{ '& .MuiTab-root': { fontSize: '0.8rem', py: 1 } }}
               >
-                <Tab 
-                  icon={<Badge badgeContent={comments.length} color="primary" sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}><CommentIcon sx={{ fontSize: '1rem' }} /></Badge>} 
-                  label="Bình luận" 
-                  id="task-tab-0" 
-                  aria-controls="task-tabpanel-0"
-                  sx={{ 
-                    minHeight: '36px', 
-                    fontSize: '0.75rem',
-                    px: 1,
-                    '& .MuiTab-iconWrapper': { 
-                      marginRight: '4px',
-                      marginBottom: '0px'
-                    }
-                  }}
-                />
-                <Tab 
-                  icon={<Badge badgeContent={attachments.length} color="primary" sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}><AttachFileIcon sx={{ fontSize: '1rem' }} /></Badge>} 
-                  label="Tệp đính kèm" 
-                  id="task-tab-1" 
-                  aria-controls="task-tabpanel-1"
-                  sx={{ 
-                    minHeight: '36px', 
-                    fontSize: '0.75rem',
-                    px: 1,
-                    '& .MuiTab-iconWrapper': { 
-                      marginRight: '4px',
-                      marginBottom: '0px'
-                    }
-                  }}
-                />
-                <Tab 
-                  icon={<HistoryIcon sx={{ fontSize: '1rem' }} />} 
-                  label="Lịch sử" 
-                  id="task-tab-2" 
-                  aria-controls="task-tabpanel-2"
-                    sx={{
-                    minHeight: '36px', 
-                    fontSize: '0.75rem',
-                    px: 1,
-                    '& .MuiTab-iconWrapper': { 
-                      marginRight: '4px',
-                      marginBottom: '0px'
-                    }
-                  }}
-                />
+                <Tab label="Bình luận" />
+                <Tab label="Tệp đính kèm" />
+                <Tab label="Lịch sử" />
               </Tabs>
             </Box>
-
-            {/* Tab Comments */}
-            <Box
-              role="tabpanel"
-              hidden={expandedTab !== 0}
-              id="task-tabpanel-0"
-              aria-labelledby="task-tab-0"
-              sx={{ py: 1.5 }}
-            >
-              {loadingComments ? (
-                <Box display="flex" justifyContent="center" my={2}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : (
-                <>
-                  <List sx={{ width: '100%', p: 0 }} dense>
-                    {(!comments || !Array.isArray(comments) || comments.length === 0) ? (
-                      <Box display="flex" justifyContent="center" my={1}>
-                        <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
-                          Chưa có bình luận nào.
-                        </Typography>
-                      </Box>
-                    ) : (
-                      Array.isArray(comments) && comments.map((comment, index) => (
+            
+            {/* Thông tin chi tiết */}
+            <Box sx={{ mb: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Độ ưu tiên
+                  </Typography>
+                  <Chip 
+                    label={getPriorityLabel(task.priority)}
+                    size="small"
+                    sx={{
+                      backgroundColor: getPriorityColor(task.priority).bg,
+                      color: getPriorityColor(task.priority).color,
+                    }}
+                  />
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Ngày hết hạn
+                  </Typography>
+                  <Typography variant="body2">
+                    {task.dueDate ? formatDate(task.dueDate) : 'Chưa có hạn'}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Thời gian ước tính
+                  </Typography>
+                  <Typography variant="body2">
+                    {task.estimatedTime ? `${task.estimatedTime} giờ` : 'Chưa có ước tính'}
+                  </Typography>
+                </Grid>
+                
+                {task.tags?.length > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Tags
+                    </Typography>
+                    <Box display="flex" flexWrap="wrap" gap={0.5} mt={0.5}>
+                      {task.tags.map((tag, index) => (
+                        <Chip
+                          key={`tag-${index}`}
+                          label={tag}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          sx={{ height: '20px', fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+            
+            {/* Tab content */}
+            <Box>
+              {/* Comments tab */}
+              {expandedTab === 0 && (
+                <Box>
+                  {loadingComments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : comments.length > 0 ? (
+                    <List disablePadding>
+                      {comments.map((comment) => (
                         <ListItem
-                          key={comment._id || `comment-${index}`}
+                          key={comment._id}
                           alignItems="flex-start"
-                          sx={{
-                            py: 0.5,
-                            px: 0,
-                            borderBottom: index < comments.length - 1 ? '1px solid #f0f0f0' : 'none'
-                          }}
+                          sx={{ px: 0, py: 1 }}
                         >
-                          <ListItemAvatar sx={{ minWidth: 36 }}>
-                            <Avatar 
+                          <ListItemAvatar sx={{ minWidth: 40 }}>
+                            <Avatar
                               src={comment.user?.avatar}
-                              sx={{ width: 24, height: 24 }}
+                              sx={{ width: 30, height: 30 }}
                             >
-                              {(comment.user?.name || "?").charAt(0)}
+                              {comment.user?.name?.charAt(0)}
                             </Avatar>
                           </ListItemAvatar>
                           <ListItemText
                             primary={
-                              <Box display="flex" justifyContent="space-between" alignItems="center">
-                                <Typography variant="subtitle2" component="span" fontSize="0.75rem">
-                                  {comment.user?.name || "Người dùng"}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-                                  {comment.createdAt ? format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
-                                </Typography>
-                              </Box>
+                              <Typography variant="subtitle2" component="span">
+                                {comment.user?.name || "Người dùng"}
+                              </Typography>
                             }
                             secondary={
-                              <Typography
-                                variant="body2"
-                                color="text.primary"
-                                sx={{ mt: 0.5, whiteSpace: 'pre-wrap', fontSize: '0.75rem' }}
-                              >
-                                {comment.content}
-                              </Typography>
+                              <React.Fragment>
+                                <Typography
+                                  variant="body2"
+                                  component="span"
+                                  sx={{ display: 'block', whiteSpace: 'pre-wrap' }}
+                                >
+                                  {comment.content}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  component="span"
+                                  color="text.secondary"
+                                >
+                                  {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                </Typography>
+                              </React.Fragment>
                             }
                           />
                         </ListItem>
-                      ))
-                    )}
-                  </List>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có bình luận nào
+                    </Typography>
+                  )}
                   
-                  <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                  {/* Add comment input */}
+                  <Box display="flex" mt={2}>
                     <TextField
+                      size="small"
                       fullWidth
                       placeholder="Thêm bình luận..."
+                      variant="outlined"
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      size="small"
-                      sx={{ 
-                        '& .MuiInputBase-root': { 
-                          fontSize: '0.75rem',
-                          padding: '4px 8px'
-                        }
-                      }}
                       InputProps={{
                         endAdornment: (
                           <InputAdornment position="end">
-                            <IconButton
-                              edge="end"
-                              color="primary" 
-                              onClick={handleSendComment}
+                            <IconButton 
+                              edge="end" 
                               disabled={!newComment.trim()}
+                              onClick={handleSendComment}
                               size="small"
                             >
-                              <SendIcon sx={{ fontSize: '1rem' }} />
+                              <SendIcon fontSize="small" />
                             </IconButton>
                           </InputAdornment>
                         ),
                       }}
                     />
                   </Box>
-                </>
-              )}
-            </Box>
-            
-            {/* Tab Tệp đính kèm */}
-            <Box
-              role="tabpanel"
-              hidden={expandedTab !== 1}
-              id="task-tabpanel-1"
-              aria-labelledby="task-tab-1"
-              sx={{ py: 1.5 }}
-            >
-              {loadingAttachments ? (
-                <Box display="flex" justifyContent="center" my={2}>
-                  <CircularProgress size={24} />
                 </Box>
-              ) : (
-                <>
-                  <List sx={{ width: '100%', p: 0 }} dense>
-                    {(!attachments || !Array.isArray(attachments) || attachments.length === 0) ? (
-                      <Box display="flex" justifyContent="center" my={1}>
-                        <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
-                          Chưa có tệp đính kèm nào.
-                        </Typography>
-                      </Box>
-                    ) : (
-                      Array.isArray(attachments) && attachments.map((attachment, index) => (
+              )}
+              
+              {/* Attachments tab */}
+              {expandedTab === 1 && (
+                <Box>
+                  {loadingAttachments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : attachments.length > 0 ? (
+                    <List disablePadding>
+                      {attachments.map((attachment) => (
                         <ListItem
-                          key={attachment._id || `attachment-${index}`}
-                          alignItems="center"
-                          sx={{ 
-                            py: 0.5,
-                            px: 0,
-                            borderBottom: index < attachments.length - 1 ? '1px solid #f0f0f0' : 'none'
-                          }}
+                          key={attachment._id || attachment.id}
+                          alignItems="flex-start"
+                          sx={{ px: 0, py: 1 }}
                         >
-                          <ListItemIcon sx={{ minWidth: 30 }}>
-                            <InsertDriveFileIcon color="primary" sx={{ fontSize: '1.2rem' }} />
+                          <ListItemIcon sx={{ minWidth: 40 }}>
+                            <InsertDriveFileIcon />
                           </ListItemIcon>
                           <ListItemText
                             primary={
-                              <Typography variant="body2" fontSize="0.75rem">
-                                {attachment.filename || "Tệp đính kèm"}
+                              <Typography variant="subtitle2" component="span">
+                                <Link 
+                                  href={attachment.url} 
+                                  target="_blank" 
+                                  rel="noopener"
+                                  underline="hover"
+                                >
+                                  {attachment.name}
+                                </Link>
                               </Typography>
                             }
                             secondary={
-                              <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-                                {attachment.size ? `${Math.round(attachment.size / 1024)} KB` : ''}
-                                {attachment.createdAt ? ` · ${format(new Date(attachment.createdAt), "dd/MM/yyyy", { locale: vi })}` : ''}
+                              <Typography variant="caption" color="text.secondary">
+                                {format(new Date(attachment.uploadedAt), "dd/MM/yyyy HH:mm", { locale: vi })}
                               </Typography>
                             }
                           />
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            href={attachment.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            sx={{ fontSize: '0.7rem', py: 0, px: 1, minHeight: '24px' }}
-                          >
-                            Tải xuống
-                          </Button>
                         </ListItem>
-                      ))
-                    )}
-                  </List>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có tệp đính kèm nào
+                    </Typography>
+                  )}
                   
-                  <Box sx={{ mt: 1, display: 'flex', justifyContent: 'center' }}>
+                  {/* Upload file button */}
+                  <Box display="flex" justifyContent="center" mt={2}>
                     <input
-                      accept="*/*"
-                      style={{ display: 'none' }}
-                      id={`task-file-upload-${enhancedTask._id}`}
-                      type="file"
                       ref={fileInputRef}
+                      type="file"
+                      style={{ display: "none" }}
                       onChange={handleFileUpload}
                     />
-                    <label htmlFor={`task-file-upload-${enhancedTask._id}`}>
-                      <Button
-                        variant="outlined"
-                        component="span"
-                        startIcon={<CloudUploadIcon sx={{ fontSize: '1rem' }} />}
-                        size="small"
-                        sx={{ fontSize: '0.75rem' }}
-                      >
-                        Tải lên
-                      </Button>
-                    </label>
+                    <Button
+                      variant="outlined"
+                      startIcon={<CloudUploadIcon />}
+                      size="small"
+                      onClick={() => fileInputRef.current.click()}
+                    >
+                      Tải lên tệp đính kèm
+                    </Button>
                   </Box>
-                </>
-              )}
-            </Box>
-            
-            {/* Tab Lịch sử */}
-            <Box
-              role="tabpanel"
-              hidden={expandedTab !== 2}
-              id="task-tabpanel-2"
-              aria-labelledby="task-tab-2"
-              sx={{ py: 1.5 }}
-            >
-              {loadingHistory ? (
-                <Box display="flex" justifyContent="center" my={2}>
-                  <CircularProgress size={24} />
                 </Box>
-              ) : (
-                <List sx={{ width: '100%', p: 0 }} dense>
-                  {(!history || !Array.isArray(history) || history.length === 0) ? (
-                    <Box display="flex" justifyContent="center" my={1}>
-                      <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
-                        Chưa có lịch sử thay đổi.
-                      </Typography>
+              )}
+              
+              {/* History tab */}
+              {expandedTab === 2 && (
+                <Box>
+                  {loadingHistory ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
                     </Box>
+                  ) : history.length > 0 ? (
+                    <List disablePadding>
+                      {history.map((entry, index) => (
+                        <ListItem
+                          key={entry._id || `history-${index}`}
+                          alignItems="flex-start"
+                          sx={{ px: 0, py: 1 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 40 }}>
+                            <HistoryIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle2" component="span">
+                                {entry.user?.name || "Người dùng"} {entry.action}
+                              </Typography>
+                            }
+                            secondary={
+                              <Typography variant="caption" color="text.secondary">
+                                {format(new Date(entry.timestamp || entry.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                              </Typography>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
                   ) : (
-                    Array.isArray(history) && history.map((item, index) => (
-                      <ListItem
-                        key={item._id || `history-${index}`}
-                        alignItems="flex-start"
-                        sx={{ 
-                          py: 0.5,
-                          px: 0,
-                          borderBottom: index < history.length - 1 ? '1px solid #f0f0f0' : 'none'
-                        }}
-                      >
-                        <ListItemIcon sx={{ minWidth: 30, mt: 0.5 }}>
-                          <HistoryIcon color="primary" sx={{ fontSize: '1.2rem' }} />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={
-                            <Box display="flex" justifyContent="space-between" alignItems="center">
-                              <Typography variant="subtitle2" component="span" fontSize="0.75rem">
-                                {item.user?.name || "Người dùng"}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-                                {item.createdAt ? format(new Date(item.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
-                              </Typography>
-                            </Box>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body2"
-                              color="text.primary"
-                              sx={{ mt: 0.5, fontSize: '0.75rem' }}
-                            >
-                              {item.action || "Đã thực hiện một hành động"}
-                              {item.details && `: ${item.details}`}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    ))
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có lịch sử thay đổi nào
+                    </Typography>
                   )}
-                </List>
+                </Box>
               )}
             </Box>
-          </Box>
-        </CardContent>
-      </Collapse>
-    </TaskCardContainer>
+          </CardContent>
+        </Collapse>
+      </TaskCardContainer>
+    </div>
   );
 };
 

@@ -1,7 +1,7 @@
 import Task from "../models/task.model.js";
 import Project from "../models/project.model.js";
+import Timelog from "../models/timelog.model.js";
 import User from "../models/user.model.js";
-import Timelog from "../models/timelogs.model.js";
 
 // 📌 1. Lấy tổng quan cho admin
 export const getAdminDashboard = async (req, res) => {

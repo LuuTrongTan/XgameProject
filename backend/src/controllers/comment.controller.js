@@ -60,37 +60,74 @@ const processMentions = (content) => {
 
 // Helper function để gửi thông báo
 const notifyCommentParticipants = async (comment, task, actor) => {
-  const notifyUsers = new Set([
-    ...task.assignees,
-    ...task.watchers,
-    task.createdBy,
-    ...comment.mentions,
-  ]);
+  const notifyUsers = new Set();
+  
+  // Kiểm tra các trường của task trước khi thêm vào Set
+  if (task) {
+    // Kiểm tra assignees
+    if (task.assignees && Array.isArray(task.assignees)) {
+      task.assignees.forEach(assignee => {
+        if (assignee) notifyUsers.add(assignee);
+      });
+    }
+    
+    // Kiểm tra watchers
+    if (task.watchers && Array.isArray(task.watchers)) {
+      task.watchers.forEach(watcher => {
+        if (watcher) notifyUsers.add(watcher);
+      });
+    }
+    
+    // Kiểm tra người tạo task
+    if (task.createdBy) {
+      notifyUsers.add(task.createdBy);
+    }
+  }
+  
+  // Thêm người được mention
+  if (comment && comment.mentions && Array.isArray(comment.mentions)) {
+    comment.mentions.forEach(mention => {
+      if (mention) notifyUsers.add(mention);
+    });
+  }
 
-  if (comment.parentComment) {
-    const parentComment = await Comment.findById(comment.parentComment);
-    if (parentComment) {
-      notifyUsers.add(parentComment.user);
+  // Thêm người comment gốc nếu đây là reply
+  if (comment && comment.parentComment) {
+    try {
+      const parentComment = await Comment.findById(comment.parentComment);
+      if (parentComment && parentComment.user) {
+        notifyUsers.add(parentComment.user);
+      }
+    } catch (error) {
+      console.error("Error finding parent comment:", error);
     }
   }
 
   // Loại bỏ người comment
-  notifyUsers.delete(actor.toString());
+  if (actor && actor.toString) {
+    notifyUsers.delete(actor.toString());
+  }
 
   // Gửi thông báo cho từng người
   for (const userId of notifyUsers) {
-    await createNotification({
-      userId,
-      type: comment.parentComment ? "comment_reply" : "task_commented",
-      message: `${actor.name} đã ${
-        comment.parentComment ? "trả lời bình luận" : "bình luận"
-      } trong công việc "${task.title}"`,
-      link: `/tasks/${task._id}`,
-      task: task._id,
-      project: task.project,
-      comment: comment._id,
-      senderId: actor._id,
-    });
+    if (!userId) continue; // Bỏ qua nếu userId không tồn tại
+    
+    try {
+      await createNotification({
+        userId,
+        type: comment.parentComment ? "comment_reply" : "task_commented",
+        message: `${actor.name || 'Một người dùng'} đã ${
+          comment.parentComment ? "trả lời bình luận" : "bình luận"
+        } trong công việc "${task?.title || 'một công việc'}"`,
+        link: `/tasks/${task?._id || ''}`,
+        task: task?._id,
+        project: task?.project,
+        comment: comment?._id,
+        senderId: actor?._id,
+      });
+    } catch (error) {
+      console.error("Error creating notification:", error);
+    }
   }
 };
 
@@ -107,11 +144,8 @@ export const addTaskComment = async (req, res) => {
       });
     }
 
-    const task = await Task.findById(taskId).populate({
-      path: "project",
-      populate: { path: "members" },
-    });
-
+    // Tìm task để xác nhận tồn tại, nhưng chỉ lấy các thông tin cần thiết
+    const task = await Task.findById(taskId).select('_id').lean();
     if (!task) {
       return res.status(404).json({
         success: false,
@@ -119,21 +153,11 @@ export const addTaskComment = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền bình luận
-    const project = task.project;
-    if (!project.owner.equals(req.user._id)) {
-      const member = project.members.find((m) => m.user.equals(req.user._id));
-      if (!member) {
-        return res.status(403).json({
-          success: false,
-          message: "Bạn không có quyền bình luận trong công việc này",
-        });
-      }
-    }
-
+    // Bỏ qua việc kiểm tra quyền bình luận để cho phép tất cả người dùng bình luận
     // Xử lý mentions từ nội dung
     const mentions = processMentions(req.body.content);
 
+    // Tạo comment
     const comment = new Comment({
       content: req.body.content,
       task: taskId,
@@ -143,33 +167,71 @@ export const addTaskComment = async (req, res) => {
       parentComment: req.body.parentComment,
     });
 
+    // Lưu comment
     await comment.save();
 
-    const populatedComment = await Comment.findById(comment._id)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar")
-      .populate({
-        path: "parentComment",
-        populate: { path: "user", select: "name email avatar" },
-      });
+    // Lấy thông tin đầy đủ của comment, nhưng không đợi kết quả để đẩy nhanh response
+    const getPopulatedComment = async () => {
+      try {
+        const populatedComment = await Comment.findById(comment._id)
+          .populate("user", "name email avatar")
+          .populate("mentions", "name email avatar")
+          .populate({
+            path: "parentComment",
+            populate: { path: "user", select: "name email avatar" },
+          });
 
-    // Gửi thông báo cho những người liên quan
-    await notifyCommentParticipants(comment, task, req.user);
+        // Lấy thông tin đầy đủ của task để gửi thông báo
+        const fullTask = await Task.findById(taskId).populate('assignees');
+        
+        // Gửi thông báo cho những người liên quan (thực hiện sau khi trả về response)
+        if (fullTask) {
+          notifyCommentParticipants(populatedComment, fullTask, req.user);
+        } else {
+          notifyCommentParticipants(populatedComment, { _id: taskId }, req.user);
+        }
 
-    // Gửi thông báo realtime
-    global.io.emit("new_comment", {
-      taskId,
-      comment: populatedComment,
-      creator: {
-        id: req.user.id,
+        // Gửi thông báo realtime qua socket
+        if (global.io) {
+          global.io.emit("new_comment", {
+            taskId,
+            comment: populatedComment,
+            creator: {
+              id: req.user.id,
+              name: req.user.name,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error populating comment:", error);
+      }
+    };
+
+    // Chạy hàm lấy thông tin đầy đủ và gửi thông báo mà không đợi kết quả
+    getPopulatedComment();
+
+    // Trả về response ngay lập tức với thông tin cơ bản
+    const basicComment = {
+      _id: comment._id,
+      content: comment.content,
+      task: comment.task,
+      user: {
+        _id: req.user.id,
         name: req.user.name,
+        email: req.user.email,
+        avatar: req.user.avatar,
       },
-    });
+      mentions: comment.mentions,
+      attachments: comment.attachments,
+      parentComment: comment.parentComment,
+      createdAt: comment.createdAt,
+      updatedAt: comment.updatedAt,
+    };
 
     res.status(201).json({
       success: true,
       message: "Thêm bình luận thành công",
-      data: populatedComment,
+      data: basicComment,
     });
   } catch (error) {
     console.error("Lỗi khi thêm bình luận:", error);
@@ -192,9 +254,9 @@ export const getComments = async (req, res) => {
       parentOnly = true,
     } = req.query;
 
-    // Kiểm tra task nếu có
+    // Kiểm tra task tồn tại nếu có taskId
     if (taskId) {
-      const task = await Task.findById(taskId);
+      const task = await Task.findById(taskId).select('_id').lean();
       if (!task) {
         return res.status(404).json({
           success: false,
@@ -203,7 +265,6 @@ export const getComments = async (req, res) => {
       }
       
       // Bỏ qua việc kiểm tra quyền truy cập để cho phép tất cả mọi người xem comment
-      // Không kiểm tra user có thuộc dự án hay không
     }
 
     // Xây dựng query
@@ -226,6 +287,7 @@ export const getComments = async (req, res) => {
       mostLiked: { "reactions.length": -1 },
     };
 
+    // Tìm comments
     const comments = await Comment.find(query)
       .sort(sortOptions[sort] || sortOptions.newest)
       .skip((page - 1) * limit)
@@ -240,7 +302,8 @@ export const getComments = async (req, res) => {
           { path: "mentions", select: "name email avatar" },
         ],
         options: { sort: { createdAt: 1 } },
-      });
+      })
+      .lean();
 
     const total = await Comment.countDocuments(query);
 

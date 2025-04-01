@@ -1,14 +1,17 @@
 import Task from "../models/task.model.js";
 import Project from "../models/project.model.js";
-import Timelog from "../models/timelogs.model.js";
+import Sprint from "../models/sprint.model.js";
 import Comment from "../models/comment.model.js";
+import Timelog from "../models/timelog.model.js";
 import User from "../models/user.model.js";
 import { google } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
 import { calendar } from "../config/google.config.js";
 import fs from "fs";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { ROLES } from "../config/constants.js";
 import mongoose from "mongoose";
+import { TASK_STATUSES, PRIORITY_LEVELS } from "../config/constants.js";
 
 // Validate dữ liệu đầu vào
 const validateTaskData = (data) => {
@@ -1330,69 +1333,103 @@ export const deleteTask = async (req, res) => {
 // Upload file đính kèm
 export const uploadAttachment = async (req, res) => {
   try {
-    const { task, error } = await checkTaskPermission(
-      req.params.id,
-      req.user.id
-    );
-    if (error) {
-      return res.status(403).json({
+    // Lấy task ID từ URL parameter
+    const taskId = req.params.taskId;
+    console.log("Uploading attachment for task:", taskId);
+    
+    if (!taskId) {
+      return res.status(400).json({
         success: false,
-        message: error,
+        message: "Task ID is required",
+      });
+    }
+    
+    // Kiểm tra task tồn tại
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Công việc không tồn tại",
       });
     }
 
+    // Kiểm tra file
     if (!req.file) {
       return res.status(400).json({
         success: false,
         message: "Không có file được upload",
       });
     }
+    
+    console.log("File received:", req.file);
 
-    // Upload file lên Cloudinary
-    const result = await uploadToCloudinary(req.file.path);
+    // Kiểm tra req.file.path tồn tại
+    if (!req.file.path || !fs.existsSync(req.file.path)) {
+      return res.status(400).json({
+        success: false,
+        message: "File path không hợp lệ hoặc file không tồn tại",
+      });
+    }
 
-    // Xóa file tạm
-    fs.unlinkSync(req.file.path);
+    try {
+      // Sử dụng lưu trữ local thay vì Cloudinary
+      const fileUrl = `/uploads/${req.file.filename}`;
+      console.log("File saved locally:", fileUrl);
 
-    // Thêm thông tin file vào task
-    const attachment = {
-      url: result.secure_url,
-      publicId: result.public_id,
-      name: req.file.originalname,
-      type: req.file.mimetype,
-      size: req.file.size,
-      uploadedBy: req.user.id,
-      uploadedAt: new Date(),
-    };
+      // Thêm thông tin file vào task
+      const attachment = {
+        url: fileUrl,
+        publicId: `local_${Date.now()}`,
+        name: req.file.originalname,
+        type: req.file.mimetype,
+        size: req.file.size,
+        uploadedBy: req.user.id,
+        uploadedAt: new Date(),
+      };
 
-    task.attachments.push(attachment);
-    await task.save();
+      // Đảm bảo task.attachments là mảng
+      if (!task.attachments) {
+        task.attachments = [];
+      }
 
-    // Gửi thông báo realtime
-    global.io.emit("task_attachment_added", {
-      taskId: task._id,
-      attachment,
-      uploader: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
+      task.attachments.push(attachment);
+      await task.save();
 
-    res.json({
-      success: true,
-      message: "Upload file thành công",
-      data: attachment,
-    });
+      // Gửi thông báo realtime nếu socket.io được khởi tạo
+      if (global.io) {
+        global.io.emit("task_attachment_added", {
+          taskId: task._id,
+          attachment,
+          uploader: {
+            id: req.user.id,
+            name: req.user.name,
+          },
+        });
+      }
+
+      res.status(201).json({
+        success: true,
+        message: "Upload file thành công",
+        data: attachment,
+      });
+    } catch (uploadError) {
+      console.error("Lỗi khi lưu file:", uploadError);
+      
+      return res.status(500).json({
+        success: false,
+        message: "Lỗi khi lưu file",
+        error: uploadError.message,
+        stack: process.env.NODE_ENV === 'development' ? uploadError.stack : undefined
+      });
+    }
   } catch (error) {
     console.error("Lỗi khi upload file:", error);
-    // Xóa file tạm nếu có lỗi
-    if (req.file && req.file.path) {
-      fs.unlinkSync(req.file.path);
-    }
+    
     res.status(500).json({
       success: false,
-      message: "Lỗi khi upload file",
+      message: "Lỗi khi upload file: " + error.message,
       error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

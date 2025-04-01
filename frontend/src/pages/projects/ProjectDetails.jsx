@@ -717,7 +717,7 @@ const ProjectDetails = () => {
           
           {/* Status change and action buttons */}
           <Stack direction="row" spacing={1}>
-            {project.archived ? (
+            {project.isArchived ? (
               <Tooltip
                 title={
                   canArchiveProject(project)
@@ -761,7 +761,11 @@ const ProjectDetails = () => {
               editTooltip="Bạn không có quyền chỉnh sửa dự án này"
               deleteTooltip="Bạn không có quyền xóa dự án này"
               variant="outlined"
-            />
+            >
+              <Tooltip title="Lưu trữ">
+                <UnarchiveIcon />
+              </Tooltip>
+            </ActionButtons>
           </Stack>
         </Box>
       </Box>

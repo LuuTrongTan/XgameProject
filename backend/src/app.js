@@ -7,6 +7,12 @@ import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
 import { specs } from "./config/swagger.js";
 import cookieParser from "cookie-parser";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Lấy __dirname từ ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 // Import các routes
@@ -49,6 +55,11 @@ app.use(
 // Middleware để parse JSON và cookies
 app.use(express.json());
 app.use(cookieParser());
+
+// Phục vụ tệp tĩnh từ thư mục uploads
+const uploadsDir = path.join(process.cwd(), "uploads");
+app.use("/uploads", express.static(uploadsDir));
+console.log("Serving static files from:", uploadsDir);
 
 // Route kiểm tra kết nối
 app.get("/", (req, res) => {

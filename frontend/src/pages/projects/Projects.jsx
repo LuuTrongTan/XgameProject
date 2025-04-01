@@ -15,19 +15,27 @@ import {
   Alert,
   CardMedia,
   Tooltip,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
 } from "@mui/material";
 import {
   Add as AddIcon,
   Visibility as VisibilityIcon,
   Assignment as AssignmentIcon,
   Archive as ArchiveIcon,
+  MoreVert as MoreVertIcon,
+  Unarchive as UnarchiveIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { useNavigate } from "react-router-dom";
-import { getProjects } from "../../api/projectApi";
+import { getProjects, archiveProject, restoreProject } from "../../api/projectApi";
 import CreateProjectDialog from "./CreateProjectDialog";
 import CustomAvatar from "../../components/common/Avatar";
 import { ROLES, getRoleName, PROJECT_STATUS, getStatusColor, getStatusLabel } from "../../config/constants";
+import { useSnackbar } from "notistack";
 
 const ProjectColumn = ({ title, tasks, addButton, columnId }) => (
   <Droppable droppableId={columnId}>
@@ -155,6 +163,9 @@ const Projects = () => {
   const [error, setError] = useState(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
     fetchProjects();
@@ -204,6 +215,58 @@ const Projects = () => {
     if (project.avatar && project.avatar.startsWith("http"))
       return project.avatar;
     return "/placeholder.png";
+  };
+
+  const handleMenuOpen = (event, project) => {
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+    setSelectedProject(project);
+  };
+
+  const handleMenuClose = (event) => {
+    if (event) event.stopPropagation();
+    setAnchorEl(null);
+    setSelectedProject(null);
+  };
+
+  const handleArchiveProject = async (event) => {
+    if (event) event.stopPropagation();
+    try {
+      if (!selectedProject) return;
+      
+      const response = await archiveProject(selectedProject._id);
+      if (response.success) {
+        // Cập nhật danh sách dự án sau khi lưu trữ
+        fetchProjects();
+        enqueueSnackbar("Dự án đã được lưu trữ thành công", { variant: "success" });
+      } else {
+        enqueueSnackbar(response.message || "Không thể lưu trữ dự án", { variant: "error" });
+      }
+    } catch (error) {
+      console.error("Error archiving project:", error);
+      enqueueSnackbar("Đã xảy ra lỗi khi lưu trữ dự án", { variant: "error" });
+    }
+    handleMenuClose();
+  };
+  
+  const handleRestoreProject = async (event) => {
+    if (event) event.stopPropagation();
+    try {
+      if (!selectedProject) return;
+      
+      const response = await restoreProject(selectedProject._id);
+      if (response.success) {
+        // Cập nhật danh sách dự án sau khi khôi phục
+        fetchProjects();
+        enqueueSnackbar("Dự án đã được khôi phục thành công", { variant: "success" });
+      } else {
+        enqueueSnackbar(response.message || "Không thể khôi phục dự án", { variant: "error" });
+      }
+    } catch (error) {
+      console.error("Error restoring project:", error);
+      enqueueSnackbar("Đã xảy ra lỗi khi khôi phục dự án", { variant: "error" });
+    }
+    handleMenuClose();
   };
 
   if (loading) {
@@ -262,10 +325,10 @@ const Projects = () => {
         <Box sx={{ display: "flex", gap: 2 }}>
           <Button
             variant={showArchived ? "outlined" : "contained"}
-            startIcon={<ArchiveIcon />}
+            startIcon={showArchived ? <UnarchiveIcon /> : <ArchiveIcon />}
             onClick={() => setShowArchived(!showArchived)}
           >
-            {showArchived ? "Dự án đang hoạt động" : "Dự án lưu trữ"}
+            {showArchived ? "Khôi phục dự án" : "Dự án lưu trữ"}
           </Button>
           <Button
             variant="contained"
@@ -408,34 +471,44 @@ const Projects = () => {
                   )}
                 </CardMedia>
                 <CardContent sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ mb: 2 }}>
-                    <Chip
-                      label={getStatusLabel(project.status)}
-                      size="small"
-                      sx={{
-                        bgcolor: `${getStatusColor(project.status)}20`,
-                        color: getStatusColor(project.status),
-                        mb: 1,
-                      }}
-                    />
-                    <Typography variant="h6" noWrap gutterBottom>
-                      {project.name}
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        mb: 1,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        height: '40px'
-                      }}
+                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Box>
+                      <Chip
+                        label={getStatusLabel(project.status)}
+                        size="small"
+                        sx={{
+                          bgcolor: `${getStatusColor(project.status)}20`,
+                          color: getStatusColor(project.status),
+                          mb: 1,
+                        }}
+                      />
+                      <Typography variant="h6" noWrap gutterBottom>
+                        {project.name}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          mb: 1,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          height: '40px'
+                        }}
+                      >
+                        {project.description}
+                      </Typography>
+                    </Box>
+                    
+                    <IconButton 
+                      size="small" 
+                      onClick={(e) => handleMenuOpen(e, project)}
+                      sx={{ ml: 1 }}
                     >
-                      {project.description}
-                    </Typography>
+                      <MoreVertIcon fontSize="small" />
+                    </IconButton>
                   </Box>
 
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -506,6 +579,53 @@ const Projects = () => {
         onClose={() => setCreateDialogOpen(false)}
         onSuccess={handleCreateSuccess}
       />
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MenuItem onClick={(e) => {
+          e.stopPropagation();
+          if (selectedProject) navigate(`/projects/${selectedProject._id}`);
+          handleMenuClose(e);
+        }}>
+          <ListItemIcon>
+            <VisibilityIcon fontSize="small" />
+          </ListItemIcon>
+          Xem chi tiết
+        </MenuItem>
+        
+        <MenuItem onClick={(e) => {
+          e.stopPropagation();
+          // Logic chỉnh sửa dự án ở đây
+          handleMenuClose(e);
+        }}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          Chỉnh sửa
+        </MenuItem>
+        
+        {selectedProject && !selectedProject.isArchived && (
+          <MenuItem onClick={handleArchiveProject}>
+            <ListItemIcon>
+              <ArchiveIcon fontSize="small" />
+            </ListItemIcon>
+            Lưu trữ
+          </MenuItem>
+        )}
+        
+        {selectedProject && selectedProject.isArchived && (
+          <MenuItem onClick={handleRestoreProject}>
+            <ListItemIcon>
+              <UnarchiveIcon fontSize="small" />
+            </ListItemIcon>
+            Khôi phục
+          </MenuItem>
+        )}
+      </Menu>
     </Box>
   );
 };
