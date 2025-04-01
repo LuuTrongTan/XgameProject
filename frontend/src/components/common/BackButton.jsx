@@ -40,7 +40,16 @@ const BackButton = ({
       color={color}
       size={size}
       onClick={handleClick}
-      sx={{ ...sx }}
+      sx={{ 
+        ...sx,
+        display: "flex",
+        alignItems: "center",
+        height: "40px",
+        lineHeight: "40px",
+        textTransform: "uppercase",
+        padding: "0 12px",
+        fontWeight: 500
+      }}
       {...props}
     >
       {label}

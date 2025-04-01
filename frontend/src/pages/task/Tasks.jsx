@@ -70,7 +70,9 @@ import {
   ExpandMore as ExpandMoreIcon,
   ArrowBack as ArrowBackIcon,
   GridView as GridViewIcon,
-  ViewList as ViewListIcon
+  ViewList as ViewListIcon,
+  CalendarToday as CalendarTodayIcon,
+  AccessTime as AccessTimeIcon
 } from "@mui/icons-material";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -88,7 +90,8 @@ import {
   horizontalListSortingStrategy,
   verticalListSortingStrategy,
   arrayMove,
-  sortableKeyboardCoordinates
+  sortableKeyboardCoordinates,
+  useSortable
 } from "@dnd-kit/sortable";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import {
@@ -107,7 +110,7 @@ import {
   deleteTaskAttachment,
   getTaskAuditLogs
 } from "../../api/taskApi";
-import { getSprintMembers } from "../../api/sprintApi";
+import { getSprintMembers, getSprintById } from "../../api/sprintApi";
 import { useAuth } from "../../contexts/AuthContext";
 import { useSnackbar } from "notistack";
 import TaskCard from "../../components/Tasks/TaskCard";
@@ -115,6 +118,7 @@ import Column from "../../components/Tasks/Column";
 import { usePermissions } from "../../hooks/usePermissions";
 import ActionButtons from "../../components/common/ActionButtons";
 import { getProjectById } from "../../api/projectApi";
+import BackButton from "../../components/common/BackButton";
 
 const priorityLabels = {
   low: "Thấp",
@@ -123,7 +127,10 @@ const priorityLabels = {
 };
 
 const Tasks = () => {
-  const { projectId } = useParams();
+  const { projectId, sprintId: urlSprintId } = useParams();
+  const [searchParams] = useSearchParams();
+  const sprintIdFromQuery = searchParams.get('sprint');
+  
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuth();
@@ -141,6 +148,10 @@ const Tasks = () => {
   const [activeContainer, setActiveContainer] = useState(null);
   const [viewMode, setViewMode] = useState("kanban");
   const [project, setProject] = useState(null);
+  const [sprint, setSprint] = useState(null);
+  const [sprintId, setSprintId] = useState(urlSprintId || sprintIdFromQuery || null);
+  const [sprints, setSprints] = useState([]);
+  const [sprintMembers, setSprintMembers] = useState([]);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -148,9 +159,6 @@ const Tasks = () => {
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openViewDialog, setOpenViewDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [sprintId, setSprintId] = useState("");
-  const [sprints, setSprints] = useState([]);
-  const [sprintMembers, setSprintMembers] = useState([]);
   const [newTask, setNewTask] = useState({
     name: "",
     description: "",
@@ -248,6 +256,7 @@ const Tasks = () => {
     }
   };
 
+  // Fetch project and sprint data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -1566,16 +1575,13 @@ const Tasks = () => {
         justifyContent="space-between"
         mb={3}
       >
-        <Box display="flex" alignItems="center">
-          <IconButton
-            onClick={() => navigate(`/projects/${projectId}`)}
-            sx={{ mr: 2 }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h4" component="h1">
-            Công việc - {project?.name}
-          </Typography>
+        <Box sx={{ display: "flex", alignItems: "center" }}>
+          <BackButton 
+            label="QUAY LẠI"
+            variant="text"
+            sx={{ mb: 0 }}
+          />
+        
         </Box>
         <Button
           variant="contained"

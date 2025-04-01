@@ -71,77 +71,131 @@ import TaskComments from "./TaskComments";
 import TaskAuditLog from "./TaskAuditLog";
 
 // Styled components
-const TaskCardContainer = styled(Card)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-  borderRadius: "12px",
-  overflow: "visible",
-  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-  transition: "all 0.2s ease-in-out",
-  position: "relative",
-  border: "1px solid rgba(255,255,255,0.5)",
-  backgroundColor: "#ffffff",
-  backgroundImage: "linear-gradient(to bottom, #ffffff, #fcfcff)",
-  "&:hover": {
-    boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
-    transform: "translateY(-4px)",
-    backgroundImage: "linear-gradient(to bottom, #ffffff, #f0f4ff)",
-  }
-}));
+const TaskCardContainer = styled(Card)(({ theme, status }) => {
+  // Get the color based on task status
+  const statusColor = (() => {
+    switch (status) {
+      case "todo":
+        return "rgba(25, 118, 210, 0.6)"; // Nhạt hơn cho todo
+      case "inProgress":
+        return "rgba(245, 124, 0, 0.6)"; // Nhạt hơn cho in progress
+      case "review":
+        return "rgba(123, 31, 162, 0.6)"; // Nhạt hơn cho review
+      case "done":
+        return "rgba(46, 125, 50, 0.6)"; // Nhạt hơn cho done
+      default:
+        return "rgba(25, 118, 210, 0.6)"; // Default nhạt hơn
+    }
+  })();
+
+  const statusColorLight = (() => {
+    switch (status) {
+      case "todo":
+        return "rgba(25, 118, 210, 0.05)"; // Nhạt hơn cho todo
+      case "inProgress":
+        return "rgba(245, 124, 0, 0.05)"; // Nhạt hơn cho in progress
+      case "review":
+        return "rgba(123, 31, 162, 0.05)"; // Nhạt hơn cho review
+      case "done":
+        return "rgba(46, 125, 50, 0.05)"; // Nhạt hơn cho done
+      default:
+        return "rgba(25, 118, 210, 0.05)"; // Default nhạt hơn
+    }
+  })();
+
+  return {
+    marginBottom: theme.spacing(2),
+    borderRadius: "24px",
+    overflow: "hidden",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    position: "relative",
+    border: "1px solid rgba(0,0,0,0.06)",
+    backgroundColor: statusColorLight, // Nền nhạt theo màu status
+    backgroundImage: `linear-gradient(145deg, ${statusColorLight}, #ffffff)`,
+    "&:hover": {
+      boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
+      transform: "translateY(-4px)",
+      backgroundImage: `linear-gradient(145deg, ${statusColorLight}, #ffffff)`,
+      backgroundColor: statusColorLight, // Nền nhạt theo màu status khi hover
+      border: "1px solid rgba(0,0,0,0.08)",
+    },
+    
+  };
+});
 
 const PriorityIndicator = styled(Box)(({ priority, theme }) => ({
   position: "absolute",
-  top: 0,
-  right: 0,
-  width: "90px",
-  height: "45px",
-  borderRadius: "0 12px 0 25px",
+  top: "10px",
+  right: "10px",
+  width: "12px",
+  height: "12px",
+  borderRadius: "50%", // Tạo hình tròn
   backgroundColor: 
-    priority === "high" ? theme.palette.error.main :
-    priority === "medium" ? theme.palette.warning.main : 
-    theme.palette.success.main,
+    priority === "high" ? "#f44336" : // Đỏ tươi hơn
+    priority === "medium" ? "#ff9800" : // Cam rõ ràng hơn
+    "#4caf50", // Xanh lá
+  boxShadow: 
+    priority === "high" ? "0 0 4px rgba(244, 67, 54, 0.4)" : 
+    priority === "medium" ? "0 0 4px rgba(255, 152, 0, 0.4)" : 
+    "0 0 4px rgba(76, 175, 80, 0.4)",
   zIndex: 10,
-  boxShadow: priority === "high" ? "0 3px 8px rgba(211, 47, 47, 0.3)" : 
-             priority === "medium" ? "0 3px 8px rgba(237, 108, 2, 0.3)" : 
-             "0 3px 8px rgba(46, 125, 50, 0.3)",
-  opacity: 0.85,
-  "&:after": {
-    content: '""',
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    width: "100%",
-    height: "40%",
-    background: "linear-gradient(to top, rgba(255,255,255,0.2), transparent)",
+  transition: "all 0.2s ease-in-out",
+  "&:hover": {
+    transform: "scale(1.2)",
   }
 }));
 
 const TaskTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
-  fontSize: "1.05rem",
-  marginBottom: theme.spacing(1),
+  fontSize: "1.1rem",
+  marginBottom: theme.spacing(1.5),
   lineHeight: 1.4,
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
   color: theme.palette.text.primary,
+  letterSpacing: "-0.01em",
 }));
 
 const TaskDescription = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
-  fontSize: "0.85rem",
-  marginBottom: theme.spacing(1.5),
+  fontSize: "0.9rem",
+  marginBottom: theme.spacing(2),
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
+  lineHeight: 1.5,
 }));
 
 const TaskInfoSection = styled(Box)(({ theme }) => ({
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginTop: theme.spacing(1.5),
+  marginTop: theme.spacing(2),
+  paddingTop: theme.spacing(1.5),
+  borderTop: "1px solid rgba(0,0,0,0.05)",
+}));
+
+// Thêm styled component mới cho Tags
+const TagChip = styled(Chip)(({ theme }) => ({
+  height: "20px",
+  fontSize: "0.65rem",
+  fontWeight: 500,
+  borderRadius: "10px",
+  margin: "0 2px",
+  backgroundColor: "rgba(74, 20, 140, 0.1)",
+  color: "rgba(74, 20, 140, 0.8)",
+  border: "1px solid rgba(74, 20, 140, 0.2)",
+  "& .MuiChip-icon": {
+    fontSize: "0.75rem",
+    color: "inherit"
+  },
+  "& .MuiChip-label": {
+    padding: "0 4px"
+  }
 }));
 
 const StatusChip = styled(Chip, {
@@ -149,10 +203,14 @@ const StatusChip = styled(Chip, {
 })(({ theme, colorData }) => ({
   backgroundColor: colorData?.bg || theme.palette.grey[200],
   color: colorData?.color || theme.palette.grey[700],
-  height: "22px",
-  fontSize: "0.7rem",
+  height: "20px", // Giảm kích cỡ từ 24px xuống 20px
+  fontSize: "0.65rem", // Giảm font size
   fontWeight: 500,
-  borderRadius: "4px",
+  borderRadius: "10px", // Bo tròn hơn
+  padding: "0 6px",
+  "& .MuiChip-label": {
+    padding: "0 4px",
+  }
 }));
 
 // Main component
@@ -227,21 +285,40 @@ const TaskCard = ({
   } = useSortable({
     id: task._id,
     data: {
-      task,
+      task: enhancedTask,
       container,
       index,
     },
+    disabled: false, // Đảm bảo kéo thả được bật
   });
+
+  // Lưu listeners vào ref để đảm bảo ổn định tham chiếu
+  const listenersRef = useRef(listeners);
+  const attributesRef = useRef(attributes);
+  
+  // Cập nhật ref khi listeners/attributes thay đổi
+  useEffect(() => {
+    listenersRef.current = listeners;
+    attributesRef.current = attributes;
+  }, [listeners, attributes]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    width: '100%',
+    position: 'relative',
+    touchAction: 'none', // Thêm để ngăn các hành động touch mặc định
   };
 
   // Open card in edit mode
   const handleDetailClick = (e) => {
+    // Không thực hiện click khi đang kéo
+    if (isDragging) {
+      e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     if (onEdit) {
       onEdit(task);
@@ -250,7 +327,13 @@ const TaskCard = ({
 
   // Toggle card expand state
   const handleExpandClick = (e) => {
-    e.stopPropagation();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // Không thực hiện khi đang kéo
+    if (isDragging) return;
     
     // If we're expanding, load data
     if (!expanded) {
@@ -583,15 +666,15 @@ const TaskCard = ({
   const getStatusColor = (status) => {
     switch (status) {
       case "todo":
-        return { bg: "rgba(66, 165, 245, 0.1)", color: "#1976d2" };
+        return { bg: "rgba(66, 165, 245, 0.08)", color: "rgba(25, 118, 210, 0.7)" };
       case "inProgress":
-        return { bg: "rgba(255, 152, 0, 0.1)", color: "#f57c00" };
+        return { bg: "rgba(255, 152, 0, 0.08)", color: "rgba(245, 124, 0, 0.7)" };
       case "review":
-        return { bg: "rgba(171, 71, 188, 0.1)", color: "#7b1fa2" };
+        return { bg: "rgba(171, 71, 188, 0.08)", color: "rgba(123, 31, 162, 0.7)" };
       case "done":
-        return { bg: "rgba(76, 175, 80, 0.1)", color: "#2e7d32" };
+        return { bg: "rgba(76, 175, 80, 0.08)", color: "rgba(46, 125, 50, 0.7)" };
       default:
-        return { bg: "rgba(66, 165, 245, 0.1)", color: "#1976d2" };
+        return { bg: "rgba(66, 165, 245, 0.08)", color: "rgba(25, 118, 210, 0.7)" };
     }
   };
 
@@ -627,13 +710,13 @@ const TaskCard = ({
   const getPriorityColor = (priority) => {
     switch (priority) {
       case "low":
-        return { bg: "rgba(76, 175, 80, 0.1)", color: "#2e7d32" };
+        return { bg: "rgba(76, 175, 80, 0.08)", color: "rgba(46, 125, 50, 0.85)" };
       case "medium":
-        return { bg: "rgba(255, 152, 0, 0.1)", color: "#f57c00" };
+        return { bg: "rgba(255, 152, 0, 0.08)", color: "rgba(245, 124, 0, 0.85)" };
       case "high":
-        return { bg: "rgba(244, 67, 54, 0.1)", color: "#d32f2f" };
+        return { bg: "rgba(244, 67, 54, 0.08)", color: "rgba(211, 47, 47, 0.85)" };
       default:
-        return { bg: "rgba(158, 158, 158, 0.1)", color: "#757575" };
+        return { bg: "rgba(158, 158, 158, 0.08)", color: "rgba(117, 117, 117, 0.85)" };
     }
   };
 
@@ -666,213 +749,362 @@ const TaskCard = ({
     }
   };
 
-  // Xử lý sự kiện kéo thả
-  const handleDragStart = (e) => {
-    e.stopPropagation();
-    
-    // Đặt dữ liệu để sử dụng khi thả
-    if (e.dataTransfer) {
-      e.dataTransfer.setData('text/plain', enhancedTask._id);
-      e.dataTransfer.effectAllowed = 'move';
-    }
-    
-    // Gọi callback onDragStart nếu được cung cấp
-    if (typeof onDragStart === 'function') {
-      onDragStart(e, enhancedTask, container);
+  // Fallback cho kéo thả bằng native HTML5 drag events
+  const handleNativeDragStart = (e) => {
+    // Chỉ sử dụng fallback khi dnd-kit không hoạt động
+    if (!listeners || Object.keys(listeners).length === 0) {
+      console.log("Using fallback drag start");
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        id: task._id,
+        container,
+        index
+      }));
+      
+      // Gọi callback nếu có
+      if (onDragStart && typeof onDragStart === 'function') {
+        onDragStart(e, task, container);
+      }
     }
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      data-task-id={task._id}
+      data-container={container}
+      className={`task-card ${isDragging ? 'dragging' : ''}`}
+    >
       <TaskCardContainer 
         elevation={3}
         onClick={handleDetailClick}
-        sx={isDragging ? { cursor: "grabbing" } : {}}
+        sx={{
+          ...(isDragging ? { cursor: "grabbing" } : {}),
+          userSelect: 'none',
+          WebkitUserSelect: 'none', // Safari
+          MozUserSelect: 'none', // Firefox
+          msUserSelect: 'none', // IE
+          cursor: isDragging ? 'grabbing' : 'grab',
+          transform: isDragging ? 'scale(1.02)' : 'none',
+          borderLeft: isDragging ? `3px solid ${getStatusColor(task.status)?.color || 'rgba(25, 118, 210, 0.7)'}` : 'none',
+          boxShadow: isDragging ? '0 10px 30px rgba(0,0,0,0.15)' : undefined
+        }}
+        status={task.status}
       >
-        {/* Priority indicator at top-right corner */}
-        <PriorityIndicator priority={task.priority} />
+        {/* Priority indicator as a small dot at top-right corner with tooltip */}
+        <Tooltip 
+          title={`Độ ưu tiên: ${getPriorityLabel(task.priority)}`}
+          placement="top-end"
+        >
+          <PriorityIndicator priority={task.priority} />
+        </Tooltip>
         
-        {/* Drag handle */}
+        {/* Status and Due Date */}
         <Box 
+          display="flex" 
+          justifyContent="flex-start" 
+          alignItems="center" 
+          pl={1}
+          pr={3}
+          pt={0}
+          pb={0}
+          ml={2.5}
+          sx={{
+            position: "absolute",
+            top: "10px", // Exactly the same top position as the drag handle icon
+            left: "10px", // Offset to account for the drag handle
+            zIndex: 1,
+            height: "20px" // Giảm từ 24px xuống 20px
+          }}
+        >
+          <Box display="flex" alignItems="center" gap={1}>
+            <StatusChip 
+              label={getStatusLabel(task.status)} 
+              size="small"
+              colorData={getStatusColor(task.status)}
+            />
+            
+            {task.dueDate && (
+              <Tooltip title="Ngày hết hạn">
+                <Box display="flex" alignItems="center" sx={{ 
+                  backgroundColor: "rgba(0,0,0,0.03)", 
+                  borderRadius: "10px", 
+                  padding: "2px 6px",
+                  fontSize: "0.65rem",
+                  height: "20px"
+                }}>
+                  <CalendarTodayIcon 
+                    fontSize="small" 
+                    sx={{ 
+                      fontSize: "0.75rem", 
+                      mr: 0.3, 
+                      color: "text.secondary" 
+                    }} 
+                  />
+                  <Typography variant="caption" sx={{ fontSize: "0.65rem" }}>
+                    {formatDate(task.dueDate)}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            )}
+          </Box>
+        </Box>
+        
+        {/* Drag handle - makes the card draggable */}
+        <Box 
+          {...attributes}
+          {...listeners}
+          className="drag-handle"
           sx={{ 
             position: "absolute", 
             top: "10px", 
             left: "10px", 
-            cursor: "grab",
             color: "text.secondary", 
             opacity: 0.5,
-            "&:hover": { opacity: 0.8 } 
+            zIndex: 5,
+            cursor: "grab",
+            "&:hover": { 
+              opacity: 0.8,
+              cursor: "grab"
+            },
+            "&:active": {
+              cursor: "grabbing",
+              opacity: 1
+            }
           }}
-          {...attributes}
-          {...listeners}
           onClick={(e) => e.stopPropagation()}
         >
-          <DragIndicatorIcon fontSize="small" />
+          <DragIndicatorIcon fontSize="medium" />
         </Box>
         
-        <CardContent sx={{ pt: 3.5, pb: 1.5 }}>
-          {/* Task title */}
-          <TaskTitle variant="h6">
+        <CardContent sx={{ 
+          pt: 2, 
+          pb: 2,
+          px: 3,
+          position: "relative",
+          "&:last-child": {
+            pb: 2
+          }
+        }}>
+          {/* Task title - with original top padding */}
+          <TaskTitle variant="h6" sx={{ mt: 3, mb: 2 }}>
             {task.title}
           </TaskTitle>
+          
+          {/* Divider to separate header from body */}
+          <Divider sx={{ mb: 2 }} />
           
           {/* Task description (truncated) */}
           <TaskDescription variant="body2" color="text.secondary">
             {task.description}
           </TaskDescription>
-          
-          {/* Status chip */}
-          <StatusChip 
-            label={getStatusLabel(task.status)} 
-            size="small"
-            colorData={getStatusColor(task.status)}
-          />
-          
-          {/* Due date & assignees */}
+                    
+          {/* Assignees section with tags and expand button */}
           <TaskInfoSection>
-            <Box display="flex" alignItems="center">
-              {task.dueDate && (
-                <Tooltip title="Ngày hết hạn">
-                  <Box display="flex" alignItems="center" mr={1.5}>
-                    <CalendarTodayIcon 
-                      fontSize="small" 
-                      sx={{ 
-                        fontSize: "0.85rem", 
-                        mr: 0.5, 
-                        color: "text.secondary" 
-                      }} 
-                    />
-                    <Typography variant="caption">
-                      {formatDate(task.dueDate)}
-                    </Typography>
+            <Box display="flex" alignItems="center" flexWrap="wrap" gap={1} sx={{ width: '100%', justifyContent: 'space-between' }}>
+              <Box display="flex" alignItems="center" flexWrap="wrap" gap={1}>
+                {/* Display the actual tag chips */}
+                {Array.isArray(task.tags) && task.tags.length > 0 && (
+                  <Box display="flex" alignItems="center" gap={0.5}>
+                    {task.tags.map((tag, index) => (
+                      <TagChip
+                        key={`${task._id}-tag-${index}`}
+                        icon={<LabelIcon />}
+                        label={tag}
+                        size="small"
+                      />
+                    ))}
                   </Box>
-                </Tooltip>
-              )}
-            </Box>
-            
-            <Box display="flex" alignItems="center">
-              {/* Assignees */}
-              {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
-                <AvatarGroup 
-                  max={2} 
-                  sx={{ 
-                    '& .MuiAvatar-root': { 
-                      width: 22, 
-                      height: 22, 
-                      fontSize: '0.75rem', 
-                      border: '1px solid #fff' 
-                    } 
-                  }}
-                >
-                  {task.assignees.map((assignee, index) => (
-                    <Tooltip 
-                      key={assignee?._id || `${task._id}-assignee-${index}`} 
-                      title={assignee?.name || assignee?.email || "Người dùng không xác định"}
+                )}
+                
+                {/* Comments counter */}
+                {comments.length > 0 && (
+                  <Tooltip title={`${comments.length} bình luận`}>
+                    <Box 
+                      display="flex" 
+                      alignItems="center"
+                      sx={{ 
+                        opacity: 0.7,
+                        backgroundColor: "rgba(25, 118, 210, 0.08)",
+                        borderRadius: "12px",
+                        padding: "2px 6px",
+                      }}
                     >
-                      <Avatar 
-                        src={assignee?.avatar} 
-                        alt={assignee?.name}
-                        sx={{ width: 22, height: 22 }}
-                      >
-                        {((assignee?.name || assignee?.email || "?") || "?").charAt(0).toUpperCase()}
-                      </Avatar>
-                    </Tooltip>
-                  ))}
-                </AvatarGroup>
-              ) : (
-                <Tooltip title="Chưa có người thực hiện">
-                  <PersonOffIcon 
-                    fontSize="small" 
-                    sx={{ 
-                      fontSize: "0.85rem", 
-                      color: "text.disabled" 
-                    }} 
-                  />
-                </Tooltip>
-              )}
+                      <CommentIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
+                      <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
+                        {comments.length}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                )}
+                
+                {/* Attachments counter */}
+                {attachments.length > 0 && (
+                  <Tooltip title={`${attachments.length} tệp đính kèm`}>
+                    <Box 
+                      display="flex" 
+                      alignItems="center"
+                      sx={{ 
+                        opacity: 0.7,
+                        backgroundColor: "rgba(76, 175, 80, 0.08)", 
+                        borderRadius: "12px",
+                        padding: "2px 6px",
+                      }}
+                    >
+                      <AttachFileIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
+                      <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
+                        {attachments.length}
+                      </Typography>
+                    </Box>
+                  </Tooltip>
+                )}
+              </Box>
+              
+              {/* Expand button in the same row as tags, positioned at far right */}
+              <IconButton 
+                size="small" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleExpandClick(e);
+                }}
+                sx={{ 
+                  padding: 0.5,
+                  transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  color: "text.secondary",
+                  marginRight: -3, // Increased negative margin 2 more times
+                  zIndex: 10, // Ensure button is above other elements
+                  "&:hover": {
+                    backgroundColor: "rgba(0,0,0,0.04)",
+                    color: "text.primary"
+                  }
+                }}
+              >
+                <ExpandMoreIcon fontSize="small" />
+              </IconButton>
             </Box>
           </TaskInfoSection>
-          
-          {/* Task meta info */}
-          <Box 
-            display="flex" 
-            justifyContent="space-between"
-            alignItems="center"
-            mt={1}
-          >
-            {/* Comments, attachments, estimated time */}
-            <Box display="flex" alignItems="center">
-              <Tooltip title="Bình luận">
-                <Box 
-                  display="flex" 
-                  alignItems="center" 
-                  mr={1.5}
-                  sx={{ opacity: 0.6 }}
-                >
-                  <Badge 
-                    badgeContent={task.stats?.totalComments || 0} 
-                    color="primary"
-                    sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
-                  >
-                    <CommentIcon sx={{ fontSize: '0.9rem' }} />
-                  </Badge>
-                </Box>
-              </Tooltip>
-              
-              <Tooltip title="Tệp đính kèm">
-                <Box 
-                  display="flex" 
-                  alignItems="center" 
-                  mr={1.5}
-                  sx={{ opacity: 0.6 }}
-                >
-                  <Badge 
-                    badgeContent={task.stats?.totalAttachments || task.attachments?.length || 0} 
-                    color="primary"
-                    sx={{ '& .MuiBadge-badge': { fontSize: '0.7rem', height: '16px', minWidth: '16px' } }}
-                  >
-                    <AttachFileIcon sx={{ fontSize: '0.9rem' }} />
-                  </Badge>
-                </Box>
-              </Tooltip>
-              
-              {task.estimatedTime && (
-                <Tooltip title="Thời gian ước tính">
-                  <Box 
-                    display="flex" 
-                    alignItems="center"
-                    sx={{ opacity: 0.6 }}
-                  >
-                    <AccessTimeIcon sx={{ fontSize: '0.9rem', mr: 0.3 }} />
-                    <Typography variant="caption">
-                      {task.estimatedTime}h
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              )}
-            </Box>
-            
-            {/* Expand button */}
-            <IconButton 
-              size="small" 
-              onClick={handleExpandClick}
-              sx={{ 
-                padding: 0.5, 
-                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s'
-              }}
-            >
-              <ExpandMoreIcon fontSize="small" />
-            </IconButton>
-          </Box>
         </CardContent>
         
         {/* Expanded card details */}
         <Collapse in={expanded} timeout="auto" unmountOnExit>
-          <CardContent sx={{ pt: 0, pb: 2 }}>
+          <CardContent sx={{ 
+            pt: 0, 
+            pb: 2,
+            px: 3,
+            backgroundColor: "rgba(0,0,0,0.01)"
+          }}>
             <Divider sx={{ mb: 2 }} />
             
-            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            {/* Project info and assignees section - moved to expanded view */}
+            <Box sx={{ mb: 2 }}>
+              {/* Project info */}
+              <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5 }}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  {(project?.name || task.project?.name) && (
+                    <Box display="flex" alignItems="center">
+                      <Typography variant="caption" color="text.secondary" sx={{ 
+                        fontSize: '0.75rem', 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(0,0,0,0.03)',
+                        borderRadius: '10px',
+                        py: 0.5,
+                        px: 1,
+                        width: 'fit-content'
+                      }}>
+                        <strong>Dự án:</strong> {project?.name || task.project?.name}
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {/* Hiển thị estimated time bên cạnh tên dự án */}
+                  {task.estimatedTime && (
+                    <Tooltip title="Thời gian ước tính">
+                      <Box display="flex" alignItems="center" sx={{ 
+                        backgroundColor: "rgba(0,0,0,0.03)", 
+                        borderRadius: "10px", 
+                        padding: "2px 8px",
+                        fontSize: "0.75rem",
+                        height: "24px"
+                      }}>
+                        <AccessTimeIcon 
+                          fontSize="small" 
+                          sx={{ 
+                            fontSize: "0.85rem", 
+                            mr: 0.5, 
+                            color: "text.secondary" 
+                          }} 
+                        />
+                        <Typography variant="caption" sx={{ fontSize: "0.75rem" }}>
+                          <strong>Ước tính:</strong> {task.estimatedTime}h
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  )}
+                </Box>
+              </Box>
+              
+              {/* Assignees section */}
+              <Box display="flex" alignItems="center" gap={1} mb={2}>
+                <Typography variant="caption" sx={{ 
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: "text.secondary"
+                }}>
+                  <strong>Người thực hiện:</strong>
+                </Typography>
+                
+                {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
+                  <AvatarGroup 
+                    max={3} 
+                    sx={{ 
+                      '& .MuiAvatar-root': { 
+                        width: 24, 
+                        height: 24, 
+                        fontSize: '0.75rem', 
+                        border: '1px solid #fff' 
+                      } 
+                    }}
+                  >
+                    {task.assignees.map((assignee, index) => (
+                      <Tooltip 
+                        key={assignee?._id || `${task._id}-assignee-${index}`} 
+                        title={assignee?.name || assignee?.email || "Người dùng không xác định"}
+                      >
+                        <Avatar 
+                          src={assignee?.avatar} 
+                          alt={assignee?.name}
+                          sx={{ width: 24, height: 24 }}
+                        >
+                          {((assignee?.name || assignee?.email || "?") || "?").charAt(0).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
+                    ))}
+                  </AvatarGroup>
+                ) : (
+                  <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.75rem" }}>
+                    Chưa có người thực hiện
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+            
+            <Box sx={{ 
+              borderBottom: 1, 
+              borderColor: 'divider', 
+              mb: 2,
+              "& .MuiTab-root": {
+                textTransform: "none",
+                fontWeight: 500,
+                fontSize: "0.85rem",
+                minHeight: "40px",
+                "&.Mui-selected": {
+                  fontWeight: 600
+                }
+              }
+            }}>
               <Tabs 
                 value={expandedTab}
                 onChange={handleTabChange}
@@ -880,69 +1112,11 @@ const TaskCard = ({
                 textColor="primary"
                 indicatorColor="primary"
                 aria-label="task details tabs"
-                sx={{ '& .MuiTab-root': { fontSize: '0.8rem', py: 1 } }}
               >
                 <Tab label="Bình luận" />
                 <Tab label="Tệp đính kèm" />
                 <Tab label="Lịch sử" />
               </Tabs>
-            </Box>
-            
-            {/* Thông tin chi tiết */}
-            <Box sx={{ mb: 2 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Độ ưu tiên
-                  </Typography>
-                  <Chip 
-                    label={getPriorityLabel(task.priority)}
-                    size="small"
-                    sx={{
-                      backgroundColor: getPriorityColor(task.priority).bg,
-                      color: getPriorityColor(task.priority).color,
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Ngày hết hạn
-                  </Typography>
-                  <Typography variant="body2">
-                    {task.dueDate ? formatDate(task.dueDate) : 'Chưa có hạn'}
-                  </Typography>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Thời gian ước tính
-                  </Typography>
-                  <Typography variant="body2">
-                    {task.estimatedTime ? `${task.estimatedTime} giờ` : 'Chưa có ước tính'}
-                  </Typography>
-                </Grid>
-                
-                {task.tags?.length > 0 && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Tags
-                    </Typography>
-                    <Box display="flex" flexWrap="wrap" gap={0.5} mt={0.5}>
-                      {task.tags.map((tag, index) => (
-                        <Chip
-                          key={`tag-${index}`}
-                          label={tag}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                          sx={{ height: '20px', fontSize: '0.7rem' }}
-                        />
-                      ))}
-                    </Box>
-                  </Grid>
-                )}
-              </Grid>
             </Box>
             
             {/* Tab content */}

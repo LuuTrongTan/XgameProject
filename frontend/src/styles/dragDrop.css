@@ -1,0 +1,82 @@
+/* Drag and Drop Styles */
+
+/* Container styles when dragging is active */
+.dragging-active .kanban-column {
+  border: 2px dashed rgba(0, 0, 0, 0.1);
+  background-color: rgba(245, 245, 245, 0.7);
+  transition: all 0.2s ease;
+}
+
+/* Highlight drop target column */
+.dragging-active .kanban-column:hover {
+  border: 2px dashed rgba(25, 118, 210, 0.4);
+  background-color: rgba(232, 244, 253, 0.8);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Style for task cards during dragging */
+.task-card.dragging {
+  transform: scale(1.02) rotate(1deg) !important;
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15) !important;
+  opacity: 0.9;
+  z-index: 1000;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+/* Cursor styles */
+.task-card .drag-handle {
+  cursor: grab;
+}
+
+.task-card.dragging .drag-handle {
+  cursor: grabbing !important;
+}
+
+/* Add animation to the task cards when changing columns */
+@keyframes taskAdded {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.task-added {
+  animation: taskAdded 0.4s ease-in-out;
+}
+
+/* Style for the drag overlay */
+.drag-overlay {
+  pointer-events: none;
+}
+
+/* Custom scroll styles for Kanban columns */
+.kanban-column {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  transition: all 0.3s ease;
+}
+
+.kanban-column::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kanban-column::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kanban-column::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+.kanban-column::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+} 
