@@ -164,6 +164,8 @@ const TaskCard = ({
   onAddAttachment,
   actionButtons,
   index = 0,
+  onDragStart,
+  onDragEnd,
 }) => {
   const { user } = useAuth();
   const { canDeleteTask } = usePermissions();
@@ -178,6 +180,40 @@ const TaskCard = ({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = useRef();
   
+  // Enhance task with sprint information if missing
+  const enhancedTask = React.useMemo(() => {
+    // If task already has sprintId, use it
+    if (task.sprintId || task.sprint?._id) {
+      return task;
+    }
+    
+    // Otherwise, get sprintId from URL if possible
+    const urlParams = new URLSearchParams(window.location.search);
+    const sprintIdFromUrl = urlParams.get('sprint');
+    
+    // Try to extract project and sprint from the URL path
+    const pathParts = window.location.pathname.split('/');
+    const projectIdx = pathParts.indexOf('projects');
+    const sprintIdx = pathParts.indexOf('sprints');
+    
+    let pathProjectId = null;
+    let pathSprintId = null;
+    
+    if (projectIdx !== -1 && projectIdx < pathParts.length - 1) {
+      pathProjectId = pathParts[projectIdx + 1];
+    }
+    
+    if (sprintIdx !== -1 && sprintIdx < pathParts.length - 1) {
+      pathSprintId = pathParts[sprintIdx + 1];
+    }
+    
+    return {
+      ...task,
+      projectId: task.projectId || task.project?._id || pathProjectId || project?._id,
+      sprintId: task.sprintId || task.sprint?._id || pathSprintId || sprintIdFromUrl,
+    };
+  }, [task, project]);
+  
   const {
     attributes,
     listeners,
@@ -186,8 +222,8 @@ const TaskCard = ({
     transition,
     isDragging
   } = useSortable({
-    id: task._id,
-    data: { task, index, container }
+    id: enhancedTask._id,
+    data: { task: enhancedTask, index, container }
   });
 
   const cardStyle = {
@@ -208,7 +244,7 @@ const TaskCard = ({
     
     // Call onEdit directly with the event
     if (typeof onEdit === 'function') {
-      onEdit(task, e);
+      onEdit(enhancedTask, e);
     }
     
     return false;
@@ -226,44 +262,201 @@ const TaskCard = ({
       // Set default tab
       setExpandedTab(0);
       
+      // Log task data for debugging
+      console.log("Task data in handleExpandClick:", { 
+        task: enhancedTask, 
+        project, 
+        container,
+        expandedTab
+      });
+      
       // Load comments when first expanded
-      fetchComments();
+      fetchAllData();
     }
   };
   
   const handleTabChange = (event, newValue) => {
     setExpandedTab(newValue);
     
+    // Log task data for debugging
+    console.log("Task data in handleTabChange:", { 
+      task: enhancedTask, 
+      project, 
+      container,
+      newTabValue: newValue
+    });
+    
     // Tải dữ liệu tương ứng với tab
-    if (newValue === 0 && comments.length === 0) {
+    if (newValue === 0) {
       fetchComments();
-    } else if (newValue === 1 && attachments.length === 0) {
+    } else if (newValue === 1) {
       fetchAttachments();
-    } else if (newValue === 2 && history.length === 0) {
+    } else if (newValue === 2) {
       fetchHistory();
     }
   };
 
+  // Thêm useEffect để lưu và nạp lại comment từ localStorage
+  React.useEffect(() => {
+    // Chỉ nạp comment từ localStorage khi component được mount lần đầu và nếu có
+    const savedComments = localStorage.getItem(`task_comments_${enhancedTask._id}`);
+    if (savedComments && comments.length === 0) {
+      try {
+        const parsedComments = JSON.parse(savedComments);
+        // Chỉ đặt comments nếu mảng này không rỗng
+        if (parsedComments && parsedComments.length > 0) {
+          setComments(parsedComments);
+        }
+      } catch (error) {
+        console.error("Error parsing saved comments:", error);
+      }
+    }
+  }, [enhancedTask._id, comments.length]); // Thêm comments.length vào dependencies
+
+  // Thêm useEffect cho attachments
+  React.useEffect(() => {
+    // Chỉ nạp attachments từ localStorage khi component được mount lần đầu
+    const savedAttachments = localStorage.getItem(`task_attachments_${enhancedTask._id}`);
+    if (savedAttachments && attachments.length === 0) {
+      try {
+        const parsedAttachments = JSON.parse(savedAttachments);
+        if (parsedAttachments && parsedAttachments.length > 0) {
+          setAttachments(parsedAttachments);
+        }
+      } catch (error) {
+        console.error("Error parsing saved attachments:", error);
+      }
+    }
+  }, [enhancedTask._id, attachments.length]);
+
+  // Thêm useEffect cho history
+  React.useEffect(() => {
+    // Chỉ nạp history từ localStorage khi component được mount lần đầu
+    const savedHistory = localStorage.getItem(`task_history_${enhancedTask._id}`);
+    if (savedHistory && history.length === 0) {
+      try {
+        const parsedHistory = JSON.parse(savedHistory);
+        if (parsedHistory && parsedHistory.length > 0) {
+          setHistory(parsedHistory);
+        }
+      } catch (error) {
+        console.error("Error parsing saved history:", error);
+      }
+    }
+  }, [enhancedTask._id, history.length]);
+
+  // Thêm useEffect để đồng bộ dữ liệu khi component mount
+  React.useEffect(() => {
+    // Chỉ tải dữ liệu khi component được mở rộng
+    if (expanded) {
+      // Tải dữ liệu cho cả 3 tab khi mở rộng
+      fetchAllData();
+    }
+  }, [expanded, enhancedTask._id]); // Chạy khi opened hoặc taskId thay đổi
+
+  // Hàm tải tất cả dữ liệu
+  const fetchAllData = async () => {
+    // Tải song song cả 3 loại dữ liệu
+    fetchComments();
+    fetchAttachments();
+    fetchHistory();
+  };
+
+  // Sửa lại hàm fetchComments để cập nhật localStorage khi lấy comments mới
   const fetchComments = async () => {
     try {
       setLoadingComments(true);
-      const result = await getTaskComments(task._id);
+      // Lấy projectId và sprintId từ task hoặc từ props
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId) {
+        console.error("Missing projectId or sprintId for fetchComments:", { taskProjectId, taskSprintId, task: enhancedTask });
+        return;
+      }
+      
+      console.log("Fetching comments for task:", { 
+        taskId: enhancedTask._id, 
+        projectId: taskProjectId, 
+        sprintId: taskSprintId 
+      });
+      
+      const result = await getTaskComments(taskProjectId, taskSprintId, enhancedTask._id);
+      console.log("Comments API result:", result);
+      
       if (result.success) {
-        setComments(result.data || []);
+        // Đảm bảo data.comments hoặc data là mảng
+        let fetchedComments = [];
+        
+        // Kiểm tra cấu trúc phản hồi API và lấy mảng comments
+        if (result.data && Array.isArray(result.data)) {
+          fetchedComments = result.data;
+        } else if (result.data && result.data.comments && Array.isArray(result.data.comments)) {
+          fetchedComments = result.data.comments;
+        } else if (result.data && result.data.data && Array.isArray(result.data.data.comments)) {
+          fetchedComments = result.data.data.comments;
+        } else {
+          console.error("Unexpected comments data structure:", result.data);
+        }
+        
+        console.log("Processed comments:", fetchedComments);
+        setComments(fetchedComments);
+        
+        // Lưu comments vào localStorage sau khi fetch
+        if (fetchedComments.length > 0) {
+          try {
+            localStorage.setItem(`task_comments_${enhancedTask._id}`, JSON.stringify(fetchedComments));
+          } catch (error) {
+            console.error("Error saving fetched comments to localStorage:", error);
+          }
+        }
+      } else {
+        console.error("Error in fetchComments:", result.message);
+        // Đặt comments là mảng rỗng để tránh lỗi
+        setComments([]);
       }
     } catch (error) {
       console.error("Error fetching comments:", error);
+      // Đặt comments là mảng rỗng để tránh lỗi
+      setComments([]);
     } finally {
       setLoadingComments(false);
     }
   };
-  
+
   const fetchAttachments = async () => {
     try {
       setLoadingAttachments(true);
-      const result = await getTaskAttachments(task._id);
+      // Lấy projectId và sprintId từ task hoặc từ props
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId) {
+        console.error("Missing projectId or sprintId for fetchAttachments:", { taskProjectId, taskSprintId, task: enhancedTask });
+        return;
+      }
+      
+      console.log("Fetching attachments for task:", { 
+        taskId: enhancedTask._id, 
+        projectId: taskProjectId, 
+        sprintId: taskSprintId 
+      });
+      
+      const result = await getTaskAttachments(taskProjectId, taskSprintId, enhancedTask._id);
       if (result.success) {
-        setAttachments(result.data || []);
+        const fetchedAttachments = result.data || [];
+        setAttachments(fetchedAttachments);
+        
+        // Lưu attachments vào localStorage
+        if (fetchedAttachments.length > 0) {
+          try {
+            localStorage.setItem(`task_attachments_${enhancedTask._id}`, JSON.stringify(fetchedAttachments));
+          } catch (error) {
+            console.error("Error saving fetched attachments to localStorage:", error);
+          }
+        }
+      } else {
+        console.error("Error in fetchAttachments:", result.message);
       }
     } catch (error) {
       console.error("Error fetching attachments:", error);
@@ -271,13 +464,40 @@ const TaskCard = ({
       setLoadingAttachments(false);
     }
   };
-  
+
   const fetchHistory = async () => {
     try {
       setLoadingHistory(true);
-      const result = await getTaskAuditLogs(task._id);
+      // Lấy projectId và sprintId từ task hoặc từ props
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId) {
+        console.error("Missing projectId or sprintId for fetchHistory:", { taskProjectId, taskSprintId, task: enhancedTask });
+        return;
+      }
+      
+      console.log("Fetching history for task:", { 
+        taskId: enhancedTask._id, 
+        projectId: taskProjectId, 
+        sprintId: taskSprintId 
+      });
+      
+      const result = await getTaskAuditLogs(taskProjectId, taskSprintId, enhancedTask._id);
       if (result.success) {
-        setHistory(result.data || []);
+        const fetchedHistory = result.data || [];
+        setHistory(fetchedHistory);
+        
+        // Lưu history vào localStorage
+        if (fetchedHistory.length > 0) {
+          try {
+            localStorage.setItem(`task_history_${enhancedTask._id}`, JSON.stringify(fetchedHistory));
+          } catch (error) {
+            console.error("Error saving fetched history to localStorage:", error);
+          }
+        }
+      } else {
+        console.error("Error in fetchHistory:", result.message);
       }
     } catch (error) {
       console.error("Error fetching history:", error);
@@ -285,29 +505,91 @@ const TaskCard = ({
       setLoadingHistory(false);
     }
   };
-  
+
+  // Cập nhật hàm handleSendComment để tải lại lịch sử sau khi gửi bình luận
   const handleSendComment = async () => {
-    if (!newComment.trim() || !task._id) return;
+    if (!newComment.trim() || !enhancedTask._id) return;
     
     try {
-      const result = await addTaskComment(task._id, newComment);
+      // Lấy projectId và sprintId từ task hoặc từ props
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId) {
+        console.error("Missing projectId or sprintId for handleSendComment:", { taskProjectId, taskSprintId, task: enhancedTask });
+        return;
+      }
+      
+      console.log("Sending comment for task:", { 
+        taskId: enhancedTask._id, 
+        projectId: taskProjectId, 
+        sprintId: taskSprintId,
+        comment: newComment
+      });
+      
+      const result = await addTaskComment(taskProjectId, taskSprintId, enhancedTask._id, newComment);
       if (result.success) {
-        setComments([...comments, result.data]);
+        const updatedComments = [...comments, result.data];
+        setComments(updatedComments);
+        
+        // Lưu comments vào localStorage
+        try {
+          localStorage.setItem(`task_comments_${enhancedTask._id}`, JSON.stringify(updatedComments));
+        } catch (error) {
+          console.error("Error saving comments to localStorage:", error);
+        }
+        
         setNewComment("");
+        
+        // Tải lại lịch sử sau khi thêm bình luận
+        fetchHistory();
+      } else {
+        console.error("Error in handleSendComment:", result.message);
       }
     } catch (error) {
       console.error("Error sending comment:", error);
     }
   };
-  
+
+  // Cập nhật hàm handleFileUpload để tải lại lịch sử sau khi tải lên tệp
   const handleFileUpload = async (event) => {
-    if (!event.target.files || !event.target.files[0] || !task._id) return;
+    if (!event.target.files || !event.target.files[0] || !enhancedTask._id) return;
     
     const file = event.target.files[0];
     try {
-      const result = await addTaskAttachment(task._id, file);
+      // Lấy projectId và sprintId từ task hoặc từ props
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId) {
+        console.error("Missing projectId or sprintId for handleFileUpload:", { taskProjectId, taskSprintId, task: enhancedTask });
+        return;
+      }
+      
+      console.log("Uploading file for task:", { 
+        taskId: enhancedTask._id, 
+        projectId: taskProjectId, 
+        sprintId: taskSprintId,
+        fileName: file.name,
+        fileSize: file.size
+      });
+      
+      const result = await addTaskAttachment(taskProjectId, taskSprintId, enhancedTask._id, file);
       if (result.success) {
-        setAttachments([...attachments, result.data]);
+        const updatedAttachments = [...attachments, result.data];
+        setAttachments(updatedAttachments);
+        
+        // Lưu attachments vào localStorage
+        try {
+          localStorage.setItem(`task_attachments_${enhancedTask._id}`, JSON.stringify(updatedAttachments));
+        } catch (error) {
+          console.error("Error saving attachments to localStorage:", error);
+        }
+        
+        // Tải lại lịch sử sau khi thêm tệp đính kèm
+        fetchHistory();
+      } else {
+        console.error("Error in handleFileUpload:", result.message);
       }
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -405,185 +687,229 @@ const TaskCard = ({
   };
 
   // Extracted for readability
-  const statusColor = getStatusColor(task.status);
+  const statusColor = getStatusColor(enhancedTask.status);
+
+  // Xử lý sự kiện kéo thả
+  const handleDragStart = (e) => {
+    e.stopPropagation();
+    
+    // Đặt dữ liệu để sử dụng khi thả
+    if (e.dataTransfer) {
+      e.dataTransfer.setData('text/plain', enhancedTask._id);
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    
+    // Gọi callback onDragStart nếu được cung cấp
+    if (typeof onDragStart === 'function') {
+      onDragStart(e, enhancedTask, container);
+    }
+  };
 
   return (
     <TaskCardContainer
       ref={setNodeRef}
       style={cardStyle}
-      {...attributes}
+      onClick={handleDetailClick}
+      draggable={true}
+      onDragStart={handleDragStart}
+      sx={{
+        cursor: 'grab',
+        '&:active': { cursor: 'grabbing' },
+      }}
     >
-      <CardContent sx={{ p: 0 }}>
-        {/* Drag handle header */}
-        <Box 
-          sx={{
-            px: 2, 
-            pt: 2, 
-            pb: 2, 
-            position: 'relative',
-          }}
-        >
-          <Typography 
-            variant="subtitle1" 
-            sx={{ 
-              fontWeight: 'bold', 
-              flexGrow: 1,
-              wordBreak: 'break-word',
-              color: 'text.primary',
-            }}
-          >
-            {task.title}
-          </Typography>
-        </Box>
-        
-        {/* Priority indicator */}
-        <Tooltip 
-          title={`Mức độ: ${getPriorityLabel(task.priority)}`} 
-          arrow 
-          placement="top-start"
-          enterDelay={400}
-          enterNextDelay={400}
-        >
-          <PriorityIndicator priority={task.priority} />
-        </Tooltip>
-        
-        {/* Task content */}
-        <Box 
-          sx={{
-            px: 2, 
-            pt: 2, 
-            pb: 2, 
-            position: 'relative',
-          }}
-        >
-          {/* Task description */}
-          <Typography 
-            variant="body2" 
-            color="text.secondary"
-            sx={{ 
-              my: 1,
-            }}
-          >
-            {task.description ? task.description.substring(0, 100) + (task.description.length > 100 ? '...' : '') : 'No description'}
-          </Typography>
+      {/* Status strip - top of card */}
+      <Box
+        sx={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "5px",
+          backgroundColor: getStatusColor(enhancedTask.status)?.bg || "#f5f5f5",
+          borderRadius: "12px 12px 0 0",
+        }}
+      />
+      
+      {/* Priority indicator - top right corner */}
+      {enhancedTask.priority && (
+        <PriorityIndicator priority={enhancedTask.priority} />
+      )}
+
+      {/* Main content */}
+      <CardContent sx={{ pt: 2.5, pb: 1.5 }}>
+        {/* Content */}
+        <Box>
+          {/* Action buttons position top right */}
+          {actionButtons}
           
-          {/* Tags */}
-          {task.tags && task.tags.length > 0 && (
-            <Box
-              display="flex"
-              flexWrap="wrap" 
-              gap={0.5} 
-              mb={1.5}
-            >
-              {task.tags.map((tag, index) => (
-                <Chip
-                  key={index}
-                  label={tag}
-                  size="small"
-                  icon={<LabelIcon />}
-                  sx={{
-                    borderRadius: "4px",
-                    height: "22px",
-                    fontSize: "0.7rem",
-                    backgroundColor: "#f0f4f7",
-                    "& .MuiChip-icon": {
-                      fontSize: "0.75rem",
+          {/* Card main content */}
+          <Box sx={{ pr: enhancedTask.priority ? 7 : 0 }}>
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 1 }}>
+              <StatusChip 
+                label={getStatusLabel(enhancedTask.status)} 
+                colorData={getStatusColor(enhancedTask.status)}
+                size="small"
+              />
+              
+              {/* Due date chip */}
+              {enhancedTask.dueDate && (
+                <Tooltip title="Ngày hết hạn">
+                  <Chip
+                    icon={<CalendarTodayIcon style={{ fontSize: "0.7rem" }} />}
+                    label={
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        <Typography variant="caption" fontSize="0.7rem">
+                          {formatDate(enhancedTask.dueDate)}
+                        </Typography>
+                      </Box>
+                    }
+                    size="small"
+                    sx={{
+                      height: "22px",
+                      fontSize: "0.7rem",
+                      bgcolor: 'rgba(0,0,0,0.04)',
+                      color: 'text.secondary',
+                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
+                      '& .MuiChip-label': { px: 1 },
+                      borderRadius: "4px",
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
+            
+            {/* Task title */}
+            <TaskTitle variant="h6">
+              {enhancedTask.title || enhancedTask.name}
+            </TaskTitle>
+            
+            {/* Task description */}
+            <TaskDescription variant="body2">
+              {enhancedTask.description || "Không có mô tả"}
+            </TaskDescription>
+            
+            {/* Task details - assignees, tags, etc. */}
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+              {/* Assignees */}
+              {enhancedTask.assignees && enhancedTask.assignees.length > 0 ? (
+                <AvatarGroup 
+                  max={3} 
+                  sx={{ 
+                    '& .MuiAvatar-root': { 
+                      width: 24, 
+                      height: 24, 
+                      fontSize: '0.75rem',
+                      border: '1px solid #fff'
                     },
+                    mr: 1
                   }}
-                />
-              ))}
-            </Box>
-          )}
-          
-          {/* Action buttons */}
-          {actionButtons && (
-            <Box 
-              sx={{
-                position: "absolute", 
-                top: 8, 
-                right: 8, 
-                zIndex: 50,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                return false;
-              }}
-            >
-              {actionButtons}
-            </Box>
-          )}
-          
-          {/* Task metadata */}
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mt: 1,
-            }}
-          >
-            {/* User assigned to task */}
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-              {task.assignees && task.assignees.length > 0 ? (
-                <AvatarGroup max={3} sx={{ '& .MuiAvatar-root': { width: 24, height: 24, fontSize: '0.75rem' } }}>
-                  {task.assignees.map((assignee, index) => (
-                    <Tooltip key={assignee._id || assignee.userId || `assignee-${index}`} title={assignee.name || assignee.email || assignee.user?.name || assignee.user?.email || "Người dùng"}>
-                      <Avatar src={assignee.avatar || assignee.user?.avatar}>
-                        {(assignee.name || assignee.email || assignee.user?.name || assignee.user?.email || "?").charAt(0)}
-                      </Avatar>
-                    </Tooltip>
-                  ))}
+                >
+                  {enhancedTask.assignees.map((assignee, index) => {
+                    // Người dùng có thể là object hoặc string ID
+                    const name = assignee?.name || assignee?.fullName || assignee?.email || "Người dùng";
+                    const avatar = assignee?.avatar || assignee?.user?.avatar;
+                    const id = assignee?._id || assignee?.id || assignee?.user?._id || assignee;
+                    
+                    return (
+                      <Tooltip key={id || `assignee-${index}`} title={name}>
+                        <Avatar src={avatar}>
+                          {name.charAt(0).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
+                    );
+                  })}
                 </AvatarGroup>
               ) : (
                 <Tooltip title="Chưa gán cho ai">
-                  <PersonOffIcon color="disabled" fontSize="small" />
+                  <Chip
+                    icon={<PersonIcon style={{ fontSize: "0.7rem" }} />}
+                    label="Chưa gán"
+                    size="small"
+                    sx={{
+                      height: "22px",
+                      fontSize: "0.7rem",
+                      bgcolor: 'rgba(0,0,0,0.04)',
+                      color: 'text.secondary',
+                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
+                      '& .MuiChip-label': { px: 1 },
+                      borderRadius: "4px",
+                    }}
+                  />
+                </Tooltip>
+              )}
+              
+              {/* Estimate time */}
+              {enhancedTask.estimatedTime && Number(enhancedTask.estimatedTime) > 0 && (
+                <Tooltip title="Thời gian ước tính">
+                  <Chip
+                    icon={<AccessTimeIcon style={{ fontSize: "0.7rem" }} />}
+                    label={`${enhancedTask.estimatedTime}h`}
+                    size="small"
+                    sx={{
+                      height: "22px",
+                      fontSize: "0.7rem",
+                      bgcolor: 'rgba(0,0,0,0.04)',
+                      color: 'text.secondary',
+                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px' },
+                      '& .MuiChip-label': { px: 1 },
+                      borderRadius: "4px",
+                    }}
+                  />
+                </Tooltip>
+              )}
+              
+              {/* Tags */}
+              {enhancedTask.tags && enhancedTask.tags.length > 0 && enhancedTask.tags.slice(0, 2).map((tag, index) => (
+                <Tooltip title="Tag" key={`tag-${index}`}>
+                  <Chip
+                    icon={<LabelIcon style={{ fontSize: "0.7rem" }} />}
+                    label={tag}
+                    size="small"
+                    sx={{
+                      height: "22px",
+                      fontSize: "0.7rem",
+                      bgcolor: 'rgba(156, 39, 176, 0.1)',
+                      color: '#7b1fa2',
+                      '& .MuiChip-icon': { marginLeft: '4px', marginRight: '-4px', color: '#7b1fa2' },
+                      '& .MuiChip-label': { px: 1 },
+                      borderRadius: "4px",
+                    }}
+                  />
+                </Tooltip>
+              ))}
+              
+              {/* More tags indicator */}
+              {enhancedTask.tags && enhancedTask.tags.length > 2 && (
+                <Tooltip title={enhancedTask.tags.slice(2).join(', ')}>
+                  <Chip
+                    label={`+${enhancedTask.tags.length - 2}`}
+                    size="small"
+                    sx={{
+                      height: "22px",
+                      fontSize: "0.7rem",
+                      bgcolor: 'rgba(156, 39, 176, 0.05)',
+                      color: '#7b1fa2',
+                      '& .MuiChip-label': { px: 1 },
+                      borderRadius: "4px",
+                    }}
+                  />
                 </Tooltip>
               )}
             </Box>
           </Box>
           
-          {/* Due date with days remaining */}
-          {task.dueDate && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                mt: 1,
-                mb: 1,
-                color: "text.secondary",
-                fontSize: "0.75rem",
-              }}
-            >
-              <CalendarTodayIcon sx={{ fontSize: "0.8rem", mr: 0.5 }} />
-              {formatDate(task.dueDate)}
-              <Box
-                component="span"
-                sx={{
-                  ml: 1,
-                  color: new Date(task.dueDate) < new Date() ? "error.main" : "inherit",
-                  fontWeight: "medium",
-                }}
-              >
-                ({getDaysRemaining(task.dueDate)})
-              </Box>
-            </Box>
-          )}
-          
-          {/* Bottom actions */}
-          <Box 
-            sx={{ 
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mt: 1,
-            }}
-          >
-            {/* Project name at the bottom left */}
+          {/* Footer with project name and action buttons */}
+          <Box sx={{ 
+            mt: 2, 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center'
+          }}>
+            {/* Project name */}
             <Typography
-              variant="caption"
+              variant="body2"
               sx={{
-                fontSize: "0.7rem",
+                fontSize: "0.75rem",
                 color: "text.secondary",
                 display: "flex",
                 alignItems: "center",
@@ -725,18 +1051,18 @@ const TaskCard = ({
               ) : (
                 <>
                   <List sx={{ width: '100%', p: 0 }} dense>
-                    {comments.length === 0 ? (
+                    {(!comments || !Array.isArray(comments) || comments.length === 0) ? (
                       <Box display="flex" justifyContent="center" my={1}>
                         <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
                           Chưa có bình luận nào.
-                    </Typography>
+                        </Typography>
                       </Box>
                     ) : (
-                      comments.map((comment, index) => (
-                          <ListItem
+                      Array.isArray(comments) && comments.map((comment, index) => (
+                        <ListItem
                           key={comment._id || `comment-${index}`}
                           alignItems="flex-start"
-                            sx={{
+                          sx={{
                             py: 0.5,
                             px: 0,
                             borderBottom: index < comments.length - 1 ? '1px solid #f0f0f0' : 'none'
@@ -748,9 +1074,9 @@ const TaskCard = ({
                               sx={{ width: 24, height: 24 }}
                             >
                               {(comment.user?.name || "?").charAt(0)}
-                              </Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
+                            </Avatar>
+                          </ListItemAvatar>
+                          <ListItemText
                             primary={
                               <Box display="flex" justifyContent="space-between" alignItems="center">
                                 <Typography variant="subtitle2" component="span" fontSize="0.75rem">
@@ -792,12 +1118,12 @@ const TaskCard = ({
                       InputProps={{
                         endAdornment: (
                           <InputAdornment position="end">
-                              <IconButton
-                                edge="end"
+                            <IconButton
+                              edge="end"
                               color="primary" 
                               onClick={handleSendComment}
                               disabled={!newComment.trim()}
-                                size="small"
+                              size="small"
                             >
                               <SendIcon sx={{ fontSize: '1rem' }} />
                             </IconButton>
@@ -825,14 +1151,14 @@ const TaskCard = ({
               ) : (
                 <>
                   <List sx={{ width: '100%', p: 0 }} dense>
-                    {attachments.length === 0 ? (
+                    {(!attachments || !Array.isArray(attachments) || attachments.length === 0) ? (
                       <Box display="flex" justifyContent="center" my={1}>
                         <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
                           Chưa có tệp đính kèm nào.
                         </Typography>
                       </Box>
                     ) : (
-                      attachments.map((attachment, index) => (
+                      Array.isArray(attachments) && attachments.map((attachment, index) => (
                         <ListItem
                           key={attachment._id || `attachment-${index}`}
                           alignItems="center"
@@ -855,7 +1181,7 @@ const TaskCard = ({
                               <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
                                 {attachment.size ? `${Math.round(attachment.size / 1024)} KB` : ''}
                                 {attachment.createdAt ? ` · ${format(new Date(attachment.createdAt), "dd/MM/yyyy", { locale: vi })}` : ''}
-                      </Typography>
+                              </Typography>
                             }
                           />
                           <Button
@@ -877,12 +1203,12 @@ const TaskCard = ({
                     <input
                       accept="*/*"
                       style={{ display: 'none' }}
-                      id={`task-file-upload-${task._id}`}
+                      id={`task-file-upload-${enhancedTask._id}`}
                       type="file"
                       ref={fileInputRef}
                       onChange={handleFileUpload}
                     />
-                    <label htmlFor={`task-file-upload-${task._id}`}>
+                    <label htmlFor={`task-file-upload-${enhancedTask._id}`}>
                       <Button
                         variant="outlined"
                         component="span"
@@ -895,8 +1221,8 @@ const TaskCard = ({
                     </label>
                   </Box>
                 </>
-                )}
-              </Box>
+              )}
+            </Box>
             
             {/* Tab Lịch sử */}
             <Box
@@ -912,16 +1238,16 @@ const TaskCard = ({
                 </Box>
               ) : (
                 <List sx={{ width: '100%', p: 0 }} dense>
-                  {history.length === 0 ? (
+                  {(!history || !Array.isArray(history) || history.length === 0) ? (
                     <Box display="flex" justifyContent="center" my={1}>
                       <Typography variant="body2" color="text.secondary" fontSize="0.8rem">
-                        Chưa có lịch sử thay đổi nào.
+                        Chưa có lịch sử thay đổi.
                       </Typography>
                     </Box>
                   ) : (
-                    history.map((historyItem, index) => (
+                    Array.isArray(history) && history.map((item, index) => (
                       <ListItem
-                        key={historyItem._id || `history-${index}`}
+                        key={item._id || `history-${index}`}
                         alignItems="flex-start"
                         sx={{ 
                           py: 0.5,
@@ -929,34 +1255,28 @@ const TaskCard = ({
                           borderBottom: index < history.length - 1 ? '1px solid #f0f0f0' : 'none'
                         }}
                       >
-                        <ListItemAvatar sx={{ minWidth: 36 }}>
-                          <Avatar 
-                            src={historyItem.user?.avatar}
-                            sx={{ width: 24, height: 24 }}
-                          >
-                            {(historyItem.user?.name || "?").charAt(0)}
-                          </Avatar>
-                        </ListItemAvatar>
+                        <ListItemIcon sx={{ minWidth: 30, mt: 0.5 }}>
+                          <HistoryIcon color="primary" sx={{ fontSize: '1.2rem' }} />
+                        </ListItemIcon>
                         <ListItemText
                           primary={
                             <Box display="flex" justifyContent="space-between" alignItems="center">
                               <Typography variant="subtitle2" component="span" fontSize="0.75rem">
-                                {historyItem.user?.name || "Người dùng"}
+                                {item.user?.name || "Người dùng"}
                               </Typography>
                               <Typography variant="caption" color="text.secondary" fontSize="0.7rem">
-                                {historyItem.timestamp ? format(new Date(historyItem.timestamp), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
-                    </Typography>
-                  </Box>
+                                {item.createdAt ? format(new Date(item.createdAt), "dd/MM/yyyy HH:mm", { locale: vi }) : ''}
+                              </Typography>
+                            </Box>
                           }
                           secondary={
-                            <Typography variant="body2" color="text.primary" sx={{ mt: 0.5, fontSize: '0.75rem' }}>
-                              {historyItem.field ? (
-                                <>
-                                  Đã thay đổi <strong>{historyItem.field}</strong> từ "<em>{historyItem.oldValue}</em>" thành "<em>{historyItem.newValue}</em>"
-                                </>
-                              ) : (
-                                historyItem.action || "Đã thực hiện thay đổi"
-                              )}
+                            <Typography
+                              variant="body2"
+                              color="text.primary"
+                              sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                            >
+                              {item.action || "Đã thực hiện một hành động"}
+                              {item.details && `: ${item.details}`}
                             </Typography>
                           }
                         />
@@ -965,7 +1285,7 @@ const TaskCard = ({
                   )}
                 </List>
               )}
-              </Box>
+            </Box>
           </Box>
         </CardContent>
       </Collapse>

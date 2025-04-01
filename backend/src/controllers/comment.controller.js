@@ -201,6 +201,9 @@ export const getComments = async (req, res) => {
           message: "Công việc không tồn tại",
         });
       }
+      
+      // Bỏ qua việc kiểm tra quyền truy cập để cho phép tất cả mọi người xem comment
+      // Không kiểm tra user có thuộc dự án hay không
     }
 
     // Xây dựng query

@@ -54,6 +54,9 @@ const ActionButtons = ({
     if (event) {
       event.stopPropagation();
       event.preventDefault();
+      if (event.nativeEvent) {
+        event.nativeEvent.stopImmediatePropagation();
+      }
     }
     if (onEdit && typeof onEdit === "function") {
       onEdit(event);
@@ -66,6 +69,9 @@ const ActionButtons = ({
     if (event) {
       event.stopPropagation();
       event.preventDefault();
+      if (event.nativeEvent) {
+        event.nativeEvent.stopImmediatePropagation();
+      }
     }
     if (onDelete && typeof onDelete === "function") {
       onDelete(event);

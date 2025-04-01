@@ -100,16 +100,79 @@ export const createTask = async (projectId, sprintId, taskData) => {
 // Cập nhật công việc
 export const updateTask = async (projectId, sprintId, taskId, taskData) => {
   try {
-    console.log(`Updating task ${taskId} with data:`, taskData);
+    // Validate input parameters
+    if (!projectId || !sprintId || !taskId) {
+      console.error("Missing required parameters:", { projectId, sprintId, taskId });
+      return { 
+        success: false, 
+        message: "Thiếu thông tin cần thiết cho việc cập nhật task" 
+      };
+    }
     
-    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`, taskData);
+    console.log("taskApi.js - Updating task:", { 
+      projectId, 
+      sprintId, 
+      taskId, 
+      taskData 
+    });
+    
+    // Đảm bảo task ID là hợp lệ
+    const taskIdStr = String(taskId).trim();
+    if (!taskIdStr) {
+      return { 
+        success: false, 
+        message: "Task ID không hợp lệ" 
+      };
+    }
+    
+    // Đơn giản hóa payload để đảm bảo tránh lỗi dữ liệu không hợp lệ
+    // Chỉ bao gồm các trường bắt buộc và trường cần cập nhật
+    const payload = {
+      title: taskData.title || taskData.name || "Untitled Task", // Đảm bảo có trường title
+      description: taskData.description || "", // Đảm bảo có trường description
+    };
+    
+    // Chỉ thêm các trường khác nếu chúng được định nghĩa trong taskData
+    if (taskData.status !== undefined) payload.status = taskData.status;
+    if (taskData.priority !== undefined) payload.priority = taskData.priority;
+    if (taskData.dueDate !== undefined) payload.dueDate = taskData.dueDate;
+    if (taskData.startDate !== undefined) payload.startDate = taskData.startDate;
+    if (taskData.estimatedTime !== undefined) payload.estimatedTime = taskData.estimatedTime;
+    if (taskData.assignees !== undefined) payload.assignees = taskData.assignees;
+    if (taskData.tags !== undefined) payload.tags = taskData.tags;
+    
+    console.log("Simplified payload for update:", payload);
+    
+    const url = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}`;
+    console.log("Making PUT request to:", url);
+    
+    // Sử dụng đúng URL pattern dựa trên backend API
+    const response = await API.put(url, payload);
+    console.log("Response from server:", response.data);
+    
     return response.data;
   } catch (error) {
     console.error("Error updating task:", error);
+    
+    // Log thêm thông tin lỗi chi tiết nếu có
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Error data:", error.response.data);
+      
+      // Log lỗi validation nếu có
+      if (error.response.data && error.response.data.errors) {
+        console.error("Validation errors:", error.response.data.errors);
+      }
+    }
+    
     return { 
       success: false, 
       message: error.response?.data?.message || "Không thể cập nhật công việc",
-      error: error
+      errors: error.response?.data?.errors || [],
+      errorDetails: {
+        status: error.response?.status,
+        data: error.response?.data
+      }
     };
   }
 };
@@ -143,10 +206,18 @@ export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
       };
     }
     
-    // Sử dụng API endpoint dành riêng cho việc cập nhật trạng thái
-    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/status`, { 
+    // Đảm bảo taskId là chuỗi
+    const taskIdStr = String(taskId).trim();
+    
+    // Tạm thời - Sử dụng API endpoint updateTask thay vì updateStatus
+    // vì endpoint updateStatus có thể chưa được cấu hình đúng
+    console.log("Using updateTask instead of dedicated status endpoint");
+    const taskData = {
       status: status
-    });
+    };
+    
+    // Gọi API để cập nhật task với dữ liệu mới chỉ bao gồm trạng thái
+    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}`, taskData);
     
     console.log('Status update response:', response.data);
     return response.data;
@@ -180,20 +251,68 @@ export const addTaskAttachment = async (projectId, sprintId, taskId, file) => {
 
 // Lấy danh sách tệp đính kèm
 export const getTaskAttachments = async (projectId, sprintId, taskId) => {
-  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`);
-  return response.data;
+  try {
+    if (!projectId || !sprintId || !taskId) {
+      console.error("Missing required parameters for getTaskAttachments:", { projectId, sprintId, taskId });
+      return { 
+        success: false, 
+        message: "Thiếu thông tin cần thiết để lấy danh sách tệp đính kèm" 
+      };
+    }
+    
+    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`);
+    return response.data;
+  } catch (error) {
+    console.error("[API Error] GET attachments:", error);
+    // Nếu API trả về 404, trả về mảng rỗng thay vì báo lỗi
+    if (error.response && error.response.status === 404) {
+      return {
+        success: true,
+        message: "Không có tệp đính kèm nào",
+        data: []
+      };
+    }
+    return { 
+      success: false, 
+      message: error.response?.data?.message || "Không thể lấy danh sách tệp đính kèm. Vui lòng thử lại sau.",
+      isNetworkError: !error.response
+    };
+  }
 };
 
 // Xóa tệp đính kèm
 export const deleteTaskAttachment = async (projectId, sprintId, taskId, attachmentId) => {
-  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments/${attachmentId}`);
-  return response.data;
+  try {
+    const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments/${attachmentId}`);
+    return response.data;
+  } catch (error) {
+    console.error("[API Error] DELETE attachment:", error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || "Không thể xóa tệp đính kèm. Vui lòng thử lại sau.",
+      isNetworkError: !error.response
+    };
+  }
 };
 
 // Lấy danh sách bình luận
 export const getTaskComments = async (projectId, sprintId, taskId) => {
-  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`);
-  return response.data;
+  try {
+    // Sử dụng route /api/comments thay vì route trong task
+    const response = await API.get(`/comments`, {
+      params: {
+        taskId: taskId
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Không thể tải bình luận. Vui lòng thử lại sau.',
+      isNetworkError: !error.response
+    };
+  }
 };
 
 // Thêm bình luận
@@ -216,8 +335,33 @@ export const deleteTaskComment = async (projectId, sprintId, taskId, commentId) 
 
 // Lấy lịch sử thay đổi
 export const getTaskAuditLogs = async (projectId, sprintId, taskId) => {
-  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`);
-  return response.data;
+  try {
+    if (!projectId || !sprintId || !taskId) {
+      console.error("Missing required parameters for getTaskAuditLogs:", { projectId, sprintId, taskId });
+      return { 
+        success: false, 
+        message: "Thiếu thông tin cần thiết để lấy lịch sử thay đổi" 
+      };
+    }
+    
+    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`);
+    return response.data;
+  } catch (error) {
+    console.error("[API Error] GET history:", error);
+    // Nếu API trả về 404, trả về mảng rỗng thay vì báo lỗi
+    if (error.response && error.response.status === 404) {
+      return {
+        success: true,
+        message: "Không có lịch sử thay đổi nào",
+        data: []
+      };
+    }
+    return { 
+      success: false, 
+      message: error.response?.data?.message || "Không thể lấy lịch sử thay đổi. Vui lòng thử lại sau.",
+      isNetworkError: !error.response
+    };
+  }
 };
 
 // Đồng bộ với lịch

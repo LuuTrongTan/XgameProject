@@ -8,6 +8,7 @@ import {
   deleteTask,
   assignTask,
   uploadAttachment,
+  getTaskAttachments,
   updateStatus,
   addTag,
   removeTag,
@@ -16,6 +17,7 @@ import {
   getTaskTimeStats,
   updateProgress,
   getUpcomingTasks,
+  getTaskHistory,
 } from "../controllers/task.controller.js";
 import { addTaskComment } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
@@ -491,5 +493,59 @@ router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/progress", prot
  *           type: string
  */
 router.get("/projects/:projectId/sprints/:sprintId/tasks/upcoming", protect, getUpcomingTasks);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments:
+ *   get:
+ *     summary: Lấy danh sách tệp đính kèm của task
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments", protect, getTaskAttachments);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/history:
+ *   get:
+ *     summary: Lấy lịch sử thay đổi của task
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/history", protect, getTaskHistory);
 
 export default router;

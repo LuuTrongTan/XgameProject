@@ -59,8 +59,6 @@ router.post("/", addTaskComment);
  *   get:
  *     summary: Lấy danh sách bình luận
  *     tags: [Comments]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: taskId
@@ -82,8 +80,6 @@ router.post("/", addTaskComment);
  *     responses:
  *       200:
  *         description: Danh sách bình luận
- *       401:
- *         description: Không có quyền truy cập
  */
 router.get("/", getComments);
 
