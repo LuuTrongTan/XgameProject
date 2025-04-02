@@ -1,4 +1,4 @@
-import api from "../utils/api";
+import api from "../api/api";
 
 class ActivityService {
   static async createActivity(type, action, title, description) {

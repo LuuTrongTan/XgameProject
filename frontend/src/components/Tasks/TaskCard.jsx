@@ -67,7 +67,13 @@ import {
 } from "../../api/taskApi";
 import UserAvatar from "../common/UserAvatar";
 import DateTimeDisplay from "../common/DateTimeDisplay";
-import TaskComments from "./TaskComments";
+import { 
+  getTaskStatusColor, 
+  getTaskStatusLabel, 
+  getTaskPriorityLabel, 
+  getTaskPriorityColor 
+} from "../../config/constants";
+
 import TaskAuditLog from "./TaskAuditLog";
 
 // Styled components
@@ -310,6 +316,7 @@ const TaskCard = ({
     width: '100%',
     position: 'relative',
     touchAction: 'none', // Thêm để ngăn các hành động touch mặc định
+    cursor: isDragging ? 'grabbing' : 'inherit',
   };
 
   // Open card in edit mode
@@ -317,9 +324,10 @@ const TaskCard = ({
     // Không thực hiện click khi đang kéo
     if (isDragging) {
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
-    e.stopPropagation();
+    
     if (onEdit) {
       onEdit(task);
     }
@@ -662,64 +670,6 @@ const TaskCard = ({
     }
   };
 
-  // Helper functions
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "todo":
-        return { bg: "rgba(66, 165, 245, 0.08)", color: "rgba(25, 118, 210, 0.7)" };
-      case "inProgress":
-        return { bg: "rgba(255, 152, 0, 0.08)", color: "rgba(245, 124, 0, 0.7)" };
-      case "review":
-        return { bg: "rgba(171, 71, 188, 0.08)", color: "rgba(123, 31, 162, 0.7)" };
-      case "done":
-        return { bg: "rgba(76, 175, 80, 0.08)", color: "rgba(46, 125, 50, 0.7)" };
-      default:
-        return { bg: "rgba(66, 165, 245, 0.08)", color: "rgba(25, 118, 210, 0.7)" };
-    }
-  };
-
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case "todo":
-        return "Chưa bắt đầu";
-      case "inProgress":
-        return "Đang thực hiện";
-      case "review":
-        return "Đang kiểm tra";
-      case "done":
-        return "Hoàn thành";
-      default:
-        return "Không xác định";
-    }
-  };
-
-  const getPriorityLabel = (priority) => {
-    switch (priority) {
-      case "low":
-        return "Thấp";
-      case "medium":
-        return "Trung bình";
-      case "high":
-        return "Cao";
-      default:
-        return "Không xác định";
-    }
-  };
-  
-  // Get priority color for display
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "low":
-        return { bg: "rgba(76, 175, 80, 0.08)", color: "rgba(46, 125, 50, 0.85)" };
-      case "medium":
-        return { bg: "rgba(255, 152, 0, 0.08)", color: "rgba(245, 124, 0, 0.85)" };
-      case "high":
-        return { bg: "rgba(244, 67, 54, 0.08)", color: "rgba(211, 47, 47, 0.85)" };
-      default:
-        return { bg: "rgba(158, 158, 158, 0.08)", color: "rgba(117, 117, 117, 0.85)" };
-    }
-  };
-
   // Format date with localization
   const formatDate = (dateString) => {
     if (!dateString) return "Không có";
@@ -779,21 +729,24 @@ const TaskCard = ({
         elevation={3}
         onClick={handleDetailClick}
         sx={{
-          ...(isDragging ? { cursor: "grabbing" } : {}),
+          ...(isDragging ? { 
+            cursor: "grabbing",
+            transform: 'rotate(2deg)',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.15)',
+            zIndex: 9999
+          } : {}),
           userSelect: 'none',
           WebkitUserSelect: 'none', // Safari
           MozUserSelect: 'none', // Firefox
           msUserSelect: 'none', // IE
-          cursor: isDragging ? 'grabbing' : 'grab',
           transform: isDragging ? 'scale(1.02)' : 'none',
-          borderLeft: isDragging ? `3px solid ${getStatusColor(task.status)?.color || 'rgba(25, 118, 210, 0.7)'}` : 'none',
-          boxShadow: isDragging ? '0 10px 30px rgba(0,0,0,0.15)' : undefined
+          borderLeft: isDragging ? `3px solid ${getTaskStatusColor(task.status)?.color || 'rgba(25, 118, 210, 0.7)'}` : 'none',
         }}
         status={task.status}
       >
         {/* Priority indicator as a small dot at top-right corner with tooltip */}
         <Tooltip 
-          title={`Độ ưu tiên: ${getPriorityLabel(task.priority)}`}
+          title={`Độ ưu tiên: ${getTaskPriorityLabel(task.priority)}`}
           placement="top-end"
         >
           <PriorityIndicator priority={task.priority} />
@@ -819,9 +772,9 @@ const TaskCard = ({
         >
           <Box display="flex" alignItems="center" gap={1}>
             <StatusChip 
-              label={getStatusLabel(task.status)} 
+              label={getTaskStatusLabel(task.status)} 
               size="small"
-              colorData={getStatusColor(task.status)}
+              colorData={getTaskStatusColor(task.status)}
             />
             
             {task.dueDate && (
@@ -861,18 +814,33 @@ const TaskCard = ({
             left: "10px", 
             color: "text.secondary", 
             opacity: 0.5,
-            zIndex: 5,
-            cursor: "grab",
+            zIndex: 9, // Increase zIndex to ensure it's clickable
+            cursor: isDragging ? "grabbing" : "grab",
+            width: "24px", // Add explicit width
+            height: "24px", // Add explicit height 
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "4px",
             "&:hover": { 
               opacity: 0.8,
-              cursor: "grab"
+              cursor: "grab",
+              backgroundColor: "rgba(0,0,0,0.04)"
             },
             "&:active": {
               cursor: "grabbing",
-              opacity: 1
+              opacity: 1,
+              backgroundColor: "rgba(0,0,0,0.08)"
             }
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onTouchStart={(e) => {
+            // Prevent default touch behavior to improve mobile dragging
+            e.stopPropagation();
+          }}
         >
           <DragIndicatorIcon fontSize="medium" />
         </Box>

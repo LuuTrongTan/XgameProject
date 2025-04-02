@@ -45,7 +45,7 @@ import {
   Add as AddIcon,
   RemoveCircle as RemoveCircleIcon,
 } from "@mui/icons-material";
-import { BackButton } from "../common/BackButton";
+import BackButton from "../common/BackButton";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;

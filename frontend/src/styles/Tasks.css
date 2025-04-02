@@ -1,0 +1,159 @@
+/* Styles for Kanban board and task cards */
+
+.kanban-board {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+  }
+  
+  .kanban-column {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    height: 100%;
+  }
+  
+  .kanban-column-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 16px;
+  }
+  
+  .kanban-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  .task-card {
+    margin-bottom: 12px;
+    cursor: grab;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.2s ease;
+    touch-action: none; /* Ngăn event cảm ứng mặc định */
+  }
+  
+  .task-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  }
+  
+  .task-card:active {
+    cursor: grabbing;
+  }
+  
+  .task-card-content {
+    padding: 16px;
+  }
+  
+  .task-card-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  
+  .task-card-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+  }
+  
+  .task-card-date {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: #666;
+  }
+  
+  .task-card-priority {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+  
+  .task-card-priority-low {
+    background-color: rgba(76, 175, 80, 0.1);
+    color: #2e7d32;
+  }
+  
+  .task-card-priority-medium {
+    background-color: rgba(255, 152, 0, 0.1);
+    color: #f57c00;
+  }
+  
+  .task-card-priority-high {
+    background-color: rgba(244, 67, 54, 0.1);
+    color: #d32f2f;
+  }
+  
+  .task-card-assignees {
+    display: flex;
+    margin-top: 8px;
+  }
+  
+  .dragging {
+    opacity: 0.7 !important;
+    cursor: grabbing !important;
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15) !important;
+    transform: scale(1.02) !important;
+    z-index: 100 !important;
+  }
+  
+  /* Style cho body khi đang kéo để tránh scroll */
+  body.dragging-active {
+    overflow: hidden !important;
+    touch-action: none !important;
+    -ms-touch-action: none !important;
+    -webkit-overflow-scrolling: none !important;
+  }
+  
+  /* Phần cho kéo thả kanban */
+  .kanban-column-todo:hover {
+    border-color: #1976d2 !important;
+    background-color: rgba(25, 118, 210, 0.05) !important;
+  }
+  
+  .kanban-column-inProgress:hover {
+    border-color: #ff9800 !important;
+    background-color: rgba(255, 152, 0, 0.05) !important;
+  }
+  
+  .kanban-column-review:hover {
+    border-color: #9c27b0 !important;
+    background-color: rgba(156, 39, 176, 0.05) !important;
+  }
+  
+  .kanban-column-done:hover {
+    border-color: #2e7d32 !important;
+    background-color: rgba(46, 125, 50, 0.05) !important;
+  }
+  
+  /* Hiệu ứng khi kéo thả vào cột */
+  .column-drop-target {
+    background-color: rgba(0, 0, 0, 0.03) !important;
+    border: 2px dashed rgba(0, 0, 0, 0.2) !important;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1) inset !important;
+  }
+  
+  /* Vùng kéo thả */
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    touch-action: none;
+    cursor: grab !important;
+  } 
