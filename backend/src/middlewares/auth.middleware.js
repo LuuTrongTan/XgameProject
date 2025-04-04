@@ -8,6 +8,7 @@ export const protect = async (req, res, next) => {
     // Kiểm tra token trong cookie
     if (req.cookies && req.cookies.token) {
       token = req.cookies.token;
+      console.log("Found token in cookie:", token.substring(0, 10) + '...');
     }
     // Kiểm tra token trong header
     else if (
@@ -15,9 +16,11 @@ export const protect = async (req, res, next) => {
       req.headers.authorization.startsWith("Bearer")
     ) {
       token = req.headers.authorization.split(" ")[1];
+      console.log("Found token in header:", token.substring(0, 10) + '...');
     }
 
     if (!token) {
+      console.log("No token found in request");
       return res.status(401).json({
         success: false,
         message: "Không tìm thấy token xác thực",
@@ -26,18 +29,23 @@ export const protect = async (req, res, next) => {
 
     try {
       // Verify token
+      console.log("Verifying token with JWT_SECRET:", process.env.JWT_SECRET ? `${process.env.JWT_SECRET.substring(0, 3)}...` : 'undefined');
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Token successfully verified, decoded:", decoded);
 
       // Tìm user
       const user = await User.findById(decoded.id);
 
       if (!user) {
+        console.log("User not found with ID from token:", decoded.id);
         return res.status(401).json({
           success: false,
           message: "Token không hợp lệ hoặc đã bị vô hiệu hóa",
         });
       }
 
+      console.log("User authenticated:", user._id.toString(), "Role:", user.role);
+      
       // Thêm user vào request
       req.user = user;
       next();
@@ -76,6 +84,26 @@ export const authorizeRoles = (...roles) => {
 
     next();
   };
+};
+
+// Middleware kiểm tra người dùng có vai trò admin
+export const admin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Không tìm thấy thông tin người dùng",
+    });
+  }
+
+  // Kiểm tra nếu user có vai trò admin hoặc có admin trong roles array
+  if (req.user.role === "admin" || (req.user.roles && req.user.roles.includes("admin"))) {
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: "Yêu cầu quyền quản trị viên",
+  });
 };
 
 export const checkPermission = (permission) => {

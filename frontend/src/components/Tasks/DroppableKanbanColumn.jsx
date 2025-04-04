@@ -102,7 +102,8 @@ const DroppableKanbanColumn = ({
       data-column-id={status}
       className={`kanban-column ${status}-column ${isOver ? 'drag-over' : ''}`}
       sx={{
-        minHeight: "calc(100vh - 300px)",
+        minHeight: "250px",
+        height: "auto",
         backgroundColor: isOver ? hoverBgColor : "#f8f9fc",
         borderRadius: "20px",
         boxShadow: isOver ? "0 16px 32px rgba(0,0,0,0.15)" : "0 8px 24px rgba(0,0,0,0.08)",
@@ -114,7 +115,8 @@ const DroppableKanbanColumn = ({
         "&:hover": {
           boxShadow: "0 12px 32px rgba(0,0,0,0.15)",
           border: `1px solid ${hoverBorderColor}`,
-        }
+        },
+        overflowY: "visible",
       }}
       onClick={() => {
         console.log(`[CLICK] Column ${status} clicked - id: ${status}`);
@@ -183,7 +185,8 @@ const DroppableKanbanColumn = ({
             minHeight: 100,
             flexGrow: 1,
             display: "flex",
-            flexDirection: "column"
+            flexDirection: "column",
+            paddingBottom: "80px",
           }}
           data-status={status}
         >

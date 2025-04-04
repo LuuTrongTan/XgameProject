@@ -88,7 +88,7 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
   };
 
   const handleDragEnd = (event) => {
-    console.log("Drag end event:", event);
+    console.log("[DragEnd] Event:", event);
     const { active, over } = event;
     
     // Cleanup UI state
@@ -102,7 +102,7 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
     
     // Kiểm tra nếu không có vùng thả hoặc không có task được kéo
     if (!active || !over) {
-      console.log("Drag cancelled - no active or over");
+      console.log("[DragEnd] Drag cancelled - no active or over");
       setActiveContainer(null);
       setActiveTask(null);
       return;
@@ -118,7 +118,7 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
     // có thể đang thả vào một task khác. Trong trường hợp này, 
     // ta cần xác định task đó thuộc cột nào
     if (!validStatuses.includes(targetStatusId)) {
-      console.log(`Invalid target status ID: ${targetStatusId}, trying to determine container`);
+      console.log(`[DragEnd] Invalid target status ID: ${targetStatusId}, trying to determine container`);
       
       // Thử tìm task trong tất cả các containers
       let foundContainer = null;
@@ -131,25 +131,67 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
       });
       
       if (foundContainer) {
-        console.log(`Found target task in container: ${foundContainer}`);
+        console.log(`[DragEnd] Found target task in container: ${foundContainer}`);
         targetStatusId = foundContainer;
       } else {
-        console.warn(`Could not determine container for target: ${targetStatusId}`);
-        setActiveContainer(null);
-        setActiveTask(null);
-        return;
+        // Nếu không tìm thấy container, xác định dựa vào vị trí con trỏ theo chiều ngang
+        if (event.activatorEvent && 'clientX' in event.activatorEvent) {
+          const { clientX } = event.activatorEvent;
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+          const columnWidth = viewportWidth / validStatuses.length;
+          
+          let columnIndex = Math.floor(clientX / columnWidth);
+          // Đảm bảo index nằm trong phạm vi hợp lệ
+          columnIndex = Math.max(0, Math.min(validStatuses.length - 1, columnIndex));
+          
+          targetStatusId = validStatuses[columnIndex];
+          console.log(`[DragEnd] Using column based on pointer position (X): ${targetStatusId}`);
+        } else {
+          console.warn(`[DragEnd] Could not determine container, defaulting to current container`);
+          targetStatusId = activeContainer || 'todo';
+        }
       }
     }
     
-    console.log("Drag completed:", { taskId, targetStatusId, sourceContainer: activeContainer });
+    // Xác định cột nguồn và vị trí cũ trong cột nguồn
+    const sourceContainer = activeContainer;
+    const oldPosition = sourceContainer ? 
+      tasks[sourceContainer].findIndex(task => task._id === taskId) : -1;
     
-    // Nếu kéo vào cột khác thì mới cập nhật trạng thái
-    if (activeContainer !== targetStatusId) {
-      console.log(`Updating task status from ${activeContainer} to ${targetStatusId}`);
-      updateTaskStatus(taskId, targetStatusId);
-    } else {
-      console.log("Same container, no status update needed");
+    console.log(`[DragEnd] Task ${taskId} being moved from ${sourceContainer}[${oldPosition}] to ${targetStatusId}`);
+    
+    // Lấy danh sách task trong cột đích (đã lọc bỏ task đang kéo nếu cùng cột)
+    const tasksInTargetColumn = (targetStatusId === sourceContainer) 
+      ? tasks[targetStatusId].filter(task => task._id !== taskId) 
+      : (tasks[targetStatusId] || []);
+    
+    // Tính toán position của task dựa vào vị trí con trỏ chuột
+    let newPosition;
+    
+    // ========= TRƯỜNG HỢP 1: Kéo trong cùng cột - giữ vị trí hiện tại =========
+    if (sourceContainer === targetStatusId) {
+      newPosition = oldPosition;
+      console.log(`[DragEnd] Moving within same column - keeping position: ${newPosition}`);
     }
+    // ========= TRƯỜNG HỢP 2: Kéo sang cột khác - luôn đặt ở cuối cột =========
+    else {
+      // Khi kéo sang cột khác, luôn đặt ở cuối cột để tránh nhầm lẫn
+      const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
+      const lastTask = sortedTasks[sortedTasks.length - 1];
+      newPosition = lastTask ? (lastTask.position + 1) : 0;
+      console.log(`[DragEnd] Moving to another column - placing at end with position: ${newPosition}`);
+    }
+    
+    console.log(`[DragEnd] Final: Moving task from ${sourceContainer}[${oldPosition}] to ${targetStatusId}[${newPosition}]`);
+    
+    // Gọi API để cập nhật
+    updateTaskStatus({
+      taskId,
+      status: targetStatusId,
+      position: newPosition,
+      projectId: activeTask?.project?._id, 
+      sprintId: activeTask?.sprint
+    });
     
     setActiveContainer(null);
     setActiveTask(null);

@@ -88,8 +88,28 @@ const Tasks = () => {
   const [commentLoading, setCommentLoading] = useState(false);
   
   // Custom hook for drag and drop
-  const updateTaskStatusHandler = useCallback(async (taskId, newStatus) => {
+  const updateTaskStatusHandler = useCallback(async (params) => {
     try {
+      // Xử lý tham số từ object hoặc legacy format (taskId, newStatus)
+      let taskId, newStatus, position, taskProjectId, taskSprintId;
+      
+      if (typeof params === 'object') {
+        // Định dạng mới, nhận object có các thuộc tính
+        taskId = params.taskId;
+        newStatus = params.status;
+        position = params.position;
+        taskProjectId = params.projectId || projectId;
+        taskSprintId = params.sprintId || sprintId;
+      } else {
+        // Định dạng cũ, nhận 2 tham số riêng biệt
+        taskId = params;
+        newStatus = arguments[1];
+        taskProjectId = projectId;
+        taskSprintId = sprintId;
+      }
+      
+      console.log(`Updating task ${taskId} to status ${newStatus} at position ${position}`);
+      
       // Tìm task trong tất cả các trạng thái
       let taskToUpdate = null;
       let oldStatus = null;
@@ -117,20 +137,35 @@ const Tasks = () => {
           (task) => task._id !== taskId
         );
         
-        // Thêm task vào trạng thái mới
-        const updatedTask = { ...taskToUpdate, status: newStatus };
-        newTasks[newStatus] = [...newTasks[newStatus], updatedTask];
+        // Thêm task vào trạng thái mới tại vị trí được chỉ định
+        const updatedTask = { ...taskToUpdate, status: newStatus, position: position };
+        
+        if (typeof position === 'number') {
+          // Chèn vào vị trí cụ thể
+          const targetArray = [...newTasks[newStatus]];
+          targetArray.splice(position, 0, updatedTask);
+          newTasks[newStatus] = targetArray;
+        } else {
+          // Thêm vào cuối nếu không chỉ định vị trí
+          newTasks[newStatus] = [...newTasks[newStatus], updatedTask];
+        }
+        
+        // Sắp xếp lại các task theo vị trí
+        if (newTasks[newStatus].every(task => task.position !== undefined)) {
+          newTasks[newStatus].sort((a, b) => a.position - b.position);
+        }
         
         return newTasks;
       });
       
-      // Gọi API để cập nhật trạng thái
-      const response = await updateTaskStatus(
-        projectId,
-        sprintId,
+      // Gọi API để cập nhật trạng thái và vị trí
+      const response = await updateTaskStatus({
         taskId,
-        newStatus
-      );
+        status: newStatus,
+        position: position,
+        projectId: taskProjectId,
+        sprintId: taskSprintId
+      });
       
       if (!response.success) {
         // Nếu API thất bại, rollback lại UI
@@ -208,6 +243,20 @@ const Tasks = () => {
           } else {
             // Mặc định nếu không có trạng thái hoặc trạng thái không hợp lệ
             groupedTasks.todo.push({ ...task, status: "todo" });
+          }
+        });
+        
+        // Sắp xếp task trong mỗi cột theo position
+        Object.keys(groupedTasks).forEach(status => {
+          // Kiểm tra nếu các task có trường position
+          if (groupedTasks[status].length > 0 && groupedTasks[status][0].position !== undefined) {
+            groupedTasks[status].sort((a, b) => {
+              // Nếu position giống nhau, sắp xếp theo thời gian tạo
+              if (a.position === b.position) {
+                return new Date(b.createdAt) - new Date(a.createdAt);
+              }
+              return a.position - b.position;
+            });
           }
         });
         

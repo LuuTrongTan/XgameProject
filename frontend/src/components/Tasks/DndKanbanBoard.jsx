@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, closestCenter, pointerWithin, rectIntersection
 import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import { Grid } from '@mui/material';
 import { useDragAndDrop } from '../../hooks/useDragAndDrop';
-import DroppableColumn from './DroppableColumn';
+import DroppableKanbanColumn from './DroppableKanbanColumn';
 import DraggableTaskCard from './DraggableTaskCard';
 import TaskCard from './TaskCard';
 import '../../styles/dragDrop.css';
@@ -223,7 +223,7 @@ const DndKanbanBoard = ({
       <Grid container spacing={2} className={isDragActive ? 'dragging-active' : ''}>
         {/* Todo column */}
         <Grid item xs={12} md={3} aria-label="Todo column">
-          <DroppableColumn
+          <DroppableKanbanColumn
             id="todo"
             title="Chưa bắt đầu"
             status="todo"
@@ -236,12 +236,12 @@ const DndKanbanBoard = ({
             onAddTask={() => handleAddTask('todo')}
           >
             {renderTasksOrEmpty('todo')}
-          </DroppableColumn>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* In Progress column */}
         <Grid item xs={12} md={3} aria-label="In Progress column">
-          <DroppableColumn
+          <DroppableKanbanColumn
             id="inProgress"
             title="Đang thực hiện"
             status="inProgress"
@@ -254,12 +254,12 @@ const DndKanbanBoard = ({
             onAddTask={() => handleAddTask('inProgress')}
           >
             {renderTasksOrEmpty('inProgress')}
-          </DroppableColumn>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* Review column */}
         <Grid item xs={12} md={3} aria-label="Review column">
-          <DroppableColumn
+          <DroppableKanbanColumn
             id="review"
             title="Đang kiểm tra"
             status="review"
@@ -272,12 +272,12 @@ const DndKanbanBoard = ({
             onAddTask={() => handleAddTask('review')}
           >
             {renderTasksOrEmpty('review')}
-          </DroppableColumn>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* Done column */}
         <Grid item xs={12} md={3} aria-label="Done column">
-          <DroppableColumn
+          <DroppableKanbanColumn
             id="done"
             title="Hoàn thành"
             status="done"
@@ -290,7 +290,7 @@ const DndKanbanBoard = ({
             onAddTask={() => handleAddTask('done')}
           >
             {renderTasksOrEmpty('done')}
-          </DroppableColumn>
+          </DroppableKanbanColumn>
         </Grid>
       </Grid>
 

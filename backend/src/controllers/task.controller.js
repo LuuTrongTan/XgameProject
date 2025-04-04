@@ -283,24 +283,17 @@ export const getTaskById = async (req, res) => {
 // Tạo công việc mới
 export const createTask = async (req, res) => {
   try {
-    console.log("=== DEBUG CREATE TASK ===");
-    console.log("Request params:", req.params);
-    console.log("Request body:", req.body);
-    
-    // Lấy projectId và sprintId từ URL hoặc body
-    const projectId = req.params.projectId || req.body.projectId;
-    const sprintId = req.params.sprintId || req.body.sprintId;
-    
-    console.log("Using projectId:", projectId, "sprintId:", sprintId);
-    
-    // Kiểm tra sprintId phải tồn tại và khác 'default'
-    if (!sprintId || sprintId === 'default') {
+    const projectId = req.params.projectId;
+    const sprintId = req.params.sprintId;
+
+    if (!projectId || !sprintId) {
       return res.status(400).json({
         success: false,
-        message: "Sprint ID không hợp lệ. Vui lòng chọn một sprint cụ thể.",
+        message: "ProjectId và SprintId là bắt buộc",
       });
     }
-    
+
+    // Validate data đầu vào
     const errors = validateTaskData(req.body);
     if (errors.length > 0) {
       return res.status(400).json({
@@ -309,25 +302,8 @@ export const createTask = async (req, res) => {
         errors,
       });
     }
-    
-    // Kiểm tra sprint tồn tại
-    const Sprint = mongoose.model('Sprint');
-    const sprint = await Sprint.findById(sprintId);
-    if (!sprint) {
-      return res.status(404).json({
-        success: false,
-        message: "Sprint không tồn tại",
-      });
-    }
-    
-    // Kiểm tra sprint thuộc project
-    if (sprint.project.toString() !== projectId) {
-      return res.status(400).json({
-        success: false,
-        message: "Sprint không thuộc dự án này",
-      });
-    }
-    
+
+    // Kiểm tra quyền
     const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({
@@ -336,69 +312,60 @@ export const createTask = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền tạo task trong dự án
-    const member = project.members.find(
-      (m) => m.user.toString() === req.user.id.toString()
-    );
-    if (!member && project.owner.toString() !== req.user.id.toString()) {
-      return res.status(403).json({
+    // Kiểm tra quyền với dự án
+    if (!project.members.some((m) => m.user.toString() === req.user.id)) {
+      const hasManagementRole = req.user.roles.some((role) =>
+        ["Admin", "Project Manager"].includes(role)
+      );
+      if (!hasManagementRole) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền tạo công việc trong dự án này",
+        });
+      }
+    }
+
+    // Kiểm tra sprint
+    const sprint = await Sprint.findById(sprintId);
+    if (!sprint) {
+      return res.status(404).json({
         success: false,
-        message: "Bạn không có quyền tạo công việc trong dự án này",
+        message: "Sprint không tồn tại",
       });
     }
 
+    // Kiểm tra sprint thuộc dự án
+    if (sprint.project.toString() !== projectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Sprint không thuộc dự án",
+      });
+    }
+
+    // Tìm position mới nhất cho task trong cùng cột
+    const maxPositionTask = await Task.findOne({ status: req.body.status || 'todo' })
+      .sort({ position: -1 })
+      .limit(1);
+    
+    const newPosition = maxPositionTask ? maxPositionTask.position + 1 : 0;
+    
+    // Create task
     const task = new Task({
       ...req.body,
       project: projectId,
+      sprint: sprintId,
       createdBy: req.user.id,
+      position: newPosition,  // Thêm position cho task mới
     });
 
-    // Nếu là subtask, cập nhật parent task
-    if (req.body.parent) {
-      const parentTask = await Task.findById(req.body.parent);
-      if (!parentTask) {
-        return res.status(404).json({
-          success: false,
-          message: "Không tìm thấy công việc cha",
-        });
-      }
-      parentTask.subtasks.push(task._id);
-      await parentTask.save();
-    }
-
     await task.save();
+    
+    console.log(`New task created with position ${newPosition} in column ${task.status}`);
 
-    // Thêm task vào sprint (luôn bắt buộc)
-    console.log("Adding task to sprint:", sprintId);
-    sprint.tasks.push(task._id);
-    await sprint.save();
-    console.log("Task added to sprint successfully");
-
-    // Thêm người tạo vào watchers
-    task.watchers.push(req.user.id);
-    await task.save();
-
-    const populatedTask = await Task.findById(task._id)
-      .populate("project", "name status")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
-      .populate("parent", "title status")
-      .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar");
-
-    // Gửi thông báo tới các thành viên dự án
-    global.io.emit("task_created", {
-      task: populatedTask,
-      creator: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
-
-    res.status(201).json({
+    res.json({
       success: true,
       message: "Tạo công việc thành công",
-      data: populatedTask,
+      data: task,
     });
   } catch (error) {
     console.error("Lỗi khi tạo công việc:", error);
@@ -554,6 +521,7 @@ export const updateStatus = async (req, res) => {
     console.log("Request params:", req.params);
     console.log("Task ID from params:", req.params.taskId);
     console.log("Request user:", req.user?.id);
+    console.log("Request body:", req.body);
     
     // Sử dụng taskId từ URL
     const taskId = req.params.taskId || req.params.id;
@@ -575,7 +543,7 @@ export const updateStatus = async (req, res) => {
       });
     }
     
-    const { status } = req.body;
+    const { status, position } = req.body;
     if (!status || !["todo", "inProgress", "review", "done"].includes(status)) {
       return res.status(400).json({
         success: false,
@@ -583,9 +551,64 @@ export const updateStatus = async (req, res) => {
       });
     }
 
+    // Đảm bảo các task trong cùng cột đều có position - Cần thiết cho các task được tạo trước khi thêm trường position
+    const hasNoPositionTasks = await Task.exists({
+      status: task.status,
+      position: { $exists: false }
+    });
+    
+    if (hasNoPositionTasks) {
+      console.log(`Found tasks without position in column ${task.status}, migrating position data...`);
+      
+      // Lấy tất cả task trong cùng cột theo thời gian tạo
+      const tasksInColumn = await Task.find({ status: task.status })
+        .sort({ createdAt: 1 });
+      
+      // Cập nhật position cho từng task
+      for (let i = 0; i < tasksInColumn.length; i++) {
+        await Task.updateOne(
+          { _id: tasksInColumn[i]._id },
+          { $set: { position: i } }
+        );
+      }
+      
+      console.log(`Migrated position data for ${tasksInColumn.length} tasks in column ${task.status}`);
+    }
+    
+    // Migration cho cột đích nếu khác với cột hiện tại
+    if (status !== task.status) {
+      const hasNoPositionTasksInTarget = await Task.exists({
+        status: status,
+        position: { $exists: false }
+      });
+      
+      if (hasNoPositionTasksInTarget) {
+        console.log(`Found tasks without position in target column ${status}, migrating position data...`);
+        
+        // Lấy tất cả task trong cột đích theo thời gian tạo
+        const tasksInTargetColumn = await Task.find({ status })
+          .sort({ createdAt: 1 });
+        
+        // Cập nhật position cho từng task
+        for (let i = 0; i < tasksInTargetColumn.length; i++) {
+          await Task.updateOne(
+            { _id: tasksInTargetColumn[i]._id },
+            { $set: { position: i } }
+          );
+        }
+        
+        console.log(`Migrated position data for ${tasksInTargetColumn.length} tasks in column ${status}`);
+      }
+    }
+
+    // Reload task để đảm bảo có trường position sau khi migration
+    const updatedTask = await Task.findById(taskId);
+    const oldStatus = updatedTask.status;
+    const oldPosition = updatedTask.position || 0;
+
     // Kiểm tra dependencies nếu chuyển sang đang thực hiện
-    if (status === "inProgress" && typeof task.checkDependencies === 'function') {
-      const { canStart, pendingBlockers } = await task.checkDependencies();
+    if (status === "inProgress" && typeof updatedTask.checkDependencies === 'function') {
+      const { canStart, pendingBlockers } = await updatedTask.checkDependencies();
       if (!canStart) {
         return res.status(400).json({
           success: false,
@@ -595,19 +618,71 @@ export const updateStatus = async (req, res) => {
         });
       }
     }
-
-    task.status = status;
-    if (status === "done") {
-      task.completedAt = new Date();
-      task.progress = 100;
+    
+    // Xử lý position nếu có cung cấp
+    if (position !== undefined) {
+      console.log(`Updating position from ${oldPosition} to ${position} for task ${taskId}`);
+      
+      // Nếu thay đổi cột (status)
+      if (oldStatus !== status) {
+        console.log(`Status changed from ${oldStatus} to ${status}`);
+        
+        // Giảm position cho tất cả task có position > oldPosition trong cột cũ
+        await Task.updateMany(
+          { status: oldStatus, position: { $gt: oldPosition } },
+          { $inc: { position: -1 } }
+        );
+        
+        // Tăng position cho tất cả task có position >= position trong cột mới
+        await Task.updateMany(
+          { status: status, position: { $gte: position } },
+          { $inc: { position: 1 } }
+        );
+      } 
+      // Nếu chỉ thay đổi position trong cùng cột
+      else if (oldPosition !== position) {
+        console.log(`Position changed in the same column from ${oldPosition} to ${position}`);
+        
+        if (oldPosition < position) {
+          // Di chuyển xuống: Giảm position cho các task nằm giữa oldPosition và position
+          await Task.updateMany(
+            { status: status, position: { $gt: oldPosition, $lte: position } },
+            { $inc: { position: -1 } }
+          );
+        } else {
+          // Di chuyển lên: Tăng position cho các task nằm giữa position và oldPosition
+          await Task.updateMany(
+            { status: status, position: { $gte: position, $lt: oldPosition } },
+            { $inc: { position: 1 } }
+          );
+        }
+      }
+    } else {
+      // Nếu không cung cấp position, tìm position cao nhất trong column đích + 1
+      const maxPositionTask = await Task.findOne({ status })
+        .sort({ position: -1 })
+        .limit(1);
+      
+      const newPosition = maxPositionTask ? maxPositionTask.position + 1 : 0;
+      console.log(`No position provided, using ${newPosition} (end of column)`);
+      req.body.position = newPosition;
     }
-    await task.save();
+
+    updatedTask.status = status;
+    updatedTask.position = req.body.position;
+    
+    if (status === "done") {
+      updatedTask.completedAt = new Date();
+      updatedTask.progress = 100;
+    }
+    await updatedTask.save();
 
     // Gửi thông báo cập nhật trạng thái
     if (global.io) {
       global.io.emit("task_status_updated", {
-        taskId: task._id,
+        taskId: updatedTask._id,
         newStatus: status,
+        newPosition: updatedTask.position,
         updater: {
           id: req.user?.id,
           name: req.user?.name,
@@ -618,7 +693,7 @@ export const updateStatus = async (req, res) => {
     res.json({
       success: true,
       message: "Cập nhật trạng thái thành công",
-      data: task,
+      data: updatedTask,
     });
   } catch (error) {
     console.error("Lỗi khi cập nhật trạng thái:", error);

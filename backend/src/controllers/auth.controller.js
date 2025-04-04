@@ -48,14 +48,12 @@ export const register = async (req, res) => {
         .json({ success: false, message: "Email đã tồn tại trong hệ thống" });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
-
+    // Không hash mật khẩu ở đây, để pre-save hook trong model User xử lý
     // Create new user with default role "member"
     const user = await User.create({
       name,
       email,
-      password: hashedPassword,
+      password, // Truyền trực tiếp password gốc, pre-save hook sẽ hash nó
       isEmailVerified: false,
       status: "pending",
       role: "member",

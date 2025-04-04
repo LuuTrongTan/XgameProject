@@ -226,8 +226,18 @@ const KanbanView = ({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
       modifiers={[restrictToWindowEdges]}
+      autoScroll={{
+        enabled: true,
+        threshold: { x: 0.1, y: 0.2 },
+        acceleration: 10,
+        interval: 5
+      }}
     >
-      <Grid container spacing={2} sx={{ zIndex: 0 }} className={isDragActive ? 'dragging-active' : ''}>
+      <Grid container spacing={2} sx={{ 
+        zIndex: 0, 
+        minHeight: "calc(100vh - 200px)",
+        alignItems: "flex-start", // Đảm bảo các cột bắt đầu từ trên cùng
+      }} className={isDragActive ? 'dragging-active' : ''}>
         {/* COLUMN: TODO */}
         <Grid item xs={12} md={3} aria-label="Todo column">
           <DroppableKanbanColumn

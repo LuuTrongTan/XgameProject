@@ -122,6 +122,10 @@ const TaskSchema = new mongoose.Schema(
       max: 100,
       default: 0,
     },
+    position: {
+      type: Number,
+      default: 0
+    },
   },
   {
     timestamps: true,
@@ -135,6 +139,7 @@ TaskSchema.index({ project: 1, status: 1 });
 TaskSchema.index({ assignees: 1 });
 TaskSchema.index({ parent: 1 });
 TaskSchema.index({ "dependencies.task": 1 });
+TaskSchema.index({ status: 1, position: 1 });
 
 // Virtual fields
 TaskSchema.virtual("comments", {

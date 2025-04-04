@@ -7,13 +7,24 @@
     width: 100%;
   }
   
+  .kanban-board-container {
+    width: 100%;
+    min-height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  
   .kanban-column {
     display: flex;
     flex-direction: column;
     border-radius: 12px;
     overflow: hidden;
     transition: all 0.3s ease;
-    height: 100%;
+    height: auto !important;
+    min-height: 250px !important;
+    background-color: #f8f9fc;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
   
   .kanban-column-content {
@@ -156,4 +167,17 @@
     width: 100%;
     touch-action: none;
     cursor: grab !important;
+  }
+  
+  /* Đảm bảo khoảng cách giữa các task card */
+  .task-card {
+    margin-bottom: 12px;
+    transition: transform 0.2s ease;
+  }
+  
+  /* Đảm bảo task list có thể mở rộng */
+  .task-list {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 80px; /* Tạo khoảng trống ở cuối để dễ thả task */
   } 

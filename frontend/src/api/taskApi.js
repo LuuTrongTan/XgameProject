@@ -239,13 +239,13 @@ export const deleteTask = async (projectId, sprintId, taskId) => {
 };
 
 // Cập nhật trạng thái công việc
-export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
+export const updateTaskStatus = async ({ taskId, status, position, projectId, sprintId }) => {
   try {
-    console.log(`Updating task status to: ${status} for task ${taskId}`);
+    console.log(`Updating task status to: ${status} for task ${taskId}, position: ${position}`);
     
     // Kiểm tra các tham số
-    if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters:", { projectId, sprintId, taskId });
+    if (!taskId) {
+      console.error("Missing required parameters:", { taskId });
       return { 
         success: false, 
         message: "Thiếu thông tin cần thiết cho việc cập nhật trạng thái",
@@ -264,14 +264,26 @@ export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
     // Đảm bảo taskId là chuỗi
     const taskIdStr = String(taskId).trim();
     
+    // Chuẩn bị dữ liệu cần gửi
+    const data = { status };
+    
+    // Thêm position nếu được cung cấp và không phải -1
+    // Khi position là -1, không gửi position để backend tự xử lý (thêm vào cuối)
+    if (position !== undefined && position !== -1) {
+      data.position = position;
+    }
+    
     // Sử dụng API endpoint chính xác để cập nhật trạng thái
     console.log("Using dedicated status update endpoint");
     
+    // Xác định đường dẫn API
+    let apiPath = `/tasks/${taskIdStr}/status`;
+    if (projectId && sprintId) {
+      apiPath = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`;
+    }
+    
     // Gọi API để cập nhật status, sử dụng PUT method như định nghĩa ở backend
-    const response = await API.put(
-      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`, 
-      { status }
-    );
+    const response = await API.put(apiPath, data);
     
     console.log('Status update response:', response.data);
     return response.data;
