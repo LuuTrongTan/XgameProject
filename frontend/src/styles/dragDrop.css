@@ -6,16 +6,19 @@
   background-color: rgba(245, 245, 245, 0.7);
   transition: all 0.2s ease;
   position: relative;
+  min-height: 300px; /* Ensure minimum height for drop area */
+  z-index: 1; /* Ensure proper stacking context */
+  box-sizing: border-box;
 }
 
 /* Tạo overlay rộng hơn cho vùng thả */
 .dragging-active .kanban-column::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
   z-index: 5;
   background-color: transparent;
   pointer-events: auto; /* Để nhận các sự kiện chuột/touch */
@@ -92,15 +95,24 @@
   z-index: 9999;
 }
 
-/* Highlight target status column */
+/* Highlight target status column more significantly */
 .todo-column.drag-over,
 .inProgress-column.drag-over,
 .review-column.drag-over,
-.done-column.drag-over {
+.done-column.drag-over,
+[data-status="todo"].drag-over,
+[data-status="inProgress"].drag-over,
+[data-status="review"].drag-over,
+[data-status="done"].drag-over,
+[data-droppable-id="todo"].drag-over,
+[data-droppable-id="inProgress"].drag-over,
+[data-droppable-id="review"].drag-over,
+[data-droppable-id="done"].drag-over {
   background-color: rgba(232, 244, 253, 0.8) !important;
-  transform: translateY(-5px);
-  transition: all 0.15s ease-in-out;
+  transform: translateY(-5px) !important;
+  transition: all 0.15s ease-in-out !important;
   border: 2px dashed rgba(25, 118, 210, 0.5) !important;
+  box-shadow: 0 12px 32px rgba(25, 118, 210, 0.25) !important;
 }
 
 /* Make each status column more distinct */
@@ -131,6 +143,10 @@
   padding: 8px 12px;
   border-radius: 16px;
   position: relative;
+  z-index: 1;
+  min-height: 350px;
+  box-sizing: border-box;
+  pointer-events: auto !important;
 }
 
 .kanban-column::-webkit-scrollbar {
@@ -176,4 +192,115 @@
     bottom: -10px;
     z-index: 5;
   }
+}
+
+/* Mở rộng vùng kéo thả bằng pseudo-element */
+.dragging-active .kanban-column::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  right: -15px;
+  bottom: -15px;
+  z-index: -1;
+  border-radius: 25px;
+  pointer-events: auto;
+}
+
+/* Tăng cường hiệu ứng khi ở trên cột */
+.dragging-active .kanban-column.drag-over {
+  transform: translateY(-8px) !important;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2) !important;
+  border: 2px dashed rgba(25, 118, 210, 0.8) !important;
+  background-color: rgba(232, 244, 253, 0.9) !important;
+  z-index: 10 !important;
+}
+
+/* Tạo viền bên trong để tăng cường khả năng nhận diện */
+.dragging-active .kanban-column.drag-over::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  border: 2px dashed rgba(25, 118, 210, 0.4);
+  border-radius: 15px;
+  pointer-events: none;
+  animation: pulseDropTarget 1.5s infinite;
+}
+
+@keyframes pulseDropTarget {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+}
+
+/* Debug mode - làm nổi bật vùng phát hiện kéo thả */
+.kanban-debug-mode .kanban-column::before {
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+}
+
+/* Tăng cường khả năng nhận diện trên từng cột dựa trên status */
+[data-status="todo"].kanban-column.drag-over,
+[data-status="todo"].drag-over,
+[data-droppable-id="todo"].drag-over,
+.todo-column.drag-over {
+  background-color: rgba(25, 118, 210, 0.1) !important;
+  border-color: rgba(25, 118, 210, 0.8) !important;
+}
+
+[data-status="inProgress"].kanban-column.drag-over,
+[data-status="inProgress"].drag-over,
+[data-droppable-id="inProgress"].drag-over,
+.inProgress-column.drag-over {
+  background-color: rgba(255, 152, 0, 0.1) !important;
+  border-color: rgba(255, 152, 0, 0.8) !important;
+}
+
+[data-status="review"].kanban-column.drag-over,
+[data-status="review"].drag-over,
+[data-droppable-id="review"].drag-over,
+.review-column.drag-over {
+  background-color: rgba(156, 39, 176, 0.1) !important;
+  border-color: rgba(156, 39, 176, 0.8) !important;
+}
+
+[data-status="done"].kanban-column.drag-over,
+[data-status="done"].drag-over,
+[data-droppable-id="done"].drag-over,
+.done-column.drag-over {
+  background-color: rgba(46, 125, 50, 0.1) !important;
+  border-color: rgba(46, 125, 50, 0.8) !important;
+}
+
+/* Đảm bảo pointer-events trên cột kanban và phần tử con */
+.kanban-column {
+  position: relative;
+  z-index: 1;
+  min-height: 350px;
+  box-sizing: border-box;
+  pointer-events: auto !important;
+}
+
+/* Vô hiệu hóa pointer-events trên tất cả phần tử con trực tiếp */
+.kanban-column > * {
+  pointer-events: none;
+}
+
+/* Cho phép các task vẫn có thể kéo thả */
+.task-card, 
+.draggable-task-card, 
+.drag-handle {
+  pointer-events: auto !important;
 } 

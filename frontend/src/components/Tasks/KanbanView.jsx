@@ -16,6 +16,7 @@ import {
   pointerWithin,
   rectIntersection,
   DragOverlay,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -23,6 +24,7 @@ import {
 } from "@dnd-kit/sortable";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import TaskCard from "./TaskCard";
+import DroppableKanbanColumn from "./DroppableKanbanColumn";
 
 const KanbanView = ({
   tasks,
@@ -134,30 +136,90 @@ const KanbanView = ({
     ));
   };
 
+  // Helper function tạo task mới
+  const handleAddTask = (status) => {
+    setNewTask({
+      status,
+      name: "",
+      description: "",
+      priority: "medium",
+      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
+      assignees: [],
+      tags: [],
+      estimate: "",
+    });
+    setOpenCreateDialog(true);
+  };
+
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => {
-        // Sử dụng kết hợp nhiều thuật toán để tăng độ chính xác
-        const pointerCollisions = pointerWithin(args);
+        // Danh sách các ID cột kanban hợp lệ
+        const validColumnIds = ['todo', 'inProgress', 'review', 'done'];
         
-        // Nếu phát hiện va chạm bằng pointerWithin, ưu tiên dùng kết quả này
-        if (pointerCollisions.length > 0) {
-          console.log("Collision detected using pointerWithin:", pointerCollisions);
-          return pointerCollisions;
+        // Debug để xem chi tiết tất cả containers có sẵn
+        console.log("[DEBUG] Active element:", args.active?.id);
+        console.log("[DEBUG] All droppable containers:", 
+          args.droppableContainers.map(c => {
+            return {
+              id: c.id,
+              rect: c.rect?.current,
+              data: c.data?.current
+            };
+          })
+        );
+        
+        // Lọc ra chỉ giữ lại các container có ID là một trong các cột kanban
+        const columnContainers = args.droppableContainers.filter(container => 
+          validColumnIds.includes(container.id)
+        );
+        
+        console.log("[DEBUG] Column containers:", columnContainers.map(c => c.id));
+        
+        if (columnContainers.length === 0) {
+          console.log("[COLLISION] Không tìm thấy cột Kanban nào, sử dụng fallback");
+          return [{ id: 'todo' }];
+        }
+
+        // Lấy vị trí của con trỏ
+        if (!args.active) {
+          console.log("[COLLISION] Không có phần tử active");
+          return [];
+        }
+
+        // Dùng pointerWithin - thuật toán đơn giản nhất
+        const pointerIntersections = pointerWithin(args);
+        
+        // Lọc ra chỉ các cột kanban từ kết quả intersection
+        const columnIntersections = pointerIntersections.filter(
+          intersection => validColumnIds.includes(intersection.id)
+        );
+        
+        if (columnIntersections.length > 0) {
+          console.log("[COLLISION] Found columns using pointerWithin:", 
+            columnIntersections.map(c => c.id)
+          );
+          return columnIntersections;
         }
         
-        // Nếu không, thử dùng rectIntersection (kiểm tra giao nhau giữa các hình chữ nhật)
-        const rectCollisions = rectIntersection(args);
-        if (rectCollisions.length > 0) {
-          console.log("Collision detected using rectIntersection:", rectCollisions);
-          return rectCollisions;
+        // Nếu không tìm thấy, sử dụng closest center
+        const closestCenterResult = closestCenter({
+          ...args,
+          droppableContainers: columnContainers
+        });
+        
+        if (closestCenterResult.length > 0) {
+          console.log("[COLLISION] Found columns using closestCenter:", 
+            closestCenterResult.map(c => c.id)
+          );
+          return closestCenterResult;
         }
         
-        // Cuối cùng, dùng thuật toán closestCenter
-        const closestCollisions = closestCenter(args);
-        console.log("Collision detected using closestCenter:", closestCollisions);
-        return closestCollisions;
+        // Fallback: Trả về cột todo
+        console.log("[COLLISION] Fallback to first column: todo");
+        return [{ id: 'todo' }];
       }}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -168,394 +230,74 @@ const KanbanView = ({
       <Grid container spacing={2} sx={{ zIndex: 0 }} className={isDragActive ? 'dragging-active' : ''}>
         {/* COLUMN: TODO */}
         <Grid item xs={12} md={3} aria-label="Todo column">
-          <Card
+          <DroppableKanbanColumn
             id="todo"
-            data-status="todo"
-            data-droppable-id="todo"
-            className="kanban-column todo-column"
-            sx={{
-              minHeight: "calc(100vh - 300px)",
-              backgroundColor: "#f8f9fc",
-              borderRadius: "20px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(25, 118, 210, 0.2)",
-              transition: "all 0.3s ease",
-              "&:hover": {
-                boxShadow: "0 12px 32px rgba(25, 118, 210, 0.15)",
-                border: "1px solid rgba(25, 118, 210, 0.4)",
-              },
-              "&.drag-over": {
-                border: "2px dashed rgba(25, 118, 210, 0.6)",
-                backgroundColor: "rgba(25, 118, 210, 0.05)",
-                transform: "translateY(-5px)",
-                boxShadow: "0 16px 32px rgba(25, 118, 210, 0.2)",
-              }
-            }}
+            title="Chưa bắt đầu"
+            status="todo"
+            count={tasks.todo.length}
+            color="#1976d2"
+            onAddTask={() => handleAddTask('todo')}
           >
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center" }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(25, 118, 210, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        color: "rgb(25, 118, 210)",
-                        fontWeight: 600,
-                        fontSize: "1.2rem",
-                      }}
-                    >
-                      {tasks.todo.length}
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
-                    }}
-                  >
-                    Chưa bắt đầu
-                  </Typography>
-                </Box>
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      status: "todo",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{
-                    color: "#1976d2",
-                    '&:hover': {
-                      backgroundColor: "rgba(25, 118, 210, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
+            <SortableContext items={tasks.todo.map(task => task._id)} strategy={verticalListSortingStrategy}>
+              <Box className="task-list" sx={{ minHeight: 100 }}>
+                {renderTaskCards(tasks.todo, "todo")}
               </Box>
-              
-              <SortableContext items={tasks.todo.map(task => task._id)} strategy={verticalListSortingStrategy}>
-                <Box className="task-list" sx={{ minHeight: 100 }}>
-                  {renderTaskCards(tasks.todo, "todo")}
-                </Box>
-              </SortableContext>
-            </CardContent>
-          </Card>
+            </SortableContext>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* COLUMN: IN PROGRESS */}
         <Grid item xs={12} md={3} aria-label="In Progress column">
-          <Card
+          <DroppableKanbanColumn
             id="inProgress"
-            data-status="inProgress"
-            data-droppable-id="inProgress"
-            className="kanban-column inProgress-column"
-            sx={{
-              minHeight: "calc(100vh - 300px)",
-              backgroundColor: "#f8f9fc",
-              borderRadius: "20px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(255, 152, 0, 0.2)",
-              transition: "all 0.3s ease",
-              "&:hover": {
-                boxShadow: "0 12px 32px rgba(255, 152, 0, 0.15)",
-                border: "1px solid rgba(255, 152, 0, 0.4)",
-              },
-              "&.drag-over": {
-                border: "2px dashed rgba(255, 152, 0, 0.6)",
-                backgroundColor: "rgba(255, 152, 0, 0.05)",
-                transform: "translateY(-5px)",
-                boxShadow: "0 16px 32px rgba(255, 152, 0, 0.2)",
-              }
-            }}
+            title="Đang thực hiện"
+            status="inProgress"
+            count={tasks.inProgress.length}
+            color="#ff9800"
+            onAddTask={() => handleAddTask('inProgress')}
           >
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center" }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(255, 152, 0, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        color: "rgb(255, 152, 0)",
-                        fontWeight: 600,
-                        fontSize: "1.2rem",
-                      }}
-                    >
-                      {tasks.inProgress.length}
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
-                    }}
-                  >
-                    Đang thực hiện
-                  </Typography>
-                </Box>
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      status: "inProgress",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{
-                    color: "#ff9800",
-                    '&:hover': {
-                      backgroundColor: "rgba(255, 152, 0, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
+            <SortableContext items={tasks.inProgress.map(task => task._id)} strategy={verticalListSortingStrategy}>
+              <Box className="task-list" sx={{ minHeight: 100 }}>
+                {renderTaskCards(tasks.inProgress, "inProgress")}
               </Box>
-              
-              <SortableContext items={tasks.inProgress.map(task => task._id)} strategy={verticalListSortingStrategy}>
-                <Box className="task-list" sx={{ minHeight: 100 }}>
-                  {renderTaskCards(tasks.inProgress, "inProgress")}
-                </Box>
-              </SortableContext>
-            </CardContent>
-          </Card>
+            </SortableContext>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* COLUMN: REVIEW */}
         <Grid item xs={12} md={3} aria-label="Review column">
-          <Card
+          <DroppableKanbanColumn
             id="review"
-            data-status="review"
-            data-droppable-id="review"
-            className="kanban-column review-column"
-            sx={{
-              minHeight: "calc(100vh - 300px)",
-              backgroundColor: "#f8f9fc",
-              borderRadius: "20px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(156, 39, 176, 0.2)",
-              transition: "all 0.3s ease",
-              "&:hover": {
-                boxShadow: "0 12px 32px rgba(156, 39, 176, 0.15)",
-                border: "1px solid rgba(156, 39, 176, 0.4)",
-              },
-              "&.drag-over": {
-                border: "2px dashed rgba(156, 39, 176, 0.6)",
-                backgroundColor: "rgba(156, 39, 176, 0.05)",
-                transform: "translateY(-5px)",
-                boxShadow: "0 16px 32px rgba(156, 39, 176, 0.2)",
-              }
-            }}
+            title="Đang kiểm tra"
+            status="review"
+            count={tasks.review.length}
+            color="#9c27b0"
+            onAddTask={() => handleAddTask('review')}
           >
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center" }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(156, 39, 176, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        color: "rgb(156, 39, 176)",
-                        fontWeight: 600,
-                        fontSize: "1.2rem",
-                      }}
-                    >
-                      {tasks.review.length}
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
-                    }}
-                  >
-                    Đang kiểm tra
-                  </Typography>
-                </Box>
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      status: "review",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{
-                    color: "#9c27b0",
-                    '&:hover': {
-                      backgroundColor: "rgba(156, 39, 176, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
+            <SortableContext items={tasks.review.map(task => task._id)} strategy={verticalListSortingStrategy}>
+              <Box className="task-list" sx={{ minHeight: 100 }}>
+                {renderTaskCards(tasks.review, "review")}
               </Box>
-              
-              <SortableContext items={tasks.review.map(task => task._id)} strategy={verticalListSortingStrategy}>
-                <Box className="task-list" sx={{ minHeight: 100 }}>
-                  {renderTaskCards(tasks.review, "review")}
-                </Box>
-              </SortableContext>
-            </CardContent>
-          </Card>
+            </SortableContext>
+          </DroppableKanbanColumn>
         </Grid>
 
         {/* COLUMN: DONE */}
         <Grid item xs={12} md={3} aria-label="Done column">
-          <Card
+          <DroppableKanbanColumn
             id="done"
-            data-status="done"
-            data-droppable-id="done"
-            className="kanban-column done-column"
-            sx={{
-              minHeight: "calc(100vh - 300px)",
-              backgroundColor: "#f8f9fc",
-              borderRadius: "20px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(46, 125, 50, 0.2)",
-              transition: "all 0.3s ease",
-              "&:hover": {
-                boxShadow: "0 12px 32px rgba(46, 125, 50, 0.15)",
-                border: "1px solid rgba(46, 125, 50, 0.4)",
-              },
-              "&.drag-over": {
-                border: "2px dashed rgba(46, 125, 50, 0.6)",
-                backgroundColor: "rgba(46, 125, 50, 0.05)",
-                transform: "translateY(-5px)",
-                boxShadow: "0 16px 32px rgba(46, 125, 50, 0.2)",
-              }
-            }}
+            title="Hoàn thành"
+            status="done"
+            count={tasks.done.length}
+            color="#2e7d32"
+            onAddTask={() => handleAddTask('done')}
           >
-            <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
-                <Box sx={{ display: "flex", alignItems: "center" }}>
-                  <Box
-                    sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(46, 125, 50, 0.1)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                    }}
-                  >
-                    <Typography
-                      variant="h6"
-                      sx={{
-                        color: "rgb(46, 125, 50)",
-                        fontWeight: 600,
-                        fontSize: "1.2rem",
-                      }}
-                    >
-                      {tasks.done.length}
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      fontSize: "1.1rem",
-                    }}
-                  >
-                    Hoàn thành
-                  </Typography>
-                </Box>
-                <IconButton 
-                  onClick={() => {
-                    setNewTask({
-                      status: "done",
-                      name: "",
-                      description: "",
-                      priority: "medium",
-                      startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
-                      assignees: [],
-                      tags: [],
-                      estimate: "",
-                    });
-                    setOpenCreateDialog(true);
-                  }}
-                  sx={{
-                    color: "#2e7d32",
-                    '&:hover': {
-                      backgroundColor: "rgba(46, 125, 50, 0.1)"
-                    }
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
+            <SortableContext items={tasks.done.map(task => task._id)} strategy={verticalListSortingStrategy}>
+              <Box className="task-list" sx={{ minHeight: 100 }}>
+                {renderTaskCards(tasks.done, "done")}
               </Box>
-              
-              <SortableContext items={tasks.done.map(task => task._id)} strategy={verticalListSortingStrategy}>
-                <Box className="task-list" sx={{ minHeight: 100 }}>
-                  {renderTaskCards(tasks.done, "done")}
-                </Box>
-              </SortableContext>
-            </CardContent>
-          </Card>
+            </SortableContext>
+          </DroppableKanbanColumn>
         </Grid>
       </Grid>
 

@@ -264,18 +264,17 @@ export const updateTaskStatus = async (projectId, sprintId, taskId, status) => {
     // Đảm bảo taskId là chuỗi
     const taskIdStr = String(taskId).trim();
     
-    // Tạm thời - Sử dụng API endpoint updateTask thay vì updateStatus
-    // vì endpoint updateStatus có thể chưa được cấu hình đúng
-    console.log("Using updateTask instead of dedicated status endpoint");
-    const taskData = {
-      status: status
-    };
+    // Sử dụng API endpoint chính xác để cập nhật trạng thái
+    console.log("Using dedicated status update endpoint");
     
-    // Gọi API để cập nhật task với dữ liệu mới chỉ bao gồm trạng thái
-    const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}`, taskData);
+    // Gọi API để cập nhật status, sử dụng PUT method như định nghĩa ở backend
+    const response = await API.put(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`, 
+      { status }
+    );
     
     console.log('Status update response:', response.data);
-  return response.data;
+    return response.data;
   } catch (error) {
     console.error("Error updating task status:", error);
     return { 
