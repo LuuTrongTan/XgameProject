@@ -57,10 +57,26 @@ const validateTaskData = (data) => {
 
 // Kiểm tra quyền truy cập task
 const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
-  const task = await Task.findById(taskId).populate({
-    path: "project",
-    populate: { path: "members" },
-  });
+  const task = await Task.findById(taskId)
+    .populate({
+      path: "project",
+      populate: { path: "members" },
+    })
+    .populate("sprint", "name startDate endDate")
+    .populate("assignees", "name email avatar")
+    .populate("createdBy", "name email avatar")
+    .populate("parent", "title status")
+    .populate("subtasks", "title status progress")
+    .populate("milestone", "name dueDate")
+    .populate("watchers", "name email avatar")
+    .populate({
+      path: "dependencies.task",
+      select: "title status",
+    })
+    .populate({
+      path: "comments",
+      populate: { path: "author", select: "name email avatar" },
+    });
 
   if (!task) return { error: "Công việc không tồn tại" };
 
@@ -175,6 +191,7 @@ export const getTasks = async (req, res) => {
 
     tasks = await Task.find(query)
       .populate("project", "name status")
+      .populate("sprint", "name startDate endDate")
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
       .populate("parent", "title status")
@@ -224,10 +241,17 @@ export const getTasks = async (req, res) => {
 // Lấy chi tiết công việc
 export const getTaskById = async (req, res) => {
   try {
+    const { projectId, sprintId, taskId } = req.params;
+    console.log("=== DEBUG getTaskById ===");
+    console.log("Request params:", req.params);
+    console.log("Looking for task:", { projectId, sprintId, taskId });
+    
+    // Kiểm tra quyền truy cập task
     const { task, error } = await checkTaskPermission(
-      req.params.id,
+      taskId,
       req.user.id
     );
+    
     if (error) {
       return res.status(404).json({
         success: false,
@@ -235,46 +259,55 @@ export const getTaskById = async (req, res) => {
       });
     }
 
-    const populatedTask = await Task.findById(task._id)
-      .populate("project", "name status")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
-      .populate("parent", "title status")
-      .populate("subtasks", "title status progress")
-      .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar")
-      .populate({
-        path: "dependencies.task",
-        select: "title status",
-      })
-      .populate({
-        path: "comments",
-        populate: { path: "author", select: "name email avatar" },
-      });
+    // Kiểm tra nếu sprint null hoặc undefined
+    if (!task.sprint) {
+      console.log("Warning: Task has no sprint, trying to find sprint from params");
+      
+      if (sprintId) {
+        // Tìm sprint từ sprintId trong params
+        const sprint = await Sprint.findById(sprintId);
+        if (sprint) {
+          console.log("Found sprint from params:", sprint.name);
+          task.sprint = sprint;
+          // Lưu lại liên kết này
+          await Task.updateOne({ _id: taskId }, { sprint: sprintId });
+        }
+      }
+    }
+
+    // Task đã được populate sprint trong checkTaskPermission
+    // Ghi log để kiểm tra sprint đã được populate chưa
+    console.log("Task found successfully with sprint:", task.sprint ? {
+      id: task.sprint._id,
+      name: task.sprint.name,
+      startDate: task.sprint.startDate,
+      endDate: task.sprint.endDate
+    } : "No sprint");
 
     // Thêm thống kê
     const stats = {
       totalComments: await Comment.countDocuments({ task: task._id }),
       totalAttachments: task.attachments.length,
       totalTimelogs: await Timelog.countDocuments({ task: task._id }),
-      totalTimeSpent:
-        (
-          await Timelog.aggregate([
-            { $match: { task: task._id } },
-            { $group: { _id: null, total: { $sum: "$duration" } } },
-          ])
-        )[0]?.total || 0,
+      totalTimeSpent: (
+        await Timelog.aggregate([
+          { $match: { task: task._id } },
+          { $group: { _id: null, total: { $sum: "$duration" } } },
+        ])
+      )[0]?.total || 0,
     };
 
+    console.log("=== END DEBUG getTaskById ===");
+    
     res.json({
       success: true,
-      data: { ...populatedTask.toObject(), stats },
+      data: { ...task.toObject(), stats },
     });
   } catch (error) {
     console.error("Lỗi khi lấy thông tin công việc:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy thông tin công việc",
+      message: "Lỗi khi lấy thông tin công việc", 
       error: error.message,
     });
   }

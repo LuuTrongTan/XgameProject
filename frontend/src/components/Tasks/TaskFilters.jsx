@@ -28,7 +28,6 @@ export const StatusFilter = ({ value, onChange }) => {
         <MenuItem value="all">Tất cả</MenuItem>
         <MenuItem value="todo">Chưa bắt đầu</MenuItem>
         <MenuItem value="inProgress">Đang thực hiện</MenuItem>
-        <MenuItem value="review">Đang kiểm tra</MenuItem>
         <MenuItem value="done">Hoàn thành</MenuItem>
       </Select>
     </FormControl>

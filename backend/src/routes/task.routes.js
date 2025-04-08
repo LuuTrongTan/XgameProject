@@ -23,7 +23,7 @@ import {
   getUpcomingTasks,
   getTaskHistory,
 } from "../controllers/task.controller.js";
-import { addTaskComment } from "../controllers/comment.controller.js";
+import { addTaskComment, getComments } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
 import { PERMISSIONS } from "../config/constants.js";
@@ -326,6 +326,46 @@ router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protec
  *           type: string
  */
 router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, addTaskComment);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/comments:
+ *   get:
+ *     summary: Lấy danh sách bình luận của task
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, async (req, res) => {
+  try {
+    // Gán taskId vào query params để sử dụng lại getComments controller
+    req.query.taskId = req.params.taskId;
+    await getComments(req, res);
+  } catch (error) {
+    console.error("Lỗi khi lấy comments của task:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi lấy comments",
+      error: error.message
+    });
+  }
+});
 
 /**
  * @swagger

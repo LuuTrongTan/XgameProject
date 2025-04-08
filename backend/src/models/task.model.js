@@ -20,6 +20,10 @@ const TaskSchema = new mongoose.Schema(
       ref: "Project",
       required: true,
     },
+    sprint: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sprint",
+    },
     assignees: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -136,6 +140,7 @@ const TaskSchema = new mongoose.Schema(
 
 // Indexes
 TaskSchema.index({ project: 1, status: 1 });
+TaskSchema.index({ sprint: 1 });
 TaskSchema.index({ assignees: 1 });
 TaskSchema.index({ parent: 1 });
 TaskSchema.index({ "dependencies.task": 1 });

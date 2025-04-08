@@ -41,7 +41,6 @@ const ListView = ({
   const allTasks = [
     ...tasks.todo,
     ...tasks.inProgress,
-    ...tasks.review,
     ...tasks.done,
   ];
 

@@ -32,6 +32,19 @@ export const getSprintTasks = async (projectId, sprintId) => {
     }
 
     const response = await API.get(url);
+    
+    // Log để kiểm tra dữ liệu sprint trong tasks
+    if (response.data && response.data.success && response.data.data && response.data.data.length > 0) {
+      const firstTask = response.data.data[0];
+      console.log("Sample task received:", {
+        taskId: firstTask._id,
+        taskTitle: firstTask.title,
+        sprintData: firstTask.sprint,
+        hasSprintField: !!firstTask.sprint,
+        hasSprintName: firstTask.sprint?.name ? true : false
+      });
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error fetching tasks:', error);
@@ -509,42 +522,34 @@ export const deleteTaskAttachment = async (projectId, sprintId, taskId, attachme
 // Lấy danh sách bình luận
 export const getTaskComments = async (projectId, sprintId, taskId) => {
   try {
-    if (!taskId) {
-      console.error("Missing taskId for getTaskComments");
+    if (!projectId || !sprintId || !taskId) {
+      console.error("Missing required parameters for getTaskComments:", { projectId, sprintId, taskId });
       return { 
         success: false, 
-        message: "Thiếu ID của task để lấy bình luận"
+        message: "Thiếu thông tin cần thiết để lấy bình luận" 
       };
     }
     
-    console.log("Fetching comments for taskId:", taskId);
+    console.log(`Fetching comments for task: ${taskId} in project: ${projectId}, sprint: ${sprintId}`);
     
-    // Sử dụng route /api/comments thay vì route trong task
-    const response = await API.get(`/comments`, {
-      params: {
-        taskId: taskId
-      }
-    });
+    // Sử dụng route mới
+    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`);
     
     console.log("Comments API response:", response.data);
     
     // Chuẩn hóa dữ liệu trả về
-    if (response.data && Array.isArray(response.data.data)) {
+    if (response.data) {
       return {
         success: true,
-        data: response.data.data,
+        data: response.data.data || [],
         message: "Lấy danh sách bình luận thành công"
       };
-    } else if (response.data && response.data.success) {
-      // Nếu đã có format standard với success = true
-  return response.data;
     } else {
-      // Nếu có dữ liệu nhưng không theo format mong đợi
       console.warn("Comment data format unexpected:", response.data);
       return {
         success: true,
-        data: Array.isArray(response.data) ? response.data : (response.data.data || []),
-        message: "Dữ liệu bình luận đã được chuyển đổi"
+        data: [],
+        message: "Không có bình luận"
       };
     }
   } catch (error) {

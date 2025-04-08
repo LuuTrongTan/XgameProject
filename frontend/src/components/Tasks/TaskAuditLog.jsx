@@ -17,7 +17,7 @@ import {
   Event as EventIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../../contexts/AuthContext";
-import { getTaskAuditLogs } from "../../api/taskApi";
+import { getTaskHistory } from "../../api/taskApi";
 import UserAvatar from "../common/UserAvatar";
 import DateTimeDisplay from "../common/DateTimeDisplay";
 
@@ -31,7 +31,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
 
   const fetchAuditLogs = async () => {
     try {
-      const response = await getTaskAuditLogs(projectId, sprintId, taskId);
+      const response = await getTaskHistory(projectId, sprintId, taskId);
       setLogs(response);
     } catch (error) {
       console.error("Error fetching audit logs:", error);

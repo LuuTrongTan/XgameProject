@@ -201,12 +201,22 @@ const DroppableKanbanColumn = ({
             </Typography>
           </Box>
           <IconButton 
-            onClick={onAddTask}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (onAddTask) {
+                onAddTask();
+              }
+            }}
             sx={{
               color: textColor,
               "&:hover": {
                 backgroundColor: backgroundColor
-              }
+              },
+              zIndex: 10,
+              position: 'relative',
+              pointerEvents: 'all',
+              cursor: 'pointer'
             }}
           >
             <AddIcon />

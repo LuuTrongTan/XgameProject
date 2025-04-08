@@ -39,115 +39,57 @@ const KanbanView = ({
   setNewTask,
   setOpenCreateDialog,
   handleViewTaskDetail,
+  handleEditTask,
   handleDeleteTask,
   handleAddComment,
   handleAddAttachment,
   project,
   canEditTask,
   canDeleteTask,
+  updateTaskStatus,
+  handleReorderTasks
 }) => {
   // Render task cards cho từng cột
-  const renderTaskCards = (columnTasks, status) => {
-    if (!columnTasks || columnTasks.length === 0) {
+  const renderTaskCards = (status) => {
+    console.log(`[DEBUG] KanbanView renderTaskCards for status ${status}`);
+    console.log(`[DEBUG] handleViewTaskDetail is ${handleViewTaskDetail ? 'defined' : 'undefined'}`);
+    console.log(`[DEBUG] handleEditTask is ${handleEditTask ? 'defined' : 'undefined'}`);
+    
+    return tasks[status]?.map((task, index) => {
+      console.log(`[DEBUG] Creating TaskCard for task: ${task._id}`);
       return (
-        <Box
-          sx={{
-            p: 2,
-            textAlign: "center",
-            color: "text.secondary",
-            backgroundColor: "rgba(0,0,0,0.02)",
-            borderRadius: "10px",
-            mt: 2
-          }}
-        >
-          <Typography variant="body2">Chưa có công việc nào</Typography>
-        </Box>
+        <TaskCard
+          key={task._id}
+          task={task}
+          container={status}
+          project={project}
+          onEdit={handleEditTask}
+          onDelete={handleDeleteTask}
+          onAddComment={handleAddComment}
+          onAddAttachment={handleAddAttachment}
+          onViewDetail={handleViewTaskDetail}
+          index={index}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        />
       );
-    }
-
-    return columnTasks.map((task) => (
-      <TaskCard
-        key={task._id}
-        task={task}
-        container={status}
-        project={project}
-        onEdit={handleViewTaskDetail}
-        onDelete={handleDeleteTask}
-        onAddComment={handleAddComment}
-        onAddAttachment={handleAddAttachment}
-        actionButtons={
-          <Box
-            className="action-buttons"
-            sx={{ 
-              position: "absolute", 
-              top: 8, 
-              right: 8, 
-              zIndex: 999,
-              backgroundColor: "rgba(255,255,255,0.95)",
-              borderRadius: "8px",
-              padding: "3px",
-              boxShadow: "0 3px 8px rgba(0,0,0,0.15)",
-              border: "1px solid rgba(0,0,0,0.05)"
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              return false;
-            }}
-          >
-            <Box display="flex" gap={1}>
-              {/* Use inline conditional to avoid requiring ActionButtons component */}
-              {(canEditTask && canDeleteTask) && (
-                <div className="task-action-buttons">
-                  {canEditTask(task, project) && (
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        handleViewTaskDetail(task);
-                        return false;
-                      }}
-                      color="primary"
-                    >
-                      {/* EditIcon would be used here */}
-                    </IconButton>
-                  )}
-                  {canDeleteTask(task, project) && (
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        handleDeleteTask(task._id);
-                        return false;
-                      }}
-                      color="error"
-                    >
-                      {/* DeleteIcon would be used here */}
-                    </IconButton>
-                  )}
-                </div>
-              )}
-            </Box>
-          </Box>
-        }
-      />
-    ));
+    }) || [];
   };
 
   // Helper function tạo task mới
   const handleAddTask = (status) => {
     setNewTask({
       status,
-      name: "",
+      title: "",
       description: "",
       priority: "medium",
       startDate: new Date().toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
       dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleString('sv-SE').replace(' ', 'T').slice(0, 16),
       assignees: [],
       tags: [],
-      estimate: "",
+      estimatedHours: 0,
+      project: project?._id,
+      sprint: project?.currentSprint?._id,
     });
     setOpenCreateDialog(true);
   };
@@ -252,7 +194,7 @@ const KanbanView = ({
           >
             <SortableContext items={tasks.todo.map(task => task._id)} strategy={verticalListSortingStrategy}>
               <Box className="task-list" sx={{ minHeight: 100 }}>
-                {renderTaskCards(tasks.todo, "todo")}
+                {renderTaskCards('todo')}
               </Box>
             </SortableContext>
           </DroppableKanbanColumn>
@@ -270,7 +212,7 @@ const KanbanView = ({
           >
             <SortableContext items={tasks.inProgress.map(task => task._id)} strategy={verticalListSortingStrategy}>
               <Box className="task-list" sx={{ minHeight: 100 }}>
-                {renderTaskCards(tasks.inProgress, "inProgress")}
+                {renderTaskCards('inProgress')}
               </Box>
             </SortableContext>
           </DroppableKanbanColumn>
@@ -288,7 +230,7 @@ const KanbanView = ({
           >
             <SortableContext items={tasks.done.map(task => task._id)} strategy={verticalListSortingStrategy}>
               <Box className="task-list" sx={{ minHeight: 100 }}>
-                {renderTaskCards(tasks.done, "done")}
+                {renderTaskCards('done')}
               </Box>
             </SortableContext>
           </DroppableKanbanColumn>

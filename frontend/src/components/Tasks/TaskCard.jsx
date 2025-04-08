@@ -43,7 +43,9 @@ import {
   PersonOff as PersonOffIcon,
   CalendarToday as CalendarTodayIcon,
   Visibility as VisibilityIcon,
-  DragIndicator as DragIndicatorIcon
+  DragIndicator as DragIndicatorIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
 } from "@mui/icons-material";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -63,7 +65,7 @@ import {
   addTaskComment,
   updateTaskComment,
   deleteTaskComment,
-  getTaskAuditLogs,
+  getTaskHistory,
 } from "../../api/taskApi";
 import UserAvatar from "../common/UserAvatar";
 import DateTimeDisplay from "../common/DateTimeDisplay";
@@ -73,6 +75,7 @@ import {
   getTaskPriorityLabel, 
   getTaskPriorityColor 
 } from "../../config/constants";
+import { useNavigate } from "react-router-dom";
 
 import TaskAuditLog from "./TaskAuditLog";
 
@@ -232,6 +235,7 @@ const TaskCard = ({
   index = 0,
   onDragStart,
   onDragEnd,
+  onViewDetail,
 }) => {
   const { user } = useAuth();
   const { canDeleteTask } = usePermissions();
@@ -245,7 +249,26 @@ const TaskCard = ({
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = useRef();
+  const navigate = useNavigate();
   
+  // Tính toán màu dựa trên status
+  const getStatusColorLight = (status) => {
+    switch (status) {
+      case "todo":
+        return "rgba(25, 118, 210, 0.05)"; // Nhạt hơn cho todo
+      case "inProgress":
+        return "rgba(245, 124, 0, 0.05)"; // Nhạt hơn cho in progress
+      case "review":
+        return "rgba(123, 31, 162, 0.05)"; // Nhạt hơn cho review
+      case "done":
+        return "rgba(46, 125, 50, 0.05)"; // Nhạt hơn cho done
+      default:
+        return "rgba(25, 118, 210, 0.05)"; // Default nhạt hơn
+    }
+  };
+
+  const statusColorLight = getStatusColorLight(task.status);
+
   // Enhance task with sprint information if missing
   const enhancedTask = React.useMemo(() => {
     // If task already has sprintId, use it
@@ -291,11 +314,11 @@ const TaskCard = ({
   } = useSortable({
     id: task._id,
     data: {
-      task: enhancedTask,
+      type: "Task",
+      task,
       container,
       index,
     },
-    disabled: false, // Đảm bảo kéo thả được bật
   });
 
   // Lưu listeners vào ref để đảm bảo ổn định tham chiếu
@@ -319,8 +342,8 @@ const TaskCard = ({
     cursor: isDragging ? 'grabbing' : 'inherit',
   };
 
-  // Open card in edit mode
-  const handleDetailClick = (e) => {
+  // Handle card click for viewing details
+  const handleCardClick = (e) => {
     // Không thực hiện click khi đang kéo
     if (isDragging) {
       e.preventDefault();
@@ -328,31 +351,43 @@ const TaskCard = ({
       return;
     }
     
+    console.log('[DEBUG] TaskCard handleCardClick called, will call onViewDetail with task:', task._id);
+    // Call onViewDetail to open task detail dialog
+    if (onViewDetail) {
+      console.log('[DEBUG] Calling onViewDetail function with delay');
+      
+      // Gọi với delay nhỏ để đảm bảo không xung đột với các sự kiện khác
+      e.preventDefault();
+      e.stopPropagation();
+      setTimeout(() => {
+        onViewDetail(task);
+      }, 50);
+    } else {
+      console.log('[DEBUG] onViewDetail function is not defined');
+    }
+  };
+
+  // Handle edit button click
+  const handleEditClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (onEdit) {
       onEdit(task);
     }
   };
 
-  // Toggle card expand state
-  const handleExpandClick = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+  // Handle delete button click
+  const handleDeleteClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (onDelete) {
+      onDelete(task._id);
     }
-    
-    // Không thực hiện khi đang kéo
-    if (isDragging) return;
-    
-    // If we're expanding, load data
-    if (!expanded) {
-      fetchAllData();
-    }
-    
-    setExpanded(!expanded);
   };
 
   // Handle tab change in expanded card view
   const handleTabChange = (event, newValue) => {
+    event.stopPropagation(); // Ngăn chặn sự kiện click lan truyền
     setExpandedTab(newValue);
     
     // Load data if not already loaded
@@ -552,7 +587,7 @@ const TaskCard = ({
         sprintId: taskSprintId 
       });
       
-      const result = await getTaskAuditLogs(taskProjectId, taskSprintId, enhancedTask._id);
+      const result = await getTaskHistory(taskProjectId, taskSprintId, enhancedTask._id);
       if (result.success) {
         const fetchedHistory = result.data || [];
         setHistory(fetchedHistory);
@@ -730,6 +765,7 @@ const TaskCard = ({
       data-index={index}
       className="task-card"
       elevation={0}
+      onClick={handleCardClick}
       sx={{
         position: "relative",
         opacity: isDragging ? 0.4 : 1,
@@ -743,18 +779,17 @@ const TaskCard = ({
           ? "transform 250ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1)"
           : undefined,
         touchAction: "none",
-        cursor: isDragging ? "grabbing" : "grab",
+        cursor: isDragging ? "grabbing" : "pointer",
         "&:hover": {
-          cursor: "grab",
+          cursor: "pointer",
         },
         "&:active": {
-          cursor: "grabbing",
+          cursor: isDragging ? "grabbing" : "pointer",
         },
         ...(isDragging && {
           boxShadow: "0 16px 32px rgba(0,0,0,0.2)",
         }),
       }}
-      onClick={handleDetailClick}
     >
       {/* Priority indicator as a small dot at top-right corner with tooltip */}
       <Tooltip 
@@ -866,7 +901,7 @@ const TaskCard = ({
           mb: 1,
           gap: 1
         }}>
-          <TaskTitle variant="h6">
+          <TaskTitle variant="h6" sx={{ flex: 1 }}>
             {task.title.length > 20 ? `${task.title.substring(0, 20)}...` : task.title}
           </TaskTitle>
           
@@ -910,58 +945,87 @@ const TaskCard = ({
                 </Box>
               </Tooltip>
             )}
+
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+              sx={{ 
+                padding: 0.5,
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                color: "text.secondary",
+                ml: 0.5,
+                "&:hover": {
+                  backgroundColor: "rgba(0,0,0,0.04)",
+                  color: "text.primary"
+                }
+              }}
+            >
+              <ExpandMoreIcon fontSize="small" />
+            </IconButton>
           </Box>
         </Box>
         
-        {/* Divider to separate header from body */}
-        <Divider sx={{ mb: 1 }} />
-        
-        {/* Task description with expand button */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 1,
-          minHeight: '40px',
-        }}>
-          <TaskDescription variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            {task.description}
-          </TaskDescription>
-
-          <IconButton 
-            size="small" 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleExpandClick(e);
-            }}
-            sx={{ 
-              padding: 0.5,
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              color: "text.secondary",
-              mt: -0.5,
-              "&:hover": {
-                backgroundColor: "rgba(0,0,0,0.04)",
-                color: "text.primary"
-              }
-            }}
-          >
-            <ExpandMoreIcon fontSize="small" />
-          </IconButton>
-        </Box>
-                  
         {/* Expanded card details */}
         <Collapse in={expanded} timeout="auto" unmountOnExit>
           <CardContent sx={{ 
-            pt: 0, 
+            pt: 2, 
             pb: 2,
             px: 3,
-            backgroundColor: "rgba(0,0,0,0.01)"
+            mt: 1,
+            backgroundColor: statusColorLight,
+            backgroundImage: `linear-gradient(145deg, ${statusColorLight}, #ffffff)`,
+            borderRadius: "12px",
+            border: "1px solid rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+            position: "relative",
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              top: "-8px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 0,
+              height: 0,
+              borderLeft: "8px solid transparent",
+              borderRight: "8px solid transparent",
+              borderBottom: `8px solid ${statusColorLight}`,
+            },
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              top: "-7px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 0,
+              height: 0,
+              borderLeft: "8px solid transparent",
+              borderRight: "8px solid transparent",
+              borderBottom: `8px solid ${statusColorLight}`,
+            }
+          }}
+          onClick={(e) => {
+            e.stopPropagation(); // Ngăn chặn sự kiện click lan truyền lên TaskCardContainer
           }}>
-            <Divider sx={{ mb: 2 }} />
+
+            {/* Task description */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Mô tả:
+              </Typography>
+              <TaskDescription variant="body2" color="text.secondary" sx={{ 
+                WebkitLineClamp: 'unset',
+                display: 'block'
+              }}>
+                {task.description || "Không có mô tả"}
+              </TaskDescription>
+            </Box>
             
-            {/* Project info and assignees section - moved to expanded view */}
+            {/* Project info and assignees section */}
             <Box sx={{ mb: 2 }}>
               {/* Project info */}
               <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5 }}>

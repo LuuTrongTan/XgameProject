@@ -40,6 +40,7 @@ import TaskForm from "../../components/Tasks/TaskForm";
 import BackButton from "../../components/common/BackButton";
 import { StatusFilter, PriorityFilter } from "../../components/Tasks/TaskFilters";
 import { useDragAndDrop } from "../../components/Tasks/DragAndDropHooks";
+import TaskDetailView from "../../components/Tasks/TaskDetailView";
 
 const Tasks = () => {
   const { projectId, sprintId: urlSprintId } = useParams();
@@ -69,6 +70,7 @@ const Tasks = () => {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [newTask, setNewTask] = useState({
     name: "",
@@ -393,8 +395,20 @@ const Tasks = () => {
   };
 
   const handleViewTaskDetail = (task) => {
+    console.log("Opening task detail for:", {
+      taskId: task._id, 
+      taskTitle: task.title,
+      sprintData: task.sprint,
+      hasSprintName: task.sprint?.name ? true : false
+    });
+    setSelectedTask(task);
+    setOpenDetailDialog(true);
+  };
+
+  const handleEditTask = (task) => {
     setSelectedTask(task);
     setOpenEditDialog(true);
+    setOpenDetailDialog(false);
   };
 
   const handleAddComment = async (taskId, comment) => {
@@ -618,7 +632,14 @@ const Tasks = () => {
       {/* Main content */}
       {viewMode === "kanban" ? (
         <KanbanView
-          tasks={tasks}
+          tasks={Object.keys(tasks).reduce((filtered, status) => {
+            // Lọc các task theo trạng thái và độ ưu tiên
+            filtered[status] = tasks[status].filter(task => 
+              (statusFilter === 'all' || task.status === statusFilter) && 
+              (priorityFilter === 'all' || task.priority === priorityFilter)
+            );
+            return filtered;
+          }, {todo: [], inProgress: [], done: []})}
           sensors={sensors}
           handleDragStart={handleDragStart}
           handleDragOver={handleDragOver}
@@ -639,7 +660,14 @@ const Tasks = () => {
         />
       ) : (
         <ListView
-          tasks={tasks}
+          tasks={Object.keys(tasks).reduce((filtered, status) => {
+            // Lọc các task theo trạng thái và độ ưu tiên
+            filtered[status] = tasks[status].filter(task => 
+              (statusFilter === 'all' || task.status === statusFilter) && 
+              (priorityFilter === 'all' || task.priority === priorityFilter)
+            );
+            return filtered;
+          }, {todo: [], inProgress: [], done: []})}
           handleViewTaskDetail={handleViewTaskDetail}
           handleDeleteTask={handleDeleteTask}
           project={project}
@@ -688,6 +716,21 @@ const Tasks = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Task Detail View */}
+      {selectedTask && (
+        <TaskDetailView
+          open={openDetailDialog}
+          onClose={() => setOpenDetailDialog(false)}
+          task={selectedTask}
+          project={project}
+          sprint={sprint}
+          onEdit={handleEditTask}
+          onDelete={handleDeleteTask}
+          canEdit={canEditTask ? canEditTask(selectedTask, project) : true}
+          canDelete={canDeleteTask ? canDeleteTask(selectedTask, project) : true}
+        />
+      )}
     </Box>
   );
 };

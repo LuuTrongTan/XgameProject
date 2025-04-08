@@ -70,7 +70,13 @@ const VisuallyHiddenInput = styled("input")({
   width: 1,
 });
 
-const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
+const TaskForm = ({ open, onClose, onSave, task, project }) => {
+  console.log('[DEBUG] TaskForm rendered with props:', { 
+    open, 
+    taskId: task?._id,
+    taskTitle: task?.title,
+    projectId: project?._id
+  });
   const navigate = useNavigate();
   const { user } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
@@ -82,8 +88,8 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 days
     assignees: [],
     estimatedHours: 0,
-    project: projectId,
-    sprint: sprintId,
+    project: project?._id,
+    sprint: project?.currentSprint?._id,
     tags: [],
     syncWithCalendar: false,
     calendarType: "google",
@@ -91,7 +97,6 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
   const [users, setUsers] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-  const [project, setProject] = useState(null);
   const [files, setFiles] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
@@ -111,8 +116,8 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
           : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         assignees: task.assignees?.map((a) => a._id) || [],
         estimatedHours: task.estimatedHours || 0,
-        project: task.project || projectId,
-        sprint: task.sprint || sprintId,
+        project: task.project || project?._id,
+        sprint: task.sprint || project?.currentSprint?._id,
         tags: task.tags || [],
         syncWithCalendar: task.syncWithCalendar || false,
         calendarType: task.calendarType || "google",
@@ -127,14 +132,14 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         assignees: [],
         estimatedHours: 0,
-        project: projectId,
-        sprint: sprintId,
+        project: project?._id,
+        sprint: project?.currentSprint?._id,
         tags: [],
         syncWithCalendar: false,
         calendarType: "google",
       });
     }
-  }, [task, projectId, sprintId]);
+  }, [task, project?._id, project?.currentSprint?._id]);
 
   useEffect(() => {
     fetchUsers();
@@ -295,7 +300,7 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
         }
       }
       onSave(response.data);
-      navigate(`/projects/${projectId}`);
+      navigate(`/projects/${project?._id}`);
     } catch (error) {
       console.error("Error saving task:", error);
       setErrors({ submit: error.response?.data?.message || "Có lỗi xảy ra" });
@@ -329,7 +334,7 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
           variant: "success",
           autoHideDuration: 5000,
         });
-        navigate(`/projects/${projectId}`);
+        navigate(`/projects/${project?._id}`);
       } catch (error) {
         console.error("Error deleting task:", error);
         enqueueSnackbar(
@@ -350,7 +355,7 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
         status: "done",
       });
       await ActivityService.logTaskCompleted(task.title);
-      navigate(`/projects/${projectId}`);
+      navigate(`/projects/${project?._id}`);
     } catch (error) {
       console.error("Error completing task:", error);
     } finally {
@@ -385,356 +390,368 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
   };
 
   return (
-    <Paper sx={{ p: 4, maxWidth: 800, mx: "auto" }}>
-      <Typography variant="h5" gutterBottom>
-        {task?._id ? "Chỉnh sửa công việc" : "Tạo công việc mới"}
-      </Typography>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: { borderRadius: 2 }
+      }}
+    >
+      <DialogContent>
+        <Paper sx={{ p: 4, maxWidth: 800, mx: "auto" }}>
+          <Typography variant="h5" gutterBottom>
+            {task?._id ? "Chỉnh sửa công việc" : "Tạo công việc mới"}
+          </Typography>
 
-      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <TextField
-              required
-              fullWidth
-              name="title"
-              label="Tiêu đề"
-              value={formData.title}
-              onChange={handleChange}
-              error={!!errors.title}
-              helperText={errors.title}
-            />
-          </Grid>
-
-          <Grid item xs={12}>
-            <TextField
-              required
-              fullWidth
-              multiline
-              rows={4}
-              name="description"
-              label="Mô tả"
-              value={formData.description}
-              onChange={handleChange}
-              error={!!errors.description}
-              helperText={errors.description}
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel id="priority-label">Độ ưu tiên</InputLabel>
-              <Select
-                labelId="priority-label"
-                name="priority"
-                value={formData.priority}
-                onChange={handleChange}
-                label="Độ ưu tiên"
-              >
-                <MenuItem value="low">Thấp</MenuItem>
-                <MenuItem value="medium">Trung bình</MenuItem>
-                <MenuItem value="high">Cao</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel id="status-label">Trạng thái</InputLabel>
-              <Select
-                labelId="status-label"
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                label="Trạng thái"
-              >
-                <MenuItem value="todo">Chưa bắt đầu</MenuItem>
-                <MenuItem value="inProgress">Đang thực hiện</MenuItem>
-                <MenuItem value="review">Đang kiểm tra</MenuItem>
-                <MenuItem value="done">Hoàn thành</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel id="assignee-label">Người thực hiện</InputLabel>
-              <Select
-                labelId="assignee-label"
-                multiple
-                name="assignees"
-                value={formData.assignees}
-                onChange={handleAssigneesChange}
-                input={<OutlinedInput label="Người thực hiện" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                    {selected.map((value) => {
-                      const user = users.find((u) => u._id === value);
-                      return (
-                        <Chip
-                          key={value}
-                          label={user ? user.fullName : value}
-                          size="small"
-                        />
-                      );
-                    })}
-                  </Box>
-                )}
-                MenuProps={MenuProps}
-              >
-                {users.map((user) => (
-                  <MenuItem key={user._id} value={user._id}>
-                    {user.fullName}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Ngày hết hạn"
-                value={formData.dueDate}
-                onChange={handleDateChange}
-                sx={{ width: "100%" }}
-              />
-            </LocalizationProvider>
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              type="number"
-              name="estimatedHours"
-              label="Thời gian ước tính (giờ)"
-              value={formData.estimatedHours}
-              onChange={handleChange}
-              error={!!errors.estimatedHours}
-              helperText={errors.estimatedHours}
-              InputProps={{ inputProps: { min: 0 } }}
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6}>
-            <Autocomplete
-              multiple
-              freeSolo
-              id="tags"
-              options={availableTags}
-              value={formData.tags}
-              onChange={handleTagsChange}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => (
-                  <Chip
-                    label={option}
-                    size="small"
-                    {...getTagProps({ index })}
-                  />
-                ))
-              }
-              renderInput={(params) => (
-                <TextField {...params} label="Tags" placeholder="Thêm tag" />
-              )}
-            />
-          </Grid>
-
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" gutterBottom>
-              Tệp đính kèm
-            </Typography>
-            <Button
-              component="label"
-              variant="outlined"
-              startIcon={<CloudUploadIcon />}
-              sx={{ mb: 2 }}
-            >
-              Tải lên tệp
-              <VisuallyHiddenInput
-                type="file"
-                multiple
-                onChange={handleFileChange}
-              />
-            </Button>
-
-            <Box sx={{ mt: 2 }}>
-              {files.map((file, index) => (
-                <Box
-                  key={index}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    p: 1,
-                    mb: 1,
-                    border: "1px solid #e0e0e0",
-                    borderRadius: 1,
-                  }}
-                >
-                  <AttachFileIcon sx={{ mr: 1 }} />
-                  <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    {file.name} ({(file.size / 1024).toFixed(2)} KB)
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleRemoveFile(index)}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              ))}
-              {task?.attachments?.map((attachment, index) => (
-                <Box
-                  key={`existing-${index}`}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    p: 1,
-                    mb: 1,
-                    border: "1px solid #e0e0e0",
-                    borderRadius: 1,
-                    bgcolor: "#f5f5f5",
-                  }}
-                >
-                  <AttachFileIcon sx={{ mr: 1 }} />
-                  <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                    {attachment.name} ({(attachment.size / 1024).toFixed(2)} KB)
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </Grid>
-
-          <Grid item xs={12}>
-            <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <FormControl
-                sx={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
-                <InputLabel id="calendar-sync-label" sx={{ ml: 1 }}>
-                  Đồng bộ với lịch
-                </InputLabel>
-                <Select
-                  labelId="calendar-sync-label"
-                  name="calendarType"
-                  value={formData.calendarType}
+          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <TextField
+                  required
+                  fullWidth
+                  name="title"
+                  label="Tiêu đề"
+                  value={formData.title}
                   onChange={handleChange}
-                  disabled={!formData.syncWithCalendar}
-                  sx={{ ml: 2, minWidth: 150 }}
-                >
-                  <MenuItem value="google">Google Calendar</MenuItem>
-                  <MenuItem value="outlook">Microsoft Outlook</MenuItem>
-                </Select>
-                <Chip
-                  label={formData.syncWithCalendar ? "Bật" : "Tắt"}
-                  color={formData.syncWithCalendar ? "primary" : "default"}
-                  onClick={() =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      syncWithCalendar: !prev.syncWithCalendar,
-                    }))
-                  }
-                  icon={<CalendarIcon />}
-                  clickable
-                  sx={{ ml: 2 }}
+                  error={!!errors.title}
+                  helperText={errors.title}
                 />
-              </FormControl>
-            </Box>
-          </Grid>
+              </Grid>
 
-          {errors.submit && (
-            <Grid item xs={12}>
-              <FormHelperText error>{errors.submit}</FormHelperText>
-            </Grid>
-          )}
+              <Grid item xs={12}>
+                <TextField
+                  required
+                  fullWidth
+                  multiline
+                  rows={4}
+                  name="description"
+                  label="Mô tả"
+                  value={formData.description}
+                  onChange={handleChange}
+                  error={!!errors.description}
+                  helperText={errors.description}
+                />
+              </Grid>
 
-          <Grid item xs={12}>
-            <Divider sx={{ my: 2 }} />
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mt: 2,
-              }}
-            >
-              <BackButton
-                label="Hủy"
-                onClick={() => (onClose ? onClose() : navigate(-1))}
-              />
-              <Box>
-                {task?._id && (
-                  <Tooltip
-                    title={
-                      !canDeleteTask(task, project)
-                        ? "Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa"
-                        : "Xóa công việc"
-                    }
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="priority-label">Độ ưu tiên</InputLabel>
+                  <Select
+                    labelId="priority-label"
+                    name="priority"
+                    value={formData.priority}
+                    onChange={handleChange}
+                    label="Độ ưu tiên"
                   >
-                    <span>
+                    <MenuItem value="low">Thấp</MenuItem>
+                    <MenuItem value="medium">Trung bình</MenuItem>
+                    <MenuItem value="high">Cao</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="status-label">Trạng thái</InputLabel>
+                  <Select
+                    labelId="status-label"
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    label="Trạng thái"
+                  >
+                    <MenuItem value="todo">Chưa bắt đầu</MenuItem>
+                    <MenuItem value="inProgress">Đang thực hiện</MenuItem>
+                    <MenuItem value="review">Đang kiểm tra</MenuItem>
+                    <MenuItem value="done">Hoàn thành</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="assignee-label">Người thực hiện</InputLabel>
+                  <Select
+                    labelId="assignee-label"
+                    multiple
+                    name="assignees"
+                    value={formData.assignees}
+                    onChange={handleAssigneesChange}
+                    input={<OutlinedInput label="Người thực hiện" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const user = users.find((u) => u._id === value);
+                          return (
+                            <Chip
+                              key={value}
+                              label={user ? user.fullName : value}
+                              size="small"
+                            />
+                          );
+                        })}
+                      </Box>
+                    )}
+                    MenuProps={MenuProps}
+                  >
+                    {users.map((user) => (
+                      <MenuItem key={user._id} value={user._id}>
+                        {user.fullName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Ngày hết hạn"
+                    value={formData.dueDate}
+                    onChange={handleDateChange}
+                    sx={{ width: "100%" }}
+                  />
+                </LocalizationProvider>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  name="estimatedHours"
+                  label="Thời gian ước tính (giờ)"
+                  value={formData.estimatedHours}
+                  onChange={handleChange}
+                  error={!!errors.estimatedHours}
+                  helperText={errors.estimatedHours}
+                  InputProps={{ inputProps: { min: 0 } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Autocomplete
+                  multiple
+                  freeSolo
+                  id="tags"
+                  options={availableTags}
+                  value={formData.tags}
+                  onChange={handleTagsChange}
+                  renderTags={(value, getTagProps) =>
+                    value.map((option, index) => (
+                      <Chip
+                        label={option}
+                        size="small"
+                        {...getTagProps({ index })}
+                      />
+                    ))
+                  }
+                  renderInput={(params) => (
+                    <TextField {...params} label="Tags" placeholder="Thêm tag" />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Tệp đính kèm
+                </Typography>
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  sx={{ mb: 2 }}
+                >
+                  Tải lên tệp
+                  <VisuallyHiddenInput
+                    type="file"
+                    multiple
+                    onChange={handleFileChange}
+                  />
+                </Button>
+
+                <Box sx={{ mt: 2 }}>
+                  {files.map((file, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        p: 1,
+                        mb: 1,
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 1,
+                      }}
+                    >
+                      <AttachFileIcon sx={{ mr: 1 }} />
+                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                        {file.name} ({(file.size / 1024).toFixed(2)} KB)
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemoveFile(index)}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  {task?.attachments?.map((attachment, index) => (
+                    <Box
+                      key={`existing-${index}`}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        p: 1,
+                        mb: 1,
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 1,
+                        bgcolor: "#f5f5f5",
+                      }}
+                    >
+                      <AttachFileIcon sx={{ mr: 1 }} />
+                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                        {attachment.name} ({(attachment.size / 1024).toFixed(2)} KB)
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                  <FormControl
+                    sx={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                    }}
+                  >
+                    <InputLabel id="calendar-sync-label" sx={{ ml: 1 }}>
+                      Đồng bộ với lịch
+                    </InputLabel>
+                    <Select
+                      labelId="calendar-sync-label"
+                      name="calendarType"
+                      value={formData.calendarType}
+                      onChange={handleChange}
+                      disabled={!formData.syncWithCalendar}
+                      sx={{ ml: 2, minWidth: 150 }}
+                    >
+                      <MenuItem value="google">Google Calendar</MenuItem>
+                      <MenuItem value="outlook">Microsoft Outlook</MenuItem>
+                    </Select>
+                    <Chip
+                      label={formData.syncWithCalendar ? "Bật" : "Tắt"}
+                      color={formData.syncWithCalendar ? "primary" : "default"}
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          syncWithCalendar: !prev.syncWithCalendar,
+                        }))
+                      }
+                      icon={<CalendarIcon />}
+                      clickable
+                      sx={{ ml: 2 }}
+                    />
+                  </FormControl>
+                </Box>
+              </Grid>
+
+              {errors.submit && (
+                <Grid item xs={12}>
+                  <FormHelperText error>{errors.submit}</FormHelperText>
+                </Grid>
+              )}
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mt: 2,
+                  }}
+                >
+                  <BackButton
+                    label="Hủy"
+                    onClick={() => (onClose ? onClose() : navigate(-1))}
+                  />
+                  <Box>
+                    {task?._id && (
+                      <Tooltip
+                        title={
+                          !canDeleteTask(task, project)
+                            ? "Chỉ Admin, Project Manager hoặc người tạo task (khi chưa được gán) mới có thể xóa"
+                            : "Xóa công việc"
+                        }
+                      >
+                        <span>
+                          <Button
+                            type="button"
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            onClick={handleDelete}
+                            sx={{ mr: 1 }}
+                            disabled={loading || !canDeleteTask(task, project)}
+                          >
+                            Xóa
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    )}
+                    {task?._id && task?.status !== "done" && (
                       <Button
                         type="button"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={handleDelete}
+                        color="success"
+                        variant="outlined"
+                        startIcon={<CheckCircleIcon />}
+                        onClick={handleComplete}
                         sx={{ mr: 1 }}
-                        disabled={loading || !canDeleteTask(task, project)}
+                        disabled={loading}
                       >
-                        Xóa
+                        Hoàn thành
                       </Button>
-                    </span>
-                  </Tooltip>
-                )}
-                {task?._id && task?.status !== "done" && (
-                  <Button
-                    type="button"
-                    color="success"
-                    variant="outlined"
-                    startIcon={<CheckCircleIcon />}
-                    onClick={handleComplete}
-                    sx={{ mr: 1 }}
-                    disabled={loading}
-                  >
-                    Hoàn thành
-                  </Button>
-                )}
-                <Button type="submit" variant="contained" disabled={loading}>
-                  {loading ? (
-                    <CircularProgress size={24} />
-                  ) : task?._id ? (
-                    "Cập nhật"
-                  ) : (
-                    "Tạo mới"
-                  )}
-                </Button>
-              </Box>
-            </Box>
-          </Grid>
-        </Grid>
-      </Box>
+                    )}
+                    <Button type="submit" variant="contained" disabled={loading}>
+                      {loading ? (
+                        <CircularProgress size={24} />
+                      ) : task?._id ? (
+                        "Cập nhật"
+                      ) : (
+                        "Tạo mới"
+                      )}
+                    </Button>
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
 
-      <Dialog open={tagsDialogOpen} onClose={closeTagsDialog}>
-        <DialogTitle>Thêm tag mới</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Tên tag"
-            fullWidth
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            variant="outlined"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeTagsDialog}>Hủy</Button>
-          <Button onClick={addTag} variant="contained">
-            Thêm
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Paper>
+          <Dialog open={tagsDialogOpen} onClose={closeTagsDialog}>
+            <DialogTitle>Thêm tag mới</DialogTitle>
+            <DialogContent>
+              <TextField
+                autoFocus
+                margin="dense"
+                label="Tên tag"
+                fullWidth
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                variant="outlined"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={closeTagsDialog}>Hủy</Button>
+              <Button onClick={addTag} variant="contained">
+                Thêm
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Paper>
+      </DialogContent>
+    </Dialog>
   );
 };
 
