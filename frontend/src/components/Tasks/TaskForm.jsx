@@ -144,9 +144,16 @@ const TaskForm = ({ open, onClose, onSave, task, projectId, sprintId }) => {
   const fetchUsers = async () => {
     try {
       const response = await API.get("/users");
-      setUsers(response.data);
+      // Ensure response.data is an array
+      const userData = Array.isArray(response.data) ? response.data : 
+                      response.data?.data ? response.data.data :
+                      response.data?.users ? response.data.users : [];
+      
+      console.log('Fetched users data:', userData);
+      setUsers(userData);
     } catch (error) {
       console.error("Error fetching users:", error);
+      setUsers([]); // Set empty array on error
     }
   };
 

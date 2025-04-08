@@ -38,7 +38,6 @@ export const PERMISSIONS = {
 export const TASK_STATUSES = {
   TODO: "todo",
   IN_PROGRESS: "inProgress",
-  REVIEW: "review",
   DONE: "done"
 };
 

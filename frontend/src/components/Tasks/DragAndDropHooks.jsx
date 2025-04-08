@@ -58,7 +58,7 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
     
     // Thêm class drag-over vào cột đích
     // Chỉ xử lý nếu over.id là một trong các trạng thái hợp lệ
-    const validStatuses = ['todo', 'inProgress', 'review', 'done'];
+    const validStatuses = ['todo', 'inProgress', 'done'];
     const statusId = over.id;
     
     // Nếu over.id không phải là trạng thái hợp lệ, có thể là ID của task
@@ -112,7 +112,7 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
     let targetStatusId = over.id;
     
     // Xác định xem targetStatusId có phải là một trạng thái hợp lệ không
-    const validStatuses = ['todo', 'inProgress', 'review', 'done'];
+    const validStatuses = ['todo', 'inProgress', 'done'];
     
     // Nếu targetStatusId không phải là một trạng thái hợp lệ, 
     // có thể đang thả vào một task khác. Trong trường hợp này, 
@@ -173,13 +173,169 @@ export const useDragAndDrop = (tasks, updateTaskStatus) => {
       newPosition = oldPosition;
       console.log(`[DragEnd] Moving within same column - keeping position: ${newPosition}`);
     }
-    // ========= TRƯỜNG HỢP 2: Kéo sang cột khác - luôn đặt ở cuối cột =========
+    // ========= TRƯỜNG HỢP 2: Kéo sang cột khác - xác định vị trí dựa vào con trỏ chuột =========
     else {
-      // Khi kéo sang cột khác, luôn đặt ở cuối cột để tránh nhầm lẫn
-      const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
-      const lastTask = sortedTasks[sortedTasks.length - 1];
-      newPosition = lastTask ? (lastTask.position + 1) : 0;
-      console.log(`[DragEnd] Moving to another column - placing at end with position: ${newPosition}`);
+      // Lấy vị trí con trỏ chuột
+      if (event.activatorEvent && ('clientY' in event.activatorEvent)) {
+        const { clientY, clientX } = event.activatorEvent;
+        console.log(`[DragEnd] Pointer position: X=${clientX}, Y=${clientY}`);
+        
+        // Tìm cột đích trong DOM
+        const targetColumn = document.querySelector(`.${targetStatusId}-column`);
+        
+        if (targetColumn) {
+          console.log(`[DragEnd] Found target column: ${targetStatusId}`);
+          // Lấy thông tin bounding box của cột đích
+          const columnRect = targetColumn.getBoundingClientRect();
+          console.log(`[DragEnd] Column bounding box:`, {
+            top: columnRect.top,
+            bottom: columnRect.bottom,
+            left: columnRect.left,
+            right: columnRect.right,
+            height: columnRect.height,
+            width: columnRect.width
+          });
+          
+          // Vị trí tương đối của con trỏ trong cột
+          const relativeY = clientY - columnRect.top;
+          const relativeYPercent = (relativeY / columnRect.height) * 100;
+          console.log(`[DragEnd] Relative position in column: Y=${relativeY}px (${relativeYPercent.toFixed(2)}%)`);
+          
+          // Lấy tất cả các task card trong cột đích
+          const taskCards = Array.from(targetColumn.querySelectorAll('.task-card'));
+          console.log(`[DragEnd] Found ${taskCards.length} task cards in column`);
+          
+          // Kiểm tra nếu không có task card hoặc con trỏ ở dưới task card cuối cùng
+          let insertAtEnd = false;
+          
+          if (taskCards.length === 0) {
+            console.log(`[DragEnd] No cards in column, placing at end`);
+            insertAtEnd = true;
+          } else {
+            // Lấy vị trí của task card cuối cùng
+            const lastCard = taskCards[taskCards.length - 1];
+            const lastCardRect = lastCard.getBoundingClientRect();
+            
+            // Nếu con trỏ nằm dưới task card cuối cùng, đặt vào cuối
+            if (clientY > lastCardRect.bottom) {
+              console.log(`[DragEnd] Pointer (${clientY}) is below last card (${lastCardRect.bottom}), placing at end`);
+              insertAtEnd = true;
+            }
+          }
+          
+          if (insertAtEnd) {
+            // Lấy vị trí cuối cùng
+            const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
+            if (sortedTasks.length === 0) {
+              newPosition = 0;
+            } else {
+              const lastTaskPosition = sortedTasks[sortedTasks.length - 1].position;
+              newPosition = lastTaskPosition + 1;
+            }
+            console.log(`[DragEnd] Inserting at end, using position: ${newPosition}`);
+            
+            // Skip normal position detection
+            console.log(`[DragEnd] Final: Moving task from ${sourceContainer}[${oldPosition}] to ${targetStatusId}[${newPosition}]`);
+            
+            // Gọi API để cập nhật
+            updateTaskStatus({
+              taskId,
+              status: targetStatusId,
+              position: newPosition,
+              projectId: activeTask?.project?._id, 
+              sprintId: activeTask?.sprint
+            });
+            
+            setActiveContainer(null);
+            setActiveTask(null);
+            return;
+          }
+          
+          // Sắp xếp taskCards theo vị trí Y (từ trên xuống dưới)
+          const sortedCards = taskCards.sort((a, b) => {
+            const rectA = a.getBoundingClientRect();
+            const rectB = b.getBoundingClientRect();
+            return rectA.top - rectB.top;
+          });
+          
+          // In ra vị trí của các card để debug
+          if (sortedCards.length > 0) {
+            console.log('[DragEnd] Task cards positions:');
+            sortedCards.forEach((card, index) => {
+              const rect = card.getBoundingClientRect();
+              const taskId = card.getAttribute('data-task-id') || card.getAttribute('id') || `unknown-${index}`;
+              const cardMiddleY = rect.top + rect.height / 2;
+              console.log(`  Card #${index}: Task=${taskId}, Y=${rect.top}-${rect.bottom}, Middle=${cardMiddleY}`);
+            });
+          }
+          
+          // Tìm task card đầu tiên mà con trỏ chuột đang ở bên trên nó
+          let insertIndex = 0;
+          let foundPosition = false;
+          
+          for (let i = 0; i < sortedCards.length; i++) {
+            const rect = sortedCards[i].getBoundingClientRect();
+            const cardMiddleY = rect.top + rect.height / 2;
+            
+            console.log(`[DragEnd] Checking card #${i}: clientY=${clientY} < cardMiddleY=${cardMiddleY} = ${clientY < cardMiddleY}`);
+            
+            if (clientY < cardMiddleY) {
+              // Nếu con trỏ ở trên điểm giữa card thì chèn trước card đó
+              insertIndex = i;
+              foundPosition = true;
+              console.log(`[DragEnd] Pointer is above the middle of card #${i}, inserting at index ${insertIndex}`);
+              break;
+            }
+          }
+          
+          if (!foundPosition) {
+            // Nếu không tìm thấy vị trí phù hợp, đặt ở cuối danh sách
+            insertIndex = sortedCards.length;
+            console.log(`[DragEnd] Pointer is below all cards, inserting at end (index ${insertIndex})`);
+          }
+          
+          console.log(`[DragEnd] Final insert index: ${insertIndex} of ${sortedCards.length} tasks`);
+          
+          // Map insertIndex (vị trí hiển thị) sang position (vị trí trong cơ sở dữ liệu)
+          const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
+          console.log(`[DragEnd] Sorted tasks in target column:`, sortedTasks.map(t => ({id: t._id, position: t.position})));
+          
+          if (sortedTasks.length === 0) {
+            // Nếu cột trống, đặt ở vị trí 0
+            newPosition = 0;
+            console.log(`[DragEnd] Empty column, using position: ${newPosition}`);
+          } else if (insertIndex === 0) {
+            // Nếu chèn vào đầu danh sách - đặt position = 0
+            newPosition = 0;
+            console.log(`[DragEnd] Inserting at beginning, using position: ${newPosition}`);
+            // Backend sẽ tự động +1 vào các task khác
+          } else if (insertIndex >= sortedTasks.length) {
+            // Nếu chèn vào cuối danh sách
+            const lastTaskPosition = sortedTasks[sortedTasks.length - 1].position;
+            newPosition = lastTaskPosition + 1;
+            console.log(`[DragEnd] Inserting at end, using position: ${newPosition} (last + 1)`);
+          } else {
+            // Nếu chèn vào giữa danh sách - lấy position của task tại vị trí chèn
+            newPosition = sortedTasks[insertIndex].position;
+            console.log(`[DragEnd] Inserting in middle, using position: ${newPosition} (same as task at index ${insertIndex})`);
+            // Backend sẽ tự động +1 position của các task từ vị trí này trở đi
+          }
+          
+          console.log(`[DragEnd] Calculated new position: ${newPosition} at index ${insertIndex}`);
+        } else {
+          // Nếu không tìm thấy cột đích trong DOM, đặt ở cuối
+          const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
+          const lastTask = sortedTasks[sortedTasks.length - 1];
+          newPosition = lastTask ? (lastTask.position + 1) : 0;
+          console.log(`[DragEnd] Could not find target column in DOM, placing at end with position: ${newPosition}`);
+        }
+      } else {
+        // Nếu không có thông tin con trỏ chuột, đặt ở cuối cột
+        const sortedTasks = [...tasksInTargetColumn].sort((a, b) => a.position - b.position);
+        const lastTask = sortedTasks[sortedTasks.length - 1];
+        newPosition = lastTask ? (lastTask.position + 1) : 0;
+        console.log(`[DragEnd] No pointer position info, placing at end with position: ${newPosition}`);
+      }
     }
     
     console.log(`[DragEnd] Final: Moving task from ${sourceContainer}[${oldPosition}] to ${targetStatusId}[${newPosition}]`);

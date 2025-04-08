@@ -18,6 +18,8 @@ import {
   updateEstimatedTime,
   getTaskTimeStats,
   updateProgress,
+  toggleWatcher,
+  toggleDependency,
   getUpcomingTasks,
   getTaskHistory,
 } from "../controllers/task.controller.js";
@@ -567,5 +569,11 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments", p
  *           type: string
  */
 router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/history", protect, getTaskHistory);
+
+// Task assignment and watchers
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/watchers", protect, toggleWatcher);
+
+// Task dependencies and relationships
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/dependencies", protect, toggleDependency);
 
 export default router;

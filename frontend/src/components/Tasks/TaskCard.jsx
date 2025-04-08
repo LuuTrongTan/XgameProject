@@ -110,23 +110,23 @@ const TaskCardContainer = styled(Card)(({ theme, status }) => {
   })();
 
   return {
-    marginBottom: theme.spacing(2),
-    borderRadius: "24px",
+    marginBottom: theme.spacing(1),
+    borderRadius: "16px",
     overflow: "hidden",
     boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
     position: "relative",
     border: "1px solid rgba(0,0,0,0.06)",
-    backgroundColor: statusColorLight, // Nền nhạt theo màu status
+    backgroundColor: statusColorLight,
     backgroundImage: `linear-gradient(145deg, ${statusColorLight}, #ffffff)`,
+    padding: "1px",
     "&:hover": {
       boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
       transform: "translateY(-4px)",
       backgroundImage: `linear-gradient(145deg, ${statusColorLight}, #ffffff)`,
-      backgroundColor: statusColorLight, // Nền nhạt theo màu status khi hover
+      backgroundColor: statusColorLight,
       border: "1px solid rgba(0,0,0,0.08)",
     },
-    
   };
 });
 
@@ -154,26 +154,26 @@ const PriorityIndicator = styled(Box)(({ priority, theme }) => ({
 
 const TaskTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 600,
-  fontSize: "1.1rem",
-  marginBottom: theme.spacing(1.5),
-  lineHeight: 1.4,
+  fontSize: "0.95rem",
+  lineHeight: 1.3,
   display: "-webkit-box",
-  WebkitLineClamp: 2,
+  WebkitLineClamp: 1,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
   color: theme.palette.text.primary,
   letterSpacing: "-0.01em",
+  maxWidth: "calc(100% - 120px)",
 }));
 
 const TaskDescription = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
-  fontSize: "0.9rem",
-  marginBottom: theme.spacing(2),
+  fontSize: "0.85rem",
+  marginBottom: theme.spacing(1),
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
-  lineHeight: 1.5,
+  lineHeight: 1.4,
 }));
 
 const TaskInfoSection = styled(Box)(({ theme }) => ({
@@ -721,6 +721,8 @@ const TaskCard = ({
     <TaskCardContainer
       status={task.status}
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       id={`task-${task._id}`}
       data-task-id={task._id}
       data-status={task.status}
@@ -741,6 +743,7 @@ const TaskCard = ({
           ? "transform 250ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1)"
           : undefined,
         touchAction: "none",
+        cursor: isDragging ? "grabbing" : "grab",
         "&:hover": {
           cursor: "grab",
         },
@@ -766,25 +769,33 @@ const TaskCard = ({
         display="flex" 
         justifyContent="flex-start" 
         alignItems="center" 
-        pl={1}
+        pl={0}
         pr={3}
         pt={0}
         pb={0}
-        ml={2.5}
+        ml={0}
         sx={{
           position: "absolute",
-          top: "10px", // Exactly the same top position as the drag handle icon
-          left: "10px", // Offset to account for the drag handle
+          top: "10px",
+          left: "0px",
           zIndex: 1,
-          height: "20px" // Giảm từ 24px xuống 20px
+          height: "20px"
         }}
       >
         <Box display="flex" alignItems="center" gap={1}>
-          <StatusChip 
-            label={getTaskStatusLabel(task.status)} 
-            size="small"
-            colorData={getTaskStatusColor(task.status)}
-          />
+          {/* Tags moved here */}
+          {Array.isArray(task.tags) && task.tags.length > 0 && (
+            <Box display="flex" alignItems="center" gap={0.5}>
+              {task.tags.map((tag, index) => (
+                <TagChip
+                  key={`${task._id}-tag-${index}`}
+                  icon={<LabelIcon />}
+                  label={tag}
+                  size="small"
+                />
+              ))}
+            </Box>
+          )}
           
           {task.dueDate && (
             <Tooltip title="Ngày hết hạn">
@@ -809,489 +820,441 @@ const TaskCard = ({
               </Box>
             </Tooltip>
           )}
+
+          {/* Estimated time moved here */}
+          {task.estimatedTime && (
+            <Tooltip title="Thời gian ước tính">
+              <Box display="flex" alignItems="center" sx={{ 
+                backgroundColor: "rgba(0,0,0,0.03)", 
+                borderRadius: "10px", 
+                padding: "2px 6px",
+                fontSize: "0.65rem",
+                height: "20px"
+              }}>
+                <AccessTimeIcon 
+                  fontSize="small" 
+                  sx={{ 
+                    fontSize: "0.75rem", 
+                    mr: 0.3, 
+                    color: "text.secondary" 
+                  }} 
+                />
+                <Typography variant="caption" sx={{ fontSize: "0.65rem" }}>
+                  {task.estimatedTime}h
+                </Typography>
+              </Box>
+            </Tooltip>
+          )}
         </Box>
       </Box>
       
-      {/* Drag handle - makes the card draggable */}
-      <Box 
-        {...attributes}
-        {...listeners}
-        className="drag-handle"
-        sx={{ 
-          position: "absolute", 
-          top: "10px", 
-          left: "10px", 
-          color: "text.secondary", 
-          opacity: 0.5,
-          zIndex: 9, // Increase zIndex to ensure it's clickable
-          cursor: isDragging ? "grabbing" : "grab",
-          width: "24px", // Add explicit width
-          height: "24px", // Add explicit height 
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: "4px",
-          "&:hover": { 
-            opacity: 0.8,
-            cursor: "grab",
-            backgroundColor: "rgba(0,0,0,0.04)"
-          },
-          "&:active": {
-            cursor: "grabbing",
-            opacity: 1,
-            backgroundColor: "rgba(0,0,0,0.08)"
-          }
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-        }}
-        onTouchStart={(e) => {
-          // Prevent default touch behavior to improve mobile dragging
-          e.stopPropagation();
-        }}
-      >
-        <DragIndicatorIcon fontSize="medium" />
-      </Box>
-      
       <CardContent sx={{ 
-        pt: 2, 
-        pb: 2,
-        px: 3,
+        pt: 1,
+        pb: 1,
+        px: 2,
         position: "relative",
         "&:last-child": {
-          pb: 2
+          pb: 1
         }
       }}>
-        {/* Task title - with original top padding */}
-        <TaskTitle variant="h6" sx={{ mt: 3, mb: 2 }}>
-          {task.title}
-        </TaskTitle>
-        
-        {/* Divider to separate header from body */}
-        <Divider sx={{ mb: 2 }} />
-        
-        {/* Task description (truncated) */}
-        <TaskDescription variant="body2" color="text.secondary">
-          {task.description}
-        </TaskDescription>
-                  
-        {/* Assignees section with tags and expand button */}
-        <TaskInfoSection>
-          <Box display="flex" alignItems="center" flexWrap="wrap" gap={1} sx={{ width: '100%', justifyContent: 'space-between' }}>
-            <Box display="flex" alignItems="center" flexWrap="wrap" gap={1}>
-              {/* Display the actual tag chips */}
-              {Array.isArray(task.tags) && task.tags.length > 0 && (
-                <Box display="flex" alignItems="center" gap={0.5}>
-                  {task.tags.map((tag, index) => (
-                    <TagChip
-                      key={`${task._id}-tag-${index}`}
-                      icon={<LabelIcon />}
-                      label={tag}
-                      size="small"
-                    />
-                  ))}
-                </Box>
-              )}
-              
-              {/* Comments counter */}
-              {comments.length > 0 && (
-                <Tooltip title={`${comments.length} bình luận`}>
-                  <Box 
-                    display="flex" 
-                    alignItems="center"
-                    sx={{ 
-                      opacity: 0.7,
-                      backgroundColor: "rgba(25, 118, 210, 0.08)",
-                      borderRadius: "12px",
-                      padding: "2px 6px",
-                    }}
-                  >
-                    <CommentIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                      {comments.length}
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              )}
-              
-              {/* Attachments counter */}
-              {attachments.length > 0 && (
-                <Tooltip title={`${attachments.length} tệp đính kèm`}>
-                  <Box 
-                    display="flex" 
-                    alignItems="center"
-                    sx={{ 
-                      opacity: 0.7,
-                      backgroundColor: "rgba(76, 175, 80, 0.08)", 
-                      borderRadius: "12px",
-                      padding: "2px 6px",
-                    }}
-                  >
-                    <AttachFileIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                      {attachments.length}
-                    </Typography>
-                  </Box>
-                </Tooltip>
-              )}
-            </Box>
-            
-            {/* Expand button in the same row as tags, positioned at far right */}
-            <IconButton 
-              size="small" 
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleExpandClick(e);
-              }}
-              sx={{ 
-                padding: 0.5,
-                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                color: "text.secondary",
-                marginRight: -3, // Increased negative margin 2 more times
-                zIndex: 10, // Ensure button is above other elements
-                "&:hover": {
-                  backgroundColor: "rgba(0,0,0,0.04)",
-                  color: "text.primary"
-                }
-              }}
-            >
-              <ExpandMoreIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        </TaskInfoSection>
-      </CardContent>
-      
-      {/* Expanded card details */}
-      <Collapse in={expanded} timeout="auto" unmountOnExit>
-        <CardContent sx={{ 
-          pt: 0, 
-          pb: 2,
-          px: 3,
-          backgroundColor: "rgba(0,0,0,0.01)"
+        {/* Task header with title and chips in same row */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          mt:4,
+          mb: 1,
+          gap: 1
         }}>
-          <Divider sx={{ mb: 2 }} />
+          <TaskTitle variant="h6">
+            {task.title.length > 20 ? `${task.title.substring(0, 20)}...` : task.title}
+          </TaskTitle>
           
-          {/* Project info and assignees section - moved to expanded view */}
-          <Box sx={{ mb: 2 }}>
-            {/* Project info */}
-            <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5 }}>
-              <Box display="flex" alignItems="center" gap={1}>
-                {(project?.name || task.project?.name) && (
-                  <Box display="flex" alignItems="center">
-                    <Typography variant="caption" color="text.secondary" sx={{ 
-                      fontSize: '0.75rem', 
-                      display: 'flex', 
-                      alignItems: 'center',
-                      backgroundColor: 'rgba(0,0,0,0.03)',
-                      borderRadius: '10px',
-                      py: 0.5,
-                      px: 1,
-                      width: 'fit-content'
-                    }}>
-                      <strong>Dự án:</strong> {project?.name || task.project?.name}
-                    </Typography>
-                  </Box>
-                )}
-                
-                {/* Hiển thị estimated time bên cạnh tên dự án */}
-                {task.estimatedTime && (
-                  <Tooltip title="Thời gian ước tính">
-                    <Box display="flex" alignItems="center" sx={{ 
-                      backgroundColor: "rgba(0,0,0,0.03)", 
-                      borderRadius: "10px", 
-                      padding: "2px 8px",
-                      fontSize: "0.75rem",
-                      height: "24px"
-                    }}>
-                      <AccessTimeIcon 
-                        fontSize="small" 
-                        sx={{ 
-                          fontSize: "0.85rem", 
-                          mr: 0.5, 
-                          color: "text.secondary" 
-                        }} 
-                      />
-                      <Typography variant="caption" sx={{ fontSize: "0.75rem" }}>
-                        <strong>Ước tính:</strong> {task.estimatedTime}h
-                      </Typography>
-                    </Box>
-                  </Tooltip>
-                )}
-              </Box>
-            </Box>
-            
-            {/* Assignees section */}
-            <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <Typography variant="caption" sx={{ 
-                fontSize: '0.75rem',
-                fontWeight: 500,
-                color: "text.secondary"
-              }}>
-                <strong>Người thực hiện:</strong>
-              </Typography>
-              
-              {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
-                <AvatarGroup 
-                  max={3} 
+          <Box display="flex" alignItems="center" gap={1}>
+            {comments.length > 0 && (
+              <Tooltip title={`${comments.length} bình luận`}>
+                <Box 
+                  display="flex" 
+                  alignItems="center"
                   sx={{ 
-                    '& .MuiAvatar-root': { 
-                      width: 24, 
-                      height: 24, 
-                      fontSize: '0.75rem', 
-                      border: '1px solid #fff' 
-                    } 
+                    opacity: 0.7,
+                    backgroundColor: "rgba(25, 118, 210, 0.08)",
+                    borderRadius: "12px",
+                    padding: "2px 6px",
                   }}
                 >
-                  {task.assignees.map((assignee, index) => (
-                    <Tooltip 
-                      key={assignee?._id || `${task._id}-assignee-${index}`} 
-                      title={assignee?.name || assignee?.email || "Người dùng không xác định"}
-                    >
-                      <Avatar 
-                        src={assignee?.avatar} 
-                        alt={assignee?.name}
-                        sx={{ width: 24, height: 24 }}
-                      >
-                        {((assignee?.name || assignee?.email || "?") || "?").charAt(0).toUpperCase()}
-                      </Avatar>
-                    </Tooltip>
-                  ))}
-                </AvatarGroup>
-              ) : (
-                <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.75rem" }}>
-                  Chưa có người thực hiện
+                  <CommentIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
+                    {comments.length}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            )}
+            
+            {attachments.length > 0 && (
+              <Tooltip title={`${attachments.length} tệp đính kèm`}>
+                <Box 
+                  display="flex" 
+                  alignItems="center"
+                  sx={{ 
+                    opacity: 0.7,
+                    backgroundColor: "rgba(76, 175, 80, 0.08)", 
+                    borderRadius: "12px",
+                    padding: "2px 6px",
+                  }}
+                >
+                  <AttachFileIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
+                  <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
+                    {attachments.length}
+                  </Typography>
+                </Box>
+              </Tooltip>
+            )}
+          </Box>
+        </Box>
+        
+        {/* Divider to separate header from body */}
+        <Divider sx={{ mb: 1 }} />
+        
+        {/* Task description with expand button */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 1,
+          minHeight: '40px',
+        }}>
+          <TaskDescription variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+            {task.description}
+          </TaskDescription>
+
+          <IconButton 
+            size="small" 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleExpandClick(e);
+            }}
+            sx={{ 
+              padding: 0.5,
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              color: "text.secondary",
+              mt: -0.5,
+              "&:hover": {
+                backgroundColor: "rgba(0,0,0,0.04)",
+                color: "text.primary"
+              }
+            }}
+          >
+            <ExpandMoreIcon fontSize="small" />
+          </IconButton>
+        </Box>
+                  
+        {/* Expanded card details */}
+        <Collapse in={expanded} timeout="auto" unmountOnExit>
+          <CardContent sx={{ 
+            pt: 0, 
+            pb: 2,
+            px: 3,
+            backgroundColor: "rgba(0,0,0,0.01)"
+          }}>
+            <Divider sx={{ mb: 2 }} />
+            
+            {/* Project info and assignees section - moved to expanded view */}
+            <Box sx={{ mb: 2 }}>
+              {/* Project info */}
+              <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5 }}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  {(project?.name || task.project?.name) && (
+                    <Box display="flex" alignItems="center">
+                      <Typography variant="caption" color="text.secondary" sx={{ 
+                        fontSize: '0.75rem', 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(0,0,0,0.03)',
+                        borderRadius: '10px',
+                        py: 0.5,
+                        px: 1,
+                        width: 'fit-content'
+                      }}>
+                        <strong>Dự án:</strong> {project?.name || task.project?.name}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+              
+              {/* Assignees section */}
+              <Box display="flex" alignItems="center" gap={1} mb={2}>
+                <Typography variant="caption" sx={{ 
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  color: "text.secondary"
+                }}>
+                  <strong>Người thực hiện:</strong>
                 </Typography>
+                
+                {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
+                  <AvatarGroup 
+                    max={3} 
+                    sx={{ 
+                      '& .MuiAvatar-root': { 
+                        width: 24, 
+                        height: 24, 
+                        fontSize: '0.75rem', 
+                        border: '1px solid #fff' 
+                      } 
+                    }}
+                  >
+                    {task.assignees.map((assignee, index) => (
+                      <Tooltip 
+                        key={assignee?._id || `${task._id}-assignee-${index}`} 
+                        title={assignee?.name || assignee?.email || "Người dùng không xác định"}
+                      >
+                        <Avatar 
+                          src={assignee?.avatar} 
+                          alt={assignee?.name}
+                          sx={{ width: 24, height: 24 }}
+                        >
+                          {((assignee?.name || assignee?.email || "?") || "?").charAt(0).toUpperCase()}
+                        </Avatar>
+                      </Tooltip>
+                    ))}
+                  </AvatarGroup>
+                ) : (
+                  <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.75rem" }}>
+                    Chưa có người thực hiện
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+            
+            <Box sx={{ 
+              borderBottom: 1, 
+              borderColor: 'divider', 
+              mb: 2,
+              "& .MuiTab-root": {
+                textTransform: "none",
+                fontWeight: 500,
+                fontSize: "0.85rem",
+                minHeight: "40px",
+                "&.Mui-selected": {
+                  fontWeight: 600
+                }
+              }
+            }}>
+              <Tabs 
+                value={expandedTab}
+                onChange={handleTabChange}
+                variant="fullWidth"
+                textColor="primary"
+                indicatorColor="primary"
+                aria-label="task details tabs"
+              >
+                <Tab label="Bình luận" />
+                <Tab label="Tệp đính kèm" />
+                <Tab label="Lịch sử" />
+              </Tabs>
+            </Box>
+            
+            {/* Tab content */}
+            <Box>
+              {/* Comments tab */}
+              {expandedTab === 0 && (
+                <Box>
+                  {loadingComments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : comments.length > 0 ? (
+                    <List disablePadding>
+                      {comments.map((comment) => (
+                        <ListItem
+                          key={comment._id}
+                          alignItems="flex-start"
+                          sx={{ px: 0, py: 1 }}
+                        >
+                          <ListItemAvatar sx={{ minWidth: 40 }}>
+                            <Avatar
+                              src={comment.user?.avatar}
+                              sx={{ width: 30, height: 30 }}
+                            >
+                              {comment.user?.name?.charAt(0)}
+                            </Avatar>
+                          </ListItemAvatar>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle2" component="span">
+                                {comment.user?.name || "Người dùng"}
+                              </Typography>
+                            }
+                            secondary={
+                              <React.Fragment>
+                                <Typography
+                                  variant="body2"
+                                  component="span"
+                                  sx={{ display: 'block', whiteSpace: 'pre-wrap' }}
+                                >
+                                  {comment.content}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  component="span"
+                                  color="text.secondary"
+                                >
+                                  {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                                </Typography>
+                              </React.Fragment>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có bình luận nào
+                    </Typography>
+                  )}
+                  
+                  {/* Add comment input */}
+                  <Box display="flex" mt={2}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="Thêm bình luận..."
+                      variant="outlined"
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton 
+                              edge="end" 
+                              disabled={!newComment.trim()}
+                              onClick={handleSendComment}
+                              size="small"
+                            >
+                              <SendIcon fontSize="small" />
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Box>
+                </Box>
+              )}
+              
+              {/* Attachments tab */}
+              {expandedTab === 1 && (
+                <Box>
+                  {loadingAttachments ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : attachments.length > 0 ? (
+                    <List disablePadding>
+                      {attachments.map((attachment) => (
+                        <ListItem
+                          key={attachment._id || attachment.id}
+                          alignItems="flex-start"
+                          sx={{ px: 0, py: 1 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 40 }}>
+                            <InsertDriveFileIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle2" component="span">
+                                <Link 
+                                  href={attachment.url} 
+                                  target="_blank" 
+                                  rel="noopener"
+                                  underline="hover"
+                                >
+                                  {attachment.name}
+                                </Link>
+                              </Typography>
+                            }
+                            secondary={
+                              <Typography variant="caption" color="text.secondary">
+                                {format(new Date(attachment.uploadedAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                              </Typography>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có tệp đính kèm nào
+                    </Typography>
+                  )}
+                  
+                  {/* Upload file button */}
+                  <Box display="flex" justifyContent="center" mt={2}>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      style={{ display: "none" }}
+                      onChange={handleFileUpload}
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={<CloudUploadIcon />}
+                      size="small"
+                      onClick={() => fileInputRef.current.click()}
+                    >
+                      Tải lên tệp đính kèm
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+              
+              {/* History tab */}
+              {expandedTab === 2 && (
+                <Box>
+                  {loadingHistory ? (
+                    <Box display="flex" justifyContent="center" my={2}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : history.length > 0 ? (
+                    <List disablePadding>
+                      {history.map((entry, index) => (
+                        <ListItem
+                          key={entry._id || `history-${index}`}
+                          alignItems="flex-start"
+                          sx={{ px: 0, py: 1 }}
+                        >
+                          <ListItemIcon sx={{ minWidth: 40 }}>
+                            <HistoryIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Typography variant="subtitle2" component="span">
+                                {entry.user?.name || "Người dùng"} {entry.action}
+                              </Typography>
+                            }
+                            secondary={
+                              <Typography variant="caption" color="text.secondary">
+                                {format(new Date(entry.timestamp || entry.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
+                              </Typography>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      Chưa có lịch sử thay đổi nào
+                    </Typography>
+                  )}
+                </Box>
               )}
             </Box>
-          </Box>
-          
-          <Box sx={{ 
-            borderBottom: 1, 
-            borderColor: 'divider', 
-            mb: 2,
-            "& .MuiTab-root": {
-              textTransform: "none",
-              fontWeight: 500,
-              fontSize: "0.85rem",
-              minHeight: "40px",
-              "&.Mui-selected": {
-                fontWeight: 600
-              }
-            }
-          }}>
-            <Tabs 
-              value={expandedTab}
-              onChange={handleTabChange}
-              variant="fullWidth"
-              textColor="primary"
-              indicatorColor="primary"
-              aria-label="task details tabs"
-            >
-              <Tab label="Bình luận" />
-              <Tab label="Tệp đính kèm" />
-              <Tab label="Lịch sử" />
-            </Tabs>
-          </Box>
-          
-          {/* Tab content */}
-          <Box>
-            {/* Comments tab */}
-            {expandedTab === 0 && (
-              <Box>
-                {loadingComments ? (
-                  <Box display="flex" justifyContent="center" my={2}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : comments.length > 0 ? (
-                  <List disablePadding>
-                    {comments.map((comment) => (
-                      <ListItem
-                        key={comment._id}
-                        alignItems="flex-start"
-                        sx={{ px: 0, py: 1 }}
-                      >
-                        <ListItemAvatar sx={{ minWidth: 40 }}>
-                          <Avatar
-                            src={comment.user?.avatar}
-                            sx={{ width: 30, height: 30 }}
-                          >
-                            {comment.user?.name?.charAt(0)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography variant="subtitle2" component="span">
-                              {comment.user?.name || "Người dùng"}
-                            </Typography>
-                          }
-                          secondary={
-                            <React.Fragment>
-                              <Typography
-                                variant="body2"
-                                component="span"
-                                sx={{ display: 'block', whiteSpace: 'pre-wrap' }}
-                              >
-                                {comment.content}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                component="span"
-                                color="text.secondary"
-                              >
-                                {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </Typography>
-                            </React.Fragment>
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Chưa có bình luận nào
-                  </Typography>
-                )}
-                
-                {/* Add comment input */}
-                <Box display="flex" mt={2}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    placeholder="Thêm bình luận..."
-                    variant="outlined"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton 
-                            edge="end" 
-                            disabled={!newComment.trim()}
-                            onClick={handleSendComment}
-                            size="small"
-                          >
-                            <SendIcon fontSize="small" />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Box>
-              </Box>
-            )}
-            
-            {/* Attachments tab */}
-            {expandedTab === 1 && (
-              <Box>
-                {loadingAttachments ? (
-                  <Box display="flex" justifyContent="center" my={2}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : attachments.length > 0 ? (
-                  <List disablePadding>
-                    {attachments.map((attachment) => (
-                      <ListItem
-                        key={attachment._id || attachment.id}
-                        alignItems="flex-start"
-                        sx={{ px: 0, py: 1 }}
-                      >
-                        <ListItemIcon sx={{ minWidth: 40 }}>
-                          <InsertDriveFileIcon />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={
-                            <Typography variant="subtitle2" component="span">
-                              <Link 
-                                href={attachment.url} 
-                                target="_blank" 
-                                rel="noopener"
-                                underline="hover"
-                              >
-                                {attachment.name}
-                              </Link>
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography variant="caption" color="text.secondary">
-                              {format(new Date(attachment.uploadedAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Chưa có tệp đính kèm nào
-                  </Typography>
-                )}
-                
-                {/* Upload file button */}
-                <Box display="flex" justifyContent="center" mt={2}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    style={{ display: "none" }}
-                    onChange={handleFileUpload}
-                  />
-                  <Button
-                    variant="outlined"
-                    startIcon={<CloudUploadIcon />}
-                    size="small"
-                    onClick={() => fileInputRef.current.click()}
-                  >
-                    Tải lên tệp đính kèm
-                  </Button>
-                </Box>
-              </Box>
-            )}
-            
-            {/* History tab */}
-            {expandedTab === 2 && (
-              <Box>
-                {loadingHistory ? (
-                  <Box display="flex" justifyContent="center" my={2}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : history.length > 0 ? (
-                  <List disablePadding>
-                    {history.map((entry, index) => (
-                      <ListItem
-                        key={entry._id || `history-${index}`}
-                        alignItems="flex-start"
-                        sx={{ px: 0, py: 1 }}
-                      >
-                        <ListItemIcon sx={{ minWidth: 40 }}>
-                          <HistoryIcon fontSize="small" />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={
-                            <Typography variant="subtitle2" component="span">
-                              {entry.user?.name || "Người dùng"} {entry.action}
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography variant="caption" color="text.secondary">
-                              {format(new Date(entry.timestamp || entry.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                ) : (
-                  <Typography variant="body2" color="text.secondary" align="center">
-                    Chưa có lịch sử thay đổi nào
-                  </Typography>
-                )}
-              </Box>
-            )}
-          </Box>
-        </CardContent>
-      </Collapse>
+          </CardContent>
+        </Collapse>
+      </CardContent>
     </TaskCardContainer>
   );
 };

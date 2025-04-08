@@ -1,0 +1,4 @@
+Quy trình làm việc tùy chỉnh (Workflows)
+Tình trạng: Hệ thống có 4 trạng thái cố định cho task, không thấy hỗ trợ quy trình tùy chỉnh.
+Công dụng: Cho phép định nghĩa các quy trình làm việc riêng cho từng loại dự án.
+Lợi ích: Đáp ứng nhu cầu đặc thù của các nhóm và phương pháp làm việc khác nhau.

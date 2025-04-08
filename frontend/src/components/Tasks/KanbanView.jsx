@@ -157,7 +157,7 @@ const KanbanView = ({
       sensors={sensors}
       collisionDetection={(args) => {
         // Danh sách các ID cột kanban hợp lệ
-        const validColumnIds = ['todo', 'inProgress', 'review', 'done'];
+        const validColumnIds = ['todo', 'inProgress', 'done'];
         
         // Debug để xem chi tiết tất cả containers có sẵn
         console.log("[DEBUG] Active element:", args.active?.id);
@@ -233,13 +233,15 @@ const KanbanView = ({
         interval: 5
       }}
     >
-      <Grid container spacing={2} sx={{ 
+      <Grid container spacing={3} sx={{ 
         zIndex: 0, 
         minHeight: "calc(100vh - 200px)",
         alignItems: "flex-start", // Đảm bảo các cột bắt đầu từ trên cùng
+        justifyContent: "center", // Căn giữa các cột
+        px: 2, // Thêm padding ngang để cân đối
       }} className={isDragActive ? 'dragging-active' : ''}>
         {/* COLUMN: TODO */}
-        <Grid item xs={12} md={3} aria-label="Todo column">
+        <Grid item xs={12} md={4} aria-label="Todo column">
           <DroppableKanbanColumn
             id="todo"
             title="Chưa bắt đầu"
@@ -257,7 +259,7 @@ const KanbanView = ({
         </Grid>
 
         {/* COLUMN: IN PROGRESS */}
-        <Grid item xs={12} md={3} aria-label="In Progress column">
+        <Grid item xs={12} md={4} aria-label="In Progress column">
           <DroppableKanbanColumn
             id="inProgress"
             title="Đang thực hiện"
@@ -274,26 +276,8 @@ const KanbanView = ({
           </DroppableKanbanColumn>
         </Grid>
 
-        {/* COLUMN: REVIEW */}
-        <Grid item xs={12} md={3} aria-label="Review column">
-          <DroppableKanbanColumn
-            id="review"
-            title="Đang kiểm tra"
-            status="review"
-            count={tasks.review.length}
-            color="#9c27b0"
-            onAddTask={() => handleAddTask('review')}
-          >
-            <SortableContext items={tasks.review.map(task => task._id)} strategy={verticalListSortingStrategy}>
-              <Box className="task-list" sx={{ minHeight: 100 }}>
-                {renderTaskCards(tasks.review, "review")}
-              </Box>
-            </SortableContext>
-          </DroppableKanbanColumn>
-        </Grid>
-
         {/* COLUMN: DONE */}
-        <Grid item xs={12} md={3} aria-label="Done column">
+        <Grid item xs={12} md={4} aria-label="Done column">
           <DroppableKanbanColumn
             id="done"
             title="Hoàn thành"

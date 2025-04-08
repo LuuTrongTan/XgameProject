@@ -45,6 +45,31 @@ const DroppableKanbanColumn = ({
     }
   }, [isOver, status]);
 
+  // Thêm handler để ngăn chặn wheel event
+  const columnRef = React.useRef(null);
+  
+  React.useEffect(() => {
+    const column = columnRef.current;
+    
+    // Hàm xử lý sự kiện wheel
+    const handleWheel = (event) => {
+      // Ngăn chặn cuộn bằng wheel chuột
+      event.preventDefault();
+    };
+    
+    // Thêm event listener
+    if (column) {
+      column.addEventListener('wheel', handleWheel, { passive: false });
+    }
+    
+    // Cleanup khi component unmount
+    return () => {
+      if (column) {
+        column.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, []);
+  
   // Thiết lập các style dựa trên status
   let backgroundColor = "rgba(25, 118, 210, 0.1)";
   let textColor = "rgb(25, 118, 210)";
@@ -70,14 +95,6 @@ const DroppableKanbanColumn = ({
       dashBorderColor = "rgba(255, 152, 0, 0.6)";
       hoverBgColor = "rgba(255, 152, 0, 0.05)";
       break;
-    case 'review':
-      backgroundColor = "rgba(156, 39, 176, 0.1)";
-      textColor = "rgb(156, 39, 176)";
-      borderColor = "rgba(156, 39, 176, 0.2)";
-      hoverBorderColor = "rgba(156, 39, 176, 0.4)";
-      dashBorderColor = "rgba(156, 39, 176, 0.6)";
-      hoverBgColor = "rgba(156, 39, 176, 0.05)";
-      break;
     case 'done':
       backgroundColor = "rgba(46, 125, 50, 0.1)";
       textColor = "rgb(46, 125, 50)";
@@ -92,7 +109,11 @@ const DroppableKanbanColumn = ({
 
   return (
     <Card
-      ref={setNodeRef}
+      ref={(node) => {
+        // Kết hợp cả hai refs: droppable và wheel handler
+        setNodeRef(node);
+        columnRef.current = node;
+      }}
       id={status}
       data-column-status={status}
       data-status={status}
@@ -103,6 +124,7 @@ const DroppableKanbanColumn = ({
       className={`kanban-column ${status}-column ${isOver ? 'drag-over' : ''}`}
       sx={{
         minHeight: "250px",
+        maxHeight: "calc(100vh - 200px)", // Giới hạn chiều cao để có thanh cuộn
         height: "auto",
         backgroundColor: isOver ? hoverBgColor : "#f8f9fc",
         borderRadius: "20px",
@@ -116,7 +138,18 @@ const DroppableKanbanColumn = ({
           boxShadow: "0 12px 32px rgba(0,0,0,0.15)",
           border: `1px solid ${hoverBorderColor}`,
         },
-        overflowY: "visible",
+        // Cho phép cuộn nhưng ẩn thanh cuộn
+        overflowY: "scroll",
+        // Ẩn thanh cuộn
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
+        "&::-webkit-scrollbar": {
+          width: 0,
+          height: 0,
+          display: "none",
+        },
+        // Tắt touch action để tránh cuộn trên thiết bị cảm ứng
+        touchAction: "none",
       }}
       onClick={() => {
         console.log(`[CLICK] Column ${status} clicked - id: ${status}`);
@@ -125,6 +158,7 @@ const DroppableKanbanColumn = ({
       <CardContent 
         sx={{ 
           p: 3,
+          pr: 0.5, // Giảm thêm padding bên phải để thanh cuộn gần hơn nữa
           height: "100%",
           display: "flex",
           flexDirection: "column"
@@ -134,8 +168,8 @@ const DroppableKanbanColumn = ({
           <Box sx={{ display: "flex", alignItems: "center" }}>
             <Box
               sx={{
-                width: 40,
-                height: 40,
+                width: 45,
+                height: 45,
                 borderRadius: "12px",
                 backgroundColor: backgroundColor,
                 display: "flex",
@@ -160,7 +194,7 @@ const DroppableKanbanColumn = ({
               sx={{
                 fontWeight: 600,
                 color: "#1a1a1a",
-                fontSize: "1.1rem",
+                fontSize: "1.2rem",
               }}
             >
               {title}
@@ -186,7 +220,8 @@ const DroppableKanbanColumn = ({
             flexGrow: 1,
             display: "flex",
             flexDirection: "column",
-            paddingBottom: "80px",
+            paddingBottom: "80px", // Giữ lại vùng đệm để dễ thả task vào cuối
+            paddingRight: "6px", // Giảm padding để thanh cuộn gần hơn nữa
           }}
           data-status={status}
         >

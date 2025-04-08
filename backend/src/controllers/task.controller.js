@@ -35,7 +35,7 @@ const validateTaskData = (data) => {
 
   if (
     data.status &&
-    !["todo", "inProgress", "review", "done"].includes(data.status)
+    !["todo", "inProgress", "done"].includes(data.status)
   ) {
     errors.push("Trạng thái không hợp lệ");
   }
@@ -544,7 +544,7 @@ export const updateStatus = async (req, res) => {
     }
     
     const { status, position } = req.body;
-    if (!status || !["todo", "inProgress", "review", "done"].includes(status)) {
+    if (!status || !["todo", "inProgress", "done"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Trạng thái không hợp lệ",
@@ -633,17 +633,35 @@ export const updateStatus = async (req, res) => {
           { $inc: { position: -1 } }
         );
         
-        // Tăng position cho tất cả task có position >= position trong cột mới
-        await Task.updateMany(
-          { status: status, position: { $gte: position } },
-          { $inc: { position: 1 } }
-        );
+        // Xử lý trong cột mới dựa vào position
+        if (position === 0) {
+          // Đặt task ở đầu cột, tăng position của tất cả task trong cột mới lên 1
+          console.log(`Placing task at position 0 (beginning of column), incrementing all tasks in ${status} column`);
+          await Task.updateMany(
+            { status },
+            { $inc: { position: 1 } }
+          );
+        } else {
+          // Tăng position cho tất cả task có position >= position trong cột mới
+          console.log(`Placing task at position ${position}, incrementing positions >= ${position} in ${status} column`);
+          await Task.updateMany(
+            { status, position: { $gte: position } },
+            { $inc: { position: 1 } }
+          );
+        }
       } 
       // Nếu chỉ thay đổi position trong cùng cột
       else if (oldPosition !== position) {
         console.log(`Position changed in the same column from ${oldPosition} to ${position}`);
         
-        if (oldPosition < position) {
+        if (position === 0) {
+          // Đặt task ở đầu cột, tăng position của tất cả task khác (trừ task hiện tại)
+          console.log(`Moving task to position 0 (beginning of column)`);
+          await Task.updateMany(
+            { status, _id: { $ne: taskId } },
+            { $inc: { position: 1 } }
+          );
+        } else if (oldPosition < position) {
           // Di chuyển xuống: Giảm position cho các task nằm giữa oldPosition và position
           await Task.updateMany(
             { status: status, position: { $gt: oldPosition, $lte: position } },

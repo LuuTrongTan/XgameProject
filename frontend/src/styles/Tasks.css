@@ -22,9 +22,31 @@
     transition: all 0.3s ease;
     height: auto !important;
     min-height: 250px !important;
+    max-height: calc(100vh - 200px) !important; /* Giới hạn chiều cao để có thanh cuộn */
     background-color: #f8f9fc;
     border-radius: 20px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    /* Cho phép cuộn nhưng ẩn thanh cuộn */
+    overflow-y: scroll !important;
+    /* Ẩn thanh cuộn nhưng vẫn cuộn được */
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE and Edge */
+    /* Ngăn chặn scroll khi sử dụng các hành động mặc định */
+    overscroll-behavior: none;
+    /* Tắt hành vi touch để tránh cuộn trên thiết bị cảm ứng */
+    touch-action: none;
+    /* Đặt thanh cuộn ở trên nội dung trong cột */
+    z-index: 5;
+    /* Thêm padding tối ưu cho các cột rộng hơn */
+    padding: 0 !important; 
+  }
+  
+  /* Ẩn thanh cuộn trên Chrome, Edge và Safari */
+  .kanban-column::-webkit-scrollbar {
+    width: 0 !important; /* Đặt chiều rộng về 0 */
+    height: 0 !important; /* Đặt chiều cao về 0 */
+    display: none !important; /* Ẩn hoàn toàn */
+    background-color: transparent !important;
   }
   
   .kanban-column-content {
@@ -43,12 +65,15 @@
   
   .task-card {
     margin-bottom: 12px;
+    margin-right: 1px; /* Giảm margin để gần hơn với thanh cuộn */
     cursor: grab;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     transition: all 0.2s ease;
     touch-action: none; /* Ngăn event cảm ứng mặc định */
+    position: relative; /* Đảm bảo vị trí tuyệt đối */
+    z-index: 1; /* Đặt z-index thấp hơn thanh cuộn */
   }
   
   .task-card:hover {
@@ -143,11 +168,6 @@
     background-color: rgba(255, 152, 0, 0.05) !important;
   }
   
-  .kanban-column-review:hover {
-    border-color: #9c27b0 !important;
-    background-color: rgba(156, 39, 176, 0.05) !important;
-  }
-  
   .kanban-column-done:hover {
     border-color: #2e7d32 !important;
     background-color: rgba(46, 125, 50, 0.05) !important;
@@ -169,15 +189,26 @@
     cursor: grab !important;
   }
   
-  /* Đảm bảo khoảng cách giữa các task card */
-  .task-card {
-    margin-bottom: 12px;
-    transition: transform 0.2s ease;
-  }
-  
   /* Đảm bảo task list có thể mở rộng */
   .task-list {
     display: flex;
     flex-direction: column;
-    padding-bottom: 80px; /* Tạo khoảng trống ở cuối để dễ thả task */
+    padding-bottom: 80px;
+    margin-right: 0; /* Đảm bảo không có margin phía bên phải */
+  }
+  
+  /* Media query cho màn hình lớn */
+  @media (min-width: 1440px) {
+    .kanban-column {
+      min-height: 300px !important;
+      max-height: calc(100vh - 160px) !important;
+    }
+    
+    .task-card {
+      margin-bottom: 16px;
+    }
+    
+    .task-card-title {
+      font-size: 1rem;
+    }
   } 

@@ -268,21 +268,14 @@ export const updateTaskStatus = async ({ taskId, status, position, projectId, sp
     const data = { status };
     
     // Thêm position nếu được cung cấp và không phải -1
-    // Khi position là -1, không gửi position để backend tự xử lý (thêm vào cuối)
     if (position !== undefined && position !== -1) {
       data.position = position;
     }
     
-    // Sử dụng API endpoint chính xác để cập nhật trạng thái
-    console.log("Using dedicated status update endpoint");
-    
     // Xác định đường dẫn API
-    let apiPath = `/tasks/${taskIdStr}/status`;
-    if (projectId && sprintId) {
-      apiPath = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`;
-    }
+    let apiPath = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`;
     
-    // Gọi API để cập nhật status, sử dụng PUT method như định nghĩa ở backend
+    // Gọi API để cập nhật status, sử dụng PUT method
     const response = await API.put(apiPath, data);
     
     console.log('Status update response:', response.data);
@@ -655,86 +648,42 @@ export const deleteTaskComment = async (projectId, sprintId, taskId, commentId) 
 };
 
 // Lấy lịch sử thay đổi
-export const getTaskAuditLogs = async (projectId, sprintId, taskId) => {
+export const getTaskHistory = async (projectId, sprintId, taskId) => {
   try {
     if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters for getTaskAuditLogs:", { projectId, sprintId, taskId });
+      console.error("Missing required parameters for getTaskHistory:", { projectId, sprintId, taskId });
       return { 
         success: false, 
         message: "Thiếu thông tin cần thiết để lấy lịch sử thay đổi" 
       };
     }
 
-    console.log(`Fetching history for task: ${taskId} in project: ${projectId}, sprint: ${sprintId}`);
-    
-    // Kiểm tra backend xem route này đã được triển khai chưa
-    console.log("Testing history API endpoint");
-    const url = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`;
-    
-    const response = await API.get(url);
-    console.log("History API raw response:", response);
-    
-    // Kiểm tra và chuẩn hóa dữ liệu
-    if (response.data) {
-      // Nếu có dữ liệu nhưng không có thuộc tính success
-      if (response.data.success === undefined) {
-        console.log("Converting history data to standard format");
-        return {
-          success: true,
-          message: "Dữ liệu lịch sử nhận được",
-          data: Array.isArray(response.data) ? response.data : [response.data]
-        };
-      } 
-      
-      // Nếu dữ liệu đã ở định dạng standard (có success)
-  return response.data;
-    }
-    
-    // Trường hợp response rỗng hoặc không hợp lệ
-    console.warn("Empty or invalid history response", response);
-    return {
-      success: true,
-      message: "Không có lịch sử thay đổi",
-      data: []
-    };
+    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`);
+    return response.data;
   } catch (error) {
     console.error("[API Error] GET history:", error);
-    
-    // Log thêm thông tin chi tiết về lỗi
-    if (error.response) {
-      console.error("Error details:", {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    }
-    
-    // Nếu API trả về 404 hoặc 501 (Not Implemented), trả về mảng rỗng thay vì báo lỗi
-    if (error.response && (error.response.status === 404 || error.response.status === 501)) {
-      return {
-        success: true,
-        message: error.response.status === 501 ? 
-                "Tính năng lịch sử thay đổi chưa được triển khai" : 
-                "Không có lịch sử thay đổi",
-        data: []
-      };
-    }
-    
-    // Trả về thông báo lỗi cụ thể hơn
-    return { 
-      success: false, 
-      message: error.response?.data?.message || "Không thể lấy lịch sử thay đổi. Vui lòng thử lại sau.",
+    return {
+      success: false,
+      message: error.response?.data?.message || "Không thể lấy lịch sử thay đổi",
       error: error.message,
-      isNetworkError: !error.response,
-      status: error.response?.status
+      isNetworkError: !error.response
     };
   }
 };
 
 // Đồng bộ với lịch
 export const syncWithCalendar = async (projectId, sprintId, taskId, calendarType) => {
-  const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/sync-calendar`, { calendarType });
-  return response.data;
+  try {
+    const response = await API.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/sync-calendar`, { calendarType });
+    return response.data;
+  } catch (error) {
+    console.error("Error syncing with calendar:", error);
+    return {
+      success: false,
+      message: error.response?.data?.message || "Không thể đồng bộ với lịch",
+      error: error
+    };
+  }
 };
 
 // Lấy danh sách công việc chưa phân công

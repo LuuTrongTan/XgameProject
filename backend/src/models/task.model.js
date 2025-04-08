@@ -28,7 +28,7 @@ const TaskSchema = new mongoose.Schema(
     ],
     status: {
       type: String,
-      enum: ["todo", "inProgress", "review", "done"],
+      enum: ["todo", "inProgress", "done"],
       default: "todo",
     },
     priority: {
@@ -188,9 +188,6 @@ TaskSchema.pre("save", async function (next) {
           break;
         case "inProgress":
           this.progress = 50;
-          break;
-        case "review":
-          this.progress = 75;
           break;
         case "done":
           this.progress = 100;

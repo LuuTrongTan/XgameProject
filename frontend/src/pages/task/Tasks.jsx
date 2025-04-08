@@ -55,7 +55,6 @@ const Tasks = () => {
   const [tasks, setTasks] = useState({
     todo: [],
     inProgress: [],
-    review: [],
     done: [],
   });
   const [loading, setLoading] = useState(true);
@@ -233,7 +232,6 @@ const Tasks = () => {
         const groupedTasks = {
           todo: [],
           inProgress: [],
-          review: [],
           done: [],
         };
         
@@ -381,7 +379,6 @@ const Tasks = () => {
         setTasks((prevTasks) => ({
           todo: prevTasks.todo.filter((task) => task._id !== taskId),
           inProgress: prevTasks.inProgress.filter((task) => task._id !== taskId),
-          review: prevTasks.review.filter((task) => task._id !== taskId),
           done: prevTasks.done.filter((task) => task._id !== taskId),
         }));
         
@@ -508,73 +505,108 @@ const Tasks = () => {
 
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         {/* Chế độ xem */}
-        <ToggleButtonGroup
-          value={viewMode}
-          exclusive
-          onChange={handleViewModeChange}
-          aria-label="Chế độ xem"
-          sx={{
-            backgroundColor: '#f8f9fa',
-            padding: '4px',
-            borderRadius: '12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-            border: '1px solid rgba(0,0,0,0.08)',
-            '& .MuiToggleButtonGroup-grouped': {
-              margin: '4px',
-              borderRadius: '10px !important',
-              border: 'none',
-              '&.Mui-selected': {
-                backgroundColor: '#ffffff',
-                color: '#1976d2',
-                boxShadow: '0 2px 6px rgba(25, 118, 210, 0.15)',
-                fontWeight: 600,
-                '&:hover': {
+        <Box display="flex" alignItems="center">
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={handleViewModeChange}
+            aria-label="Chế độ xem"
+            sx={{
+              backgroundColor: '#f8f9fa',
+              padding: '4px',
+              borderRadius: '12px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              '& .MuiToggleButtonGroup-grouped': {
+                margin: '4px',
+                borderRadius: '10px !important',
+                border: 'none',
+                '&.Mui-selected': {
                   backgroundColor: '#ffffff',
                   color: '#1976d2',
+                  boxShadow: '0 2px 6px rgba(25, 118, 210, 0.15)',
+                  fontWeight: 600,
+                  '&:hover': {
+                    backgroundColor: '#ffffff',
+                    color: '#1976d2',
+                  },
                 },
+                '&:hover': {
+                  backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                },
+                transition: 'all 0.2s ease-in-out',
               },
-              '&:hover': {
-                backgroundColor: 'rgba(25, 118, 210, 0.08)',
-              },
-              transition: 'all 0.2s ease-in-out',
-            },
-          }}
-        >
-          <ToggleButton 
-            key="kanban"
-            value="kanban" 
-            aria-label="kanban"
-            sx={{
-              minWidth: '120px',
-              py: 1,
-              fontWeight: viewMode === 'kanban' ? 600 : 400,
-              textTransform: 'none',
-              fontSize: '0.95rem',
-              '&.Mui-selected svg': {
-                color: '#1976d2',
-              }
             }}
           >
-            <GridViewIcon sx={{ mr: 1, fontSize: '1.2rem' }} /> Kanban
-          </ToggleButton>
-          <ToggleButton 
-            key="list"
-            value="list" 
-            aria-label="list"
-            sx={{
-              minWidth: '120px',
-              py: 1,
-              fontWeight: viewMode === 'list' ? 600 : 400,
-              textTransform: 'none',
-              fontSize: '0.95rem',
-              '&.Mui-selected svg': {
-                color: '#1976d2',
-              }
-            }}
-          >
-            <ViewListIcon sx={{ mr: 1, fontSize: '1.2rem' }} /> Danh sách
-          </ToggleButton>
-        </ToggleButtonGroup>
+            <ToggleButton 
+              key="kanban"
+              value="kanban" 
+              aria-label="kanban"
+              sx={{
+                minWidth: '120px',
+                py: 1,
+                fontWeight: viewMode === 'kanban' ? 600 : 400,
+                textTransform: 'none',
+                fontSize: '0.95rem',
+                '&.Mui-selected svg': {
+                  color: '#1976d2',
+                }
+              }}
+            >
+              <GridViewIcon sx={{ mr: 1, fontSize: '1.2rem' }} /> Kanban
+            </ToggleButton>
+            <ToggleButton 
+              key="list"
+              value="list" 
+              aria-label="list"
+              sx={{
+                minWidth: '120px',
+                py: 1,
+                fontWeight: viewMode === 'list' ? 600 : 400,
+                textTransform: 'none',
+                fontSize: '0.95rem',
+                '&.Mui-selected svg': {
+                  color: '#1976d2',
+                }
+              }}
+            >
+              <ViewListIcon sx={{ mr: 1, fontSize: '1.2rem' }} /> Danh sách
+            </ToggleButton>
+          </ToggleButtonGroup>
+          
+          {/* Chú thích về thanh cuộn */}
+          {viewMode === "kanban" && (
+            <Typography 
+              variant="caption" 
+              color="error.main"
+              sx={{ 
+                ml: 2,
+                display: 'flex',
+                alignItems: 'center',
+                backgroundColor: 'rgba(211, 47, 47, 0.08)',
+                px: 1.5,
+                py: 0.75,
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                border: '1px dashed rgba(211, 47, 47, 0.5)',
+              }}
+            >
+              <Box 
+                component="span" 
+                sx={{ 
+                  display: 'inline-block',
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  backgroundColor: 'error.main',
+                  mr: 1
+                }} 
+              />
+              Thanh cuộn cột chỉ có thể kéo, không thể cuộn
+            </Typography>
+          )}
+        </Box>
 
         {/* Bộ lọc */}
         <Box display="flex" gap={2}>
