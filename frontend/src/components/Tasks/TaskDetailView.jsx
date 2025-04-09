@@ -23,6 +23,7 @@ import {
   AccessTime as AccessTimeIcon,
   Label as LabelIcon,
   Add as AddIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -325,7 +326,7 @@ const TaskDetailView = ({
                         </Box>
                       </Box>
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid item xs={12} sm={6}>
                       <Box display="flex" alignItems="center" gap={1.5}>
                         <AccessTimeIcon fontSize="small" sx={{ color: 'info.light' }} />
                         <Box>
@@ -338,6 +339,51 @@ const TaskDetailView = ({
                         </Box>
                       </Box>
                     </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Box display="flex" alignItems="center" gap={1.5}>
+                        <AccessTimeIcon fontSize="small" sx={{ color: 'success.light' }} />
+                        <Box>
+                          <Typography variant="body2" color="text.secondary" mb={0.5}>
+                            Thời gian đã làm
+                          </Typography>
+                          <Typography variant="body2" fontWeight={500} color="text.primary" sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center' 
+                          }}>
+                            {task.actualHours || 0} giờ
+                            {task.estimatedHours > 0 && (
+                              <Chip 
+                                size="small" 
+                                label={`${Math.round((task.actualHours || 0) / task.estimatedHours * 100)}%`}
+                                sx={{ 
+                                  ml: 1, 
+                                  height: 20, 
+                                  fontSize: '0.7rem',
+                                  bgcolor: task.actualHours > task.estimatedHours ? 'error.light' : 'success.light',
+                                  color: 'white',
+                                  fontWeight: 'bold'
+                                }} 
+                              />
+                            )}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Grid>
+                    {task.completedAt && (
+                      <Grid item xs={12}>
+                        <Box display="flex" alignItems="center" gap={1.5} mt={1}>
+                          <CheckCircleIcon fontSize="small" sx={{ color: 'success.main' }} />
+                          <Box>
+                            <Typography variant="body2" color="text.secondary" mb={0.5}>
+                              Hoàn thành vào
+                            </Typography>
+                            <Typography variant="body2" fontWeight={500} color="text.primary">
+                              <DateTimeDisplay date={task.completedAt} />
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    )}
                   </Grid>
                 </Box>
 

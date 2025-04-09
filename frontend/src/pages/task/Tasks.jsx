@@ -88,6 +88,140 @@ const Tasks = () => {
   const [taskHistory, setTaskHistory] = useState([]);
   const [commentLoading, setCommentLoading] = useState(false);
   
+  // Fetch tasks
+  const fetchTasks = useCallback(async () => {
+    if (!projectId || !sprintId) {
+      console.error("Missing projectId or sprintId");
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      console.log(`Fetching tasks for project ${projectId} and sprint ${sprintId}`);
+      const tasksData = await getSprintTasks(projectId, sprintId);
+      
+      if (tasksData.success) {
+        // Group tasks by status
+        const tasksByStatus = {
+          todo: [],
+          inProgress: [],
+          review: [], 
+          done: [],
+        };
+        
+        tasksData.data.forEach((task) => {
+          const status = task.status || "todo";
+          if (tasksByStatus[status]) {
+            tasksByStatus[status].push(task);
+          } else {
+            tasksByStatus.todo.push({ ...task, status: "todo" });
+          }
+        });
+        
+        // Sắp xếp tasks theo position
+        Object.keys(tasksByStatus).forEach(status => {
+          tasksByStatus[status].sort((a, b) => (a.position || 0) - (b.position || 0));
+        });
+        
+        setTasks(tasksByStatus);
+      } else {
+        setError(tasksData.message || "Không thể tải công việc");
+      }
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      setError("Lỗi khi tải danh sách công việc");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, sprintId]);
+
+  // Hàm helper để tiếp tục cập nhật trạng thái
+  const continueUpdateStatus = useCallback(async (taskToUpdate, oldStatus, newStatus, position, taskProjectId, taskSprintId) => {
+    try {
+      // Cập nhật UI trước khi gọi API
+      setTasks((prevTasks) => {
+        // Clone object trạng thái hiện tại
+        const newTasks = { ...prevTasks };
+        
+        // Xóa task khỏi trạng thái cũ
+        newTasks[oldStatus] = newTasks[oldStatus].filter(
+          (task) => task._id !== taskToUpdate._id
+        );
+        
+        // Thêm task vào trạng thái mới tại vị trí được chỉ định
+        const updatedTask = { ...taskToUpdate, status: newStatus, position: position };
+        
+        if (typeof position === 'number') {
+          // Chèn vào vị trí cụ thể
+          const targetArray = [...newTasks[newStatus]];
+          targetArray.splice(position, 0, updatedTask);
+          newTasks[newStatus] = targetArray;
+        } else {
+          // Thêm vào cuối nếu không chỉ định vị trí
+          newTasks[newStatus] = [...newTasks[newStatus], updatedTask];
+        }
+        
+        // Sắp xếp lại các task theo vị trí
+        if (newTasks[newStatus].every(task => task.position !== undefined)) {
+          newTasks[newStatus].sort((a, b) => a.position - b.position);
+        }
+        
+        return newTasks;
+      });
+      
+      // Chuẩn bị dữ liệu cần gửi đến API
+      const apiParams = {
+        taskId: taskToUpdate._id,
+        status: newStatus,
+        position: position,
+        projectId: taskProjectId,
+        sprintId: taskSprintId
+      };
+      
+      // Nếu cập nhật cả actualHours (khi chuyển sang done), thêm vào API params
+      if (newStatus === "done" && taskToUpdate.actualHours !== undefined) {
+        // Gọi updateTask API thay vì updateTaskStatus để cập nhật cả actualHours
+        const updateResponse = await updateTask(
+          taskProjectId, 
+          taskSprintId, 
+          taskToUpdate._id, 
+          { 
+            status: newStatus, 
+            actualHours: taskToUpdate.actualHours,
+            // Đảm bảo các trường quan trọng khác vẫn được giữ nguyên
+            title: taskToUpdate.title,
+            description: taskToUpdate.description || "",
+            priority: taskToUpdate.priority || "medium"
+          }
+        );
+        
+        if (!updateResponse.success) {
+          console.error("Failed to update task:", updateResponse.message);
+          enqueueSnackbar("Không thể cập nhật thông tin công việc: " + updateResponse.message, { variant: "error" });
+          fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
+          return;
+        }
+      } else {
+        // Nếu chỉ cập nhật trạng thái, gọi updateTaskStatus API
+        const response = await updateTaskStatus(apiParams);
+        
+        if (!response.success) {
+          // Nếu API thất bại, rollback lại UI
+          console.error("Failed to update task status:", response.message);
+          enqueueSnackbar("Không thể cập nhật trạng thái công việc: " + response.message, { variant: "error" });
+          fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
+          return;
+        }
+      }
+      
+      enqueueSnackbar("Cập nhật trạng thái thành công", { variant: "success" });
+    } catch (error) {
+      console.error("Error in continueUpdateStatus:", error);
+      enqueueSnackbar("Lỗi khi cập nhật công việc", { variant: "error" });
+      fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
+    }
+  }, [updateTask, updateTaskStatus, enqueueSnackbar, fetchTasks]);
+  
   // Custom hook for drag and drop
   const updateTaskStatusHandler = useCallback(async (params) => {
     try {
@@ -142,63 +276,70 @@ const Tasks = () => {
         return;
       }
       
-      // Cập nhật UI trước khi gọi API
-      setTasks((prevTasks) => {
-        // Clone object trạng thái hiện tại
-        const newTasks = { ...prevTasks };
-        
-        // Xóa task khỏi trạng thái cũ
-        newTasks[oldStatus] = newTasks[oldStatus].filter(
-          (task) => task._id !== taskId
-        );
-        
-        // Thêm task vào trạng thái mới tại vị trí được chỉ định
-        const updatedTask = { ...taskToUpdate, status: newStatus, position: position };
-        
-        if (typeof position === 'number') {
-          // Chèn vào vị trí cụ thể
-          const targetArray = [...newTasks[newStatus]];
-          targetArray.splice(position, 0, updatedTask);
-          newTasks[newStatus] = targetArray;
-        } else {
-          // Thêm vào cuối nếu không chỉ định vị trí
-          newTasks[newStatus] = [...newTasks[newStatus], updatedTask];
-        }
-        
-        // Sắp xếp lại các task theo vị trí
-        if (newTasks[newStatus].every(task => task.position !== undefined)) {
-          newTasks[newStatus].sort((a, b) => a.position - b.position);
-        }
-        
-        return newTasks;
-      });
-      
-      // Gọi API để cập nhật trạng thái và vị trí
-      const response = await updateTaskStatus({
-        taskId,
-        status: newStatus,
-        position: position,
-        projectId: taskProjectId,
-        sprintId: taskSprintId  // Đảm bảo đây là string ID
-      });
-      
-      if (!response.success) {
-        // Nếu API thất bại, rollback lại UI
-        console.error("Failed to update task status:", response.message);
-        enqueueSnackbar("Không thể cập nhật trạng thái công việc: " + response.message, { variant: "error" });
-        
-        fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
-      } else {
-        enqueueSnackbar("Cập nhật trạng thái thành công", { variant: "success" });
+      // Kiểm tra xem trạng thái mới có phải là "done" không và trạng thái cũ không phải "done"
+      if (newStatus === "done" && oldStatus !== "done") {
+        // Hiển thị dialog nhập thời gian
+        return new Promise((resolve) => {
+          // Tạo dialog sử dụng DOM API
+          const dialog = document.createElement('dialog');
+          dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); border: none; background: white; min-width: 300px;';
+          
+          dialog.innerHTML = `
+            <h3 style="margin-top: 0; color: #1976d2;">Nhập thời gian đã làm</h3>
+            <p style="color: #666;">Vui lòng nhập thời gian bạn đã dành để hoàn thành công việc này.</p>
+            <div style="margin: 20px 0;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 500;">Thời gian đã làm (giờ):</label>
+              <input type="number" id="actualHours" value="${taskToUpdate.actualHours || 0}" min="0" step="0.5" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+              <button id="skipBtn" style="padding: 8px 16px; background: #f5f5f5; border: none; border-radius: 4px; cursor: pointer;">Bỏ qua</button>
+              <button id="saveBtn" style="padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Lưu thời gian</button>
+            </div>
+          `;
+          
+          document.body.appendChild(dialog);
+          dialog.showModal();
+          
+          // Xử lý sự kiện nút bỏ qua
+          dialog.querySelector('#skipBtn').addEventListener('click', () => {
+            dialog.close();
+            document.body.removeChild(dialog);
+            
+            // Tiếp tục cập nhật trạng thái mà không thay đổi thời gian
+            continueUpdateStatus(taskToUpdate, oldStatus, newStatus, position, taskProjectId, taskSprintId);
+            resolve();
+          });
+          
+          // Xử lý sự kiện nút lưu
+          dialog.querySelector('#saveBtn').addEventListener('click', () => {
+            const actualHours = parseFloat(dialog.querySelector('#actualHours').value);
+            dialog.close();
+            document.body.removeChild(dialog);
+            
+            // Cập nhật cả thời gian và trạng thái
+            continueUpdateStatus(
+              {...taskToUpdate, actualHours}, 
+              oldStatus, 
+              newStatus, 
+              position, 
+              taskProjectId, 
+              taskSprintId
+            );
+            resolve();
+          });
+        });
       }
+      
+      // Nếu không phải chuyển sang trạng thái "done", cập nhật bình thường
+      return continueUpdateStatus(taskToUpdate, oldStatus, newStatus, position, taskProjectId, taskSprintId);
     } catch (error) {
       console.error("Error updating task status:", error);
       enqueueSnackbar("Lỗi khi cập nhật trạng thái công việc", { variant: "error" });
       
       fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
     }
-  }, [projectId, sprintId, tasks, enqueueSnackbar]);
-  
+  }, [projectId, sprintId, tasks, enqueueSnackbar, fetchTasks, continueUpdateStatus]);
+
   const {
     activeId,
     activeContainer,
@@ -235,54 +376,6 @@ const Tasks = () => {
     } catch (error) {
       console.error("Error fetching project data:", error);
       setError("Lỗi khi tải thông tin dự án");
-    }
-  };
-
-  const fetchTasks = async () => {
-    setLoading(true);
-    try {
-      const response = await getSprintTasks(projectId, sprintId);
-      
-      if (response.success) {
-        // Nhóm các công việc theo trạng thái
-        const groupedTasks = {
-          todo: [],
-          inProgress: [],
-          done: [],
-        };
-        
-        response.data.forEach((task) => {
-          if (task.status && groupedTasks[task.status]) {
-            groupedTasks[task.status].push(task);
-          } else {
-            // Mặc định nếu không có trạng thái hoặc trạng thái không hợp lệ
-            groupedTasks.todo.push({ ...task, status: "todo" });
-          }
-        });
-        
-        // Sắp xếp task trong mỗi cột theo position
-        Object.keys(groupedTasks).forEach(status => {
-          // Kiểm tra nếu các task có trường position
-          if (groupedTasks[status].length > 0 && groupedTasks[status][0].position !== undefined) {
-            groupedTasks[status].sort((a, b) => {
-              // Nếu position giống nhau, sắp xếp theo thời gian tạo
-              if (a.position === b.position) {
-                return new Date(b.createdAt) - new Date(a.createdAt);
-              }
-              return a.position - b.position;
-            });
-          }
-        });
-        
-        setTasks(groupedTasks);
-      } else {
-        setError(response.message || "Không thể tải danh sách công việc");
-      }
-    } catch (error) {
-      console.error("Error fetching tasks:", error);
-      setError("Lỗi khi tải danh sách công việc");
-    } finally {
-      setLoading(false);
     }
   };
 
