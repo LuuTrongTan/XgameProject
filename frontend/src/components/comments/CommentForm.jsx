@@ -75,22 +75,9 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
     try {
       console.log('[DEBUG] Comment content before sending:', content);
       
-      if (comment?._id) {
-        await api.put(
-          `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${comment._id}`,
-          {
-            content: content.trim(),
-          }
-        );
-        await ActivityService.logCommentUpdated(content);
-      } else {
-        await api.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`, {
-          content: content.trim(),
-          taskId: taskId
-        });
-        await ActivityService.logCommentCreated(content);
-      }
+      // Không gọi API trực tiếp, chỉ gọi onSubmit callback để component cha xử lý
       onSubmit(content.trim());
+      
       if (comment) {
         setIsEditing(false);
       } else {

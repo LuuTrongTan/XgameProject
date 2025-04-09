@@ -115,29 +115,39 @@ const TaskComments = ({ taskId, projectId, sprintId }) => {
 
   // Fetch comments khi component mount hoặc taskId thay đổi
   useEffect(() => {
-    if (taskId && projectId && sprintId) {
-      fetchComments();
-    }
-  }, [taskId, projectId, sprintId]);
-
-  const fetchComments = async () => {
-    if (!taskId || !projectId || !sprintId) return;
+    let isMounted = true;
     
-    setIsLoading(true);
-    try {
-      const response = await getTaskComments(projectId, sprintId, taskId);
-      if (response && response.data) {
-        setComments(response.data || []);
-      } else {
-        setComments([]);
+    const loadComments = async () => {
+      if (!taskId || !projectId || !sprintId) return;
+      
+      setIsLoading(true);
+      try {
+        const response = await getTaskComments(projectId, sprintId, taskId);
+        if (response && response.data && isMounted) {
+          // Đảm bảo không có comment trùng lặp
+          const uniqueComments = Array.from(
+            new Map(response.data.map(comment => [comment._id, comment])).values()
+          );
+          setComments(uniqueComments);
+        }
+      } catch (error) {
+        console.error("Error fetching comments:", error);
+        if (isMounted) {
+          enqueueSnackbar("Không thể tải bình luận", { variant: "error" });
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-    } catch (error) {
-      console.error("Error fetching comments:", error);
-      enqueueSnackbar("Không thể tải bình luận", { variant: "error" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    loadComments();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [taskId, projectId, sprintId]);
 
   const handleReply = (comment) => {
     setReplyingTo(comment);
@@ -166,10 +176,20 @@ const TaskComments = ({ taskId, projectId, sprintId }) => {
         setNewComment("");
         setReplyingTo(null);
         
-        // Thêm comment mới vào danh sách hiện tại nếu không dùng socket
-        if (!USE_WEBSOCKET && result.data) {
-          setComments(prev => [...prev, result.data]);
-        }
+        // Thêm comment mới vào state và cập nhật lại danh sách
+        setComments(prevComments => {
+          const newComment = result.data;
+          // Kiểm tra xem comment đã tồn tại chưa
+          const exists = prevComments.some(c => c._id === newComment._id);
+          if (!exists) {
+            // Sắp xếp comments theo thời gian tạo
+            const updatedComments = [...prevComments, newComment].sort((a, b) => 
+              new Date(a.createdAt) - new Date(b.createdAt)
+            );
+            return updatedComments;
+          }
+          return prevComments;
+        });
         
         // Focus lại vào input sau khi gửi
         if (commentInputRef.current) {

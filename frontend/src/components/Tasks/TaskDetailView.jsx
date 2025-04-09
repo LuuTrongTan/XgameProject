@@ -53,7 +53,7 @@ const TaskDetailView = ({
 }) => {
   const [sprintDetails, setSprintDetails] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const { enqueueSnackbar } = useSnackbar();
   const { user: currentUser } = useAuth();
   
@@ -498,34 +498,26 @@ const TaskDetailView = ({
             border: '1px solid', 
             borderColor: 'divider', 
             borderRadius: '12px',
-            overflow: 'hidden',
-            transition: 'all 0.3s ease',
-            boxShadow: expanded ? '0 4px 20px rgba(0, 0, 0, 0.08)' : 'none',
-            transform: expanded ? 'translateY(-4px)' : 'none'
+            overflow: 'hidden'
           }}>
             <Box 
-              onClick={handleToggleExpand}
               sx={{ 
                 p: 2, 
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center',
-                cursor: 'pointer',
-                bgcolor: 'background.paper',
-                '&:hover': { bgcolor: 'action.hover' }
+                bgcolor: 'background.paper'
               }}
             >
               <Typography variant="subtitle1" fontWeight={600} color="text.primary">
                 Tương tác
               </Typography>
-              <Chip 
-                label={expanded ? "Thu gọn" : "Mở rộng"} 
-                size="small" 
+              <Chip
+                label={expanded ? "Thu gọn" : "Mở rộng"}
+                onClick={handleToggleExpand}
+                size="small"
                 color={expanded ? "primary" : "default"}
-                sx={{ 
-                  borderRadius: '8px',
-                  fontWeight: 500
-                }}
+                sx={{ cursor: 'pointer' }}
               />
             </Box>
             
@@ -536,7 +528,7 @@ const TaskDetailView = ({
                   borderTop: '1px solid', 
                   borderColor: 'divider'
                 }}
-                key={`interactions-container-${expanded}-${task._id}`}
+                key={`interactions-container-${task._id}`}
               >
                 <TaskInteractions 
                   key={`task-interactions-${Date.now()}-${task._id}`}

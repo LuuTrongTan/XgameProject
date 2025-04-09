@@ -103,10 +103,15 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     // Không fetch lại nếu đang loading hoặc thiếu thông tin cần thiết
     if (!task?._id || !project?._id || !sprint?._id || loadingComments) return;
     
-    // Luôn reset commentsLoadedRef khi gọi fetchComments
-    commentsLoadedRef.current = false;
+    // Nếu đã load comments và có comments, không cần fetch lại
+    if (commentsLoadedRef.current && comments.length > 0) {
+      console.log(`TaskInteractions [${instanceIdRef.current}] comments already loaded, skipping fetch`);
+      return;
+    }
     
     setLoadingComments(true);
+    commentsLoadedRef.current = false;  // Reset loaded flag when fetching
+    
     try {
       console.log(`TaskInteractions [${instanceIdRef.current}] fetching comments for task ${task._id}`);
       
@@ -129,7 +134,7 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
       // Sắp xếp comments theo thời gian mới nhất 
       newComments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
-      // Lọc duplicate comments trước khi lưu vào state
+      // Lọc duplicate comments trước khi lưu vào state bằng Map với key là comment ID
       const uniqueComments = Array.from(
         new Map(newComments.map(comment => [comment._id, comment])).values()
       );
@@ -207,6 +212,62 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     setActiveTab(newValue);
   };
 
+  // Kiểm tra xem người dùng có phải là admin hoặc project manager không
+  const isAdminOrManager = () => {
+    // Kiểm tra nếu người dùng là admin hệ thống
+    if (user?.roles?.includes('Admin')) {
+      console.log("User is system admin");
+      return true;
+    }
+    
+    // Kiểm tra vai trò trong dự án
+    if (!project?.members || !Array.isArray(project.members)) {
+      console.log("No project members found");
+      return false;
+    }
+    
+    // Tìm thành viên trong dự án
+    const member = project.members.find(m => {
+      if (!m.user) return false;
+      
+      const memberId = m.user._id || m.user;
+      const userId = user?._id || user?.id;
+      
+      return memberId?.toString() === userId?.toString() || memberId === userId;
+    });
+    
+    console.log("User project role:", member?.role || "not found");
+    
+    // Kiểm tra tất cả các biến thể có thể có của vai trò admin/manager
+    const managerRoles = ['admin', 'manager', 'project_manager', 'projectmanager', 'project-manager'];
+    const isManager = member && managerRoles.includes(member.role);
+    
+    console.log("Is user a manager?", isManager);
+    return isManager;
+  };
+  
+  // Kiểm tra xem người dùng có phải là người được gán task không
+  const isTaskAssignee = () => {
+    if (!task?.assignees || !Array.isArray(task.assignees) || !user) {
+      return false;
+    }
+    
+    return task.assignees.some(assignee => {
+      if (!assignee) return false;
+      
+      const assigneeId = assignee._id || assignee.id || assignee;
+      const userId = user._id || user.id;
+      
+      return assigneeId && userId && 
+        (assigneeId.toString() === userId.toString() || assigneeId === userId);
+    });
+  };
+  
+  // Kiểm tra quyền upload file
+  const canUploadFile = () => {
+    return isAdminOrManager() || isTaskAssignee();
+  };
+
   // Check if comment is from current user
   const isCurrentUserComment = (comment) => {
     return comment.user?._id === user?._id || 
@@ -234,6 +295,29 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     }
 
     try {
+      // Kiểm tra xem comment này đã được gửi đi chưa bằng cách sử dụng buffer ngắn hạn
+      const commentBuffer = localStorage.getItem('last_comment');
+      const currentTimestamp = Date.now();
+      
+      // Nếu có comment trong buffer và thời gian gửi < 2 giây, bỏ qua
+      if (commentBuffer) {
+        try {
+          const { text, timestamp } = JSON.parse(commentBuffer);
+          if (text === commentText && (currentTimestamp - timestamp) < 2000) {
+            console.log(`Comment skipped - duplicate detected within 2s: ${commentText}`);
+            return;
+          }
+        } catch (e) {
+          console.error('Error parsing comment buffer:', e);
+        }
+      }
+      
+      // Lưu comment hiện tại vào buffer
+      localStorage.setItem('last_comment', JSON.stringify({
+        text: commentText,
+        timestamp: currentTimestamp
+      }));
+      
       console.log(`TaskInteractions [${instanceIdRef.current}] adding comment for task ${task._id}`);
       
       const response = await api.post(
@@ -257,13 +341,16 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         }
         
         if (newComment) {
-          // Kiểm tra xem comment mới đã tồn tại trong danh sách chưa
+          // Thêm comment mới vào state một cách an toàn
           setComments(prev => {
             // Kiểm tra xem comment đã tồn tại chưa
             const exists = prev.some(comment => comment._id === newComment._id);
             if (!exists) {
               console.log(`TaskInteractions [${instanceIdRef.current}] added new comment ${newComment._id}`);
-              return [newComment, ...prev];
+              // Sắp xếp comments theo thời gian tạo (mới nhất lên đầu)
+              return [newComment, ...prev].sort((a, b) => 
+                new Date(b.createdAt) - new Date(a.createdAt)
+              );
             }
             return prev;
           });
@@ -297,6 +384,14 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         setUploading(false);
         setUploadError("Missing required task information");
         console.error("Missing required IDs", { projectId: project?._id, sprintId: sprint?._id, taskId: task?._id });
+        return;
+      }
+      
+      // Kiểm tra quyền upload file - sử dụng hàm đã tạo
+      if (!isAdminOrManager() && !isTaskAssignee()) {
+        setUploading(false);
+        setUploadError("Bạn không có quyền upload file");
+        toast.error("Bạn không có quyền upload file");
         return;
       }
       
@@ -541,13 +636,15 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
             </Box>
           ) : (
             <Stack spacing={3}>
-              <FileUploader
-                onUpload={handleFileUpload}
-                isLoading={uploading}
-                error={uploadError}
-                accept="*/*"
-                multiple={false}
-              />
+              {canUploadFile() && (
+                <FileUploader
+                  onUpload={handleFileUpload}
+                  isLoading={uploading}
+                  error={uploadError}
+                  accept="*/*"
+                  multiple={false}
+                />
+              )}
               {Array.isArray(attachments) && attachments.length > 0 ? (
                 <AttachmentsList
                   attachments={attachments.filter(att => att !== null && att !== undefined)}
@@ -555,44 +652,7 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
                   canEdit={true}
                   currentUser={user}
                   taskAssignees={task?.assignees || []}
-                  projectRole={(() => {
-                    console.log('Determining project role:', {
-                      user: user?._id,
-                      project: project?._id,
-                      members: project?.members?.length || 0
-                    });
-                    
-                    // Kiểm tra nếu người dùng là admin hệ thống
-                    if (user?.roles?.includes('Admin')) {
-                      console.log('User is system admin');
-                      return 'admin';
-                    }
-                    
-                    // Nếu không có project hoặc members, mặc định là member
-                    if (!project?.members || !Array.isArray(project.members)) {
-                      console.log('No project members found, defaulting to member');
-                      return 'member';
-                    }
-                    
-                    // Tìm thành viên trong dự án
-                    const member = project.members.find(m => {
-                      // Kiểm tra xem user có đúng với thành viên không
-                      if (!m.user) return false;
-                      
-                      const memberId = m.user._id || m.user;
-                      const userId = user?._id || user?.id;
-                      
-                      return memberId?.toString() === userId?.toString() || memberId === userId;
-                    });
-                    
-                    if (member) {
-                      console.log(`Found member role: ${member.role || 'member'}`);
-                      return member.role || 'member';
-                    }
-                    
-                    console.log('User not found in project members, defaulting to member');
-                    return 'member';
-                  })()}
+                  projectRole={isAdminOrManager() ? 'admin' : 'member'}
                 />
               ) : (
                 <Box 
@@ -612,6 +672,11 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
                   <Typography variant="body1" color="text.secondary" align="center">
                     Chưa có tệp đính kèm nào
                   </Typography>
+                  {!canUploadFile() && (
+                    <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                      Bạn không có quyền tải lên tệp đính kèm
+                    </Typography>
+                  )}
                 </Box>
               )}
             </Stack>

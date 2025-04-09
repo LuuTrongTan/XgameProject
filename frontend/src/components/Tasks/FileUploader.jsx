@@ -138,11 +138,19 @@ const FileUploader = ({ onUpload, isLoading, error, accept = '*/*', multiple = f
         )}
       </Box>
       
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
-      )}
+      <Box sx={{ mt: 1 }}>
+        {isLoading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary', gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2">Đang tải lên...</Typography>
+          </Box>
+        )}
+        {error && (
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            {error}
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 };

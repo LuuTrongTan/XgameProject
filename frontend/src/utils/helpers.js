@@ -8,6 +8,12 @@
 export const isCurrentUserReaction = (reactionUser, currentUserId) => {
   if (!reactionUser || !currentUserId) return false;
   
+  // Debug log
+  console.log('Comparing reaction user with current user:', {
+    reactionUser: typeof reactionUser === 'object' ? reactionUser : reactionUser,
+    currentUserId
+  });
+  
   // Convert to strings for consistent comparison
   const currentUserIdStr = String(currentUserId);
   
@@ -18,6 +24,10 @@ export const isCurrentUserReaction = (reactionUser, currentUserId) => {
   
   if (reactionUser._id) {
     return String(reactionUser._id) === currentUserIdStr;
+  }
+
+  if (reactionUser.id) {
+    return String(reactionUser.id) === currentUserIdStr;
   }
   
   return false;

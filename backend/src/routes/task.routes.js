@@ -30,6 +30,16 @@ import { checkPermission } from "../middlewares/permission.middleware.js";
 import { PERMISSIONS } from "../config/constants.js";
 import { checkAttachmentAccess, checkDeletePermission } from "../middlewares/attachment.middleware.js";
 import { downloadAttachment } from "../controllers/attachment.controller.js";
+import {
+  logTaskCreate,
+  logTaskUpdate,
+  logTaskDelete,
+  logStatusChange,
+  logAttachmentAction,
+  logAttachmentDelete,
+  logCommentAction,
+  logAssignUser
+} from "../middlewares/auditlog.middleware.js";
 
 const router = express.Router();
 
@@ -220,7 +230,7 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, getT
  *                 type: string
  *                 format: date
  */
-router.post("/projects/:projectId/sprints/:sprintId/tasks", protect, checkPermission(PERMISSIONS.CREATE_TASK), createTask);
+router.post("/projects/:projectId/sprints/:sprintId/tasks", protect, checkPermission(PERMISSIONS.CREATE_TASK), logTaskCreate, createTask);
 
 /**
  * @swagger
@@ -247,7 +257,7 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks", protect, checkPermis
  *         schema:
  *           type: string
  */
-router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, updateTask);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, logTaskUpdate, updateTask);
 
 /**
  * @swagger
@@ -274,7 +284,7 @@ router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, upda
  *         schema:
  *           type: string
  */
-router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", protect, assignTask);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", protect, logAssignUser, assignTask);
 
 /**
  * @swagger
@@ -392,6 +402,7 @@ router.post(
     
     next();
   },
+  logAttachmentAction,
   addAttachment
 );
 
@@ -420,7 +431,7 @@ router.post(
  *         schema:
  *           type: string
  */
-router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, deleteTask);
+router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, logTaskDelete, deleteTask);
 
 /**
  * @swagger
@@ -447,7 +458,7 @@ router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, d
  *         schema:
  *           type: string
  */
-router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protect, updateStatus);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protect, logStatusChange, updateStatus);
 
 /**
  * @swagger
@@ -474,7 +485,7 @@ router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protec
  *         schema:
  *           type: string
  */
-router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, addTaskComment);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, logCommentAction, addTaskComment);
 
 /**
  * @swagger
@@ -804,6 +815,7 @@ router.delete(
   "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId",
   protect,
   checkDeletePermission,
+  logAttachmentDelete,
   deleteAttachment
 );
 

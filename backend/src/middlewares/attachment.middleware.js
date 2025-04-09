@@ -39,11 +39,27 @@ const checkFileAccessPermission = async (taskId, userId) => {
       };
     }
     
+    // Debug log
+    console.log('Project members:', {
+      members: project.members,
+      userId: userId,
+      userRoles: user.roles
+    });
+    
     // Kiểm tra người dùng có phải là PM của dự án không
     const isProjectManager = project.members && project.members.some(
-      member => member.user?.toString() === userId.toString() && 
-      (member.role === 'manager' || member.role === 'admin')
+      member => {
+        console.log('Checking member:', {
+          memberUserId: member.user?.toString(),
+          currentUserId: userId.toString(),
+          memberRole: member.role
+        });
+        return member.user?.toString() === userId.toString() && 
+          (member.role === 'manager' || member.role === 'admin');
+      }
     );
+    
+    console.log('Is Project Manager:', isProjectManager);
     
     if (isProjectManager) {
       return { hasAccess: true };
@@ -152,9 +168,18 @@ export const checkDeletePermission = async (req, res, next) => {
     
     // Kiểm tra người dùng có phải là PM của dự án không
     const isProjectManager = project.members && project.members.some(
-      member => member.user?.toString() === userId.toString() && 
-      (member.role === 'manager' || member.role === 'admin')
+      member => {
+        console.log('Checking member:', {
+          memberUserId: member.user?.toString(),
+          currentUserId: userId.toString(),
+          memberRole: member.role
+        });
+        return member.user?.toString() === userId.toString() && 
+          (member.role === 'manager' || member.role === 'admin');
+      }
     );
+    
+    console.log('Is Project Manager:', isProjectManager);
     
     if (isProjectManager) {
       return next();

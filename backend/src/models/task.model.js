@@ -105,7 +105,7 @@ const TaskSchema = new mongoose.Schema(
           required: true
         },
         type: {
-          type: String,
+        type: String,
           default: 'application/octet-stream'
         },
         size: {

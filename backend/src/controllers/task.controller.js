@@ -16,6 +16,7 @@ import path from "path";
 import asyncHandler from "express-async-handler";
 import Upload from "../models/upload.model.js";
 import uploadService from "../services/upload.services.js";
+import auditLogService from "../services/auditlog.service.js";
 
 // Validate dữ liệu đầu vào
 const validateTaskData = (data) => {
@@ -1874,67 +1875,60 @@ export const getTaskHistory = async (req, res) => {
       });
     }
 
-    // Bỏ qua kiểm tra sprint và project vì task có thể không có thông tin này
-    // hoặc không được populate đúng cách
-
-    // Lấy lịch sử thay đổi (có thể lấy từ model AuditLog nếu có)
     try {
-      // Kiểm tra xem model AuditLog có tồn tại không
-      let AuditLog;
-      try {
-        AuditLog = mongoose.model('AuditLog');
-      } catch (modelError) {
-        // Model không tồn tại, trả về mảng rỗng
-        console.log("AuditLog model not found:", modelError.message);
-        return res.status(200).json({
-          success: true,
-          message: "Chức năng lịch sử thay đổi chưa được triển khai",
-          data: [],
-        });
-      }
+      // Sử dụng auditLogService
+      const history = await auditLogService.getTaskLogs(taskId);
       
-      // Tạo lịch sử giả nếu không có dữ liệu thực
-      const mockHistory = [
-        {
+      // Nếu không có lịch sử hoặc history là mảng rỗng
+      if (!history || history.length === 0) {
+        // Tạo một sự kiện tạo task nếu chưa có lịch sử
+        // để người dùng không thấy trống
+        const creationLog = {
           _id: `history_${Date.now()}_1`,
           entityId: taskId,
           entityType: 'Task',
           action: 'create',
-          changes: { title: task.title, status: task.status },
-          user: task.createdBy,
+          user: await User.findById(task.createdBy).select('name email avatar'),
+          details: { 
+            title: task.title, 
+            status: task.status,
+            description: task.description 
+          },
           createdAt: task.createdAt,
-        }
-      ];
-      
-      // Thử lấy dữ liệu từ AuditLog
-      let history;
-      try {
-        history = await AuditLog.find({ 
-          entityId: taskId,
-          entityType: 'Task'
-        }).populate('user', 'name email avatar').sort({ createdAt: -1 });
-      } catch (queryError) {
-        console.log("Error querying AuditLog:", queryError.message);
-        history = mockHistory;
+        };
+        
+        // Trả về mảng với phần tử duy nhất là sự kiện tạo task
+        return res.status(200).json({
+          success: true,
+          message: "Lấy lịch sử thay đổi thành công",
+          data: [creationLog],
+        });
       }
       
-      // Nếu không có lịch sử, sử dụng dữ liệu giả
-      if (!history || history.length === 0) {
-        history = mockHistory;
-      }
-      
+      // Trả về lịch sử từ AuditLog
       res.status(200).json({
         success: true,
         message: "Lấy lịch sử thay đổi thành công",
-        data: history || [],
+        data: history,
       });
-    } catch (modelError) {
-      console.error("AuditLog model error:", modelError);
-      // Nếu không có model AuditLog, trả về mảng rỗng
+    } catch (error) {
+      console.error("Lỗi khi truy vấn AuditLog:", error);
+      
+      // Tạo lịch sử giả khi có lỗi
+      const fallbackHistory = [{
+        _id: `history_${Date.now()}_fallback`,
+        entityId: taskId,
+        entityType: 'Task',
+        action: 'create',
+        user: await User.findById(task.createdBy).select('name email avatar'),
+        details: { title: task.title, status: task.status },
+        createdAt: task.createdAt,
+      }];
+      
       res.status(200).json({
         success: true,
-        message: "Không có dữ liệu lịch sử",
-        data: [],
+        message: "Sử dụng dữ liệu dự phòng do gặp lỗi khi truy vấn lịch sử",
+        data: fallbackHistory,
       });
     }
   } catch (error) {

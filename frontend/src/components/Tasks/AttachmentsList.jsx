@@ -95,9 +95,10 @@ const AttachmentsList = ({
       return false;
     }
     
-    // Admin và Project Manager luôn có quyền
-    if (projectRole === 'admin' || projectRole === 'manager') {
-      console.log("User is admin/manager, granting access");
+    // Admin và Project Manager luôn có quyền (kiểm tra tất cả các biến thể)
+    const managerRoles = ['admin', 'manager', 'project_manager', 'projectmanager', 'project-manager'];
+    if (managerRoles.includes(projectRole)) {
+      console.log(`User is ${projectRole}, granting access`);
       return true;
     }
     
@@ -156,9 +157,10 @@ const AttachmentsList = ({
       return false;
     }
     
-    // Admin và Project Manager luôn có quyền xóa
-    if (projectRole === 'admin' || projectRole === 'manager') {
-      console.log("User is admin/manager, granting delete permission");
+    // Admin và Project Manager luôn có quyền xóa (kiểm tra tất cả các biến thể)
+    const managerRoles = ['admin', 'manager', 'project_manager', 'projectmanager', 'project-manager'];
+    if (managerRoles.includes(projectRole)) {
+      console.log(`User is ${projectRole}, granting delete permission`);
       return true;
     }
     
@@ -641,13 +643,13 @@ const AttachmentsList = ({
                 )}
             
             {userCanView ? (
-              <IconButton
-                edge="end"
-                onClick={() => handleDownload(attachment)}
-                title="Tải xuống"
-              >
-                <DownloadIcon />
-              </IconButton>
+            <IconButton
+              edge="end"
+              onClick={() => handleDownload(attachment)}
+              title="Tải xuống"
+            >
+              <DownloadIcon />
+            </IconButton>
             ) : (
               <Tooltip title="Bạn không có quyền tải xuống file này">
                 <IconButton

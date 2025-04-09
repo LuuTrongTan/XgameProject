@@ -36,18 +36,14 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
 
   // Update reactions when comment changes
   useEffect(() => {
-    if (comment.reactions) {
+    if (comment.reactions && JSON.stringify(reactions) !== JSON.stringify(comment.reactions)) {
       console.log('Updating reactions from comment:', comment.reactions);
       setReactions(comment.reactions);
     }
   }, [comment.reactions]);
 
   const handleReaction = async (type) => {
-    if (loadingReactions[type]) return;
-    if (!currentUserId) {
-      console.error('Cannot react: No current user ID available');
-      return;
-    }
+    if (loadingReactions[type] || !currentUserId) return;
     
     setLoadingReactions(prev => ({ ...prev, [type]: true }));
     
@@ -64,43 +60,21 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
         endpoint
       });
       
-      const response = await api.post(
-        endpoint,
-        { type }
-      );
+      const response = await api.post(endpoint, { type });
 
-      console.log('Reaction response:', {
-        status: response.status,
-        headers: response.headers,
-        data: response.data,
-        config: {
-          url: response.config?.url,
-          method: response.config?.method,
-          headers: response.config?.headers
-        }
-      });
-
-      // Check if we got a valid response with data
       if (response.data) {
-        // Some APIs return nested data object, handle both cases
         const updatedComment = response.data.data || response.data;
         
         if (updatedComment && updatedComment.reactions) {
-          console.log('Updated reactions:', updatedComment.reactions);
-          setReactions(updatedComment.reactions);
-        } else {
-          console.warn('Response contained no valid reactions data', response.data);
+          // Chỉ cập nhật nếu reactions thực sự thay đổi
+          if (JSON.stringify(reactions) !== JSON.stringify(updatedComment.reactions)) {
+            console.log('Updated reactions:', updatedComment.reactions);
+            setReactions(updatedComment.reactions);
+          }
         }
       }
     } catch (error) {
       console.error("Error toggling reaction:", error.response?.data || error.message || error);
-      if (error.response) {
-        console.error("Error details:", {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
-        });
-      }
     } finally {
       setLoadingReactions(prev => ({ ...prev, [type]: false }));
     }
@@ -120,7 +94,6 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
       reaction.type === type && isCurrentUserReaction(reaction.user, currentUserId)
     );
     
-    console.log(`User ${currentUserId} has ${hasReacted ? '' : 'not '}reacted with ${type}`);
     return hasReacted;
   };
 
@@ -147,7 +120,7 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
         {comment.parentComment && (
           <Box 
             sx={{ 
-              mb: 2,
+          mb: 2,
               p: 1.5,
               borderRadius: '8px',
               backgroundColor: 'action.hover',
@@ -166,7 +139,7 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
               maxWidth: '100%'
             }}>
               {comment.parentComment.content}
-            </Typography>
+          </Typography>
           </Box>
         )}
 
@@ -216,6 +189,7 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
                 disabled={loadingReactions.like}
                 sx={{ 
                   color: hasUserReacted('like') ? 'primary.main' : 'text.secondary',
+                  bgcolor: hasUserReacted('like') ? 'primary.lighter' : 'transparent',
                   '&:hover': {
                     color: 'primary.main',
                     backgroundColor: 'primary.lighter'
@@ -234,6 +208,7 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
                 disabled={loadingReactions.heart}
                 sx={{ 
                   color: hasUserReacted('heart') ? 'error.main' : 'text.secondary',
+                  bgcolor: hasUserReacted('heart') ? 'error.lighter' : 'transparent',
                   '&:hover': {
                     color: 'error.main',
                     backgroundColor: 'error.lighter'
@@ -268,13 +243,13 @@ const CommentItem = ({ comment, onReply, projectId, sprintId, taskId, currentUse
           <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
             {getReactionCount('like') > 0 && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <ThumbUpIcon sx={{ fontSize: 14 }} />
+                <ThumbUpIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                 {getReactionCount('like')}
               </Typography>
             )}
             {getReactionCount('heart') > 0 && (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <FavoriteIcon sx={{ fontSize: 14 }} />
+                <FavoriteIcon sx={{ fontSize: 14, color: 'error.main' }} />
                 {getReactionCount('heart')}
               </Typography>
             )}

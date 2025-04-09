@@ -402,9 +402,9 @@ export const toggleReaction = async (req, res) => {
   try {
     const { commentId } = req.params;
     const { type } = req.body;
-    
+
     // Get user ID, handle both formats (MongoDB ObjectId and string ID)
-    const userId = req.user._id || req.user.id;
+    const userId = req.user.id || req.user._id;
     
     console.log('toggleReaction:', {
       commentId,
@@ -476,7 +476,7 @@ export const toggleReaction = async (req, res) => {
           { path: "user", select: "name email avatar" },
           { path: "mentions", select: "name email avatar" },
         ],
-      });
+        });
 
     // Populate reactions with user data
     const commentObj = updatedComment.toObject();
@@ -499,7 +499,7 @@ export const toggleReaction = async (req, res) => {
     }
     
     console.log('Updated comment reactions:', commentObj.reactions);
-    
+
     res.json({
       success: true,
       data: commentObj,
