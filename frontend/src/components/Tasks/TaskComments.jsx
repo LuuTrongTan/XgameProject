@@ -17,6 +17,7 @@ import {
   Send as SendIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Close as CloseIcon,
 } from "@mui/icons-material";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -29,6 +30,7 @@ import {
   deleteTaskComment,
   updateTaskComment,
 } from "../../api/taskApi";
+import CommentItem from "../comments/CommentItem";
 
 // Thêm cờ hiệu để xác định xem có nên sử dụng socket không
 const USE_WEBSOCKET = false; // Tắt tạm thời socket để tránh lỗi
@@ -58,12 +60,17 @@ const TaskComments = ({ taskId, projectId, sprintId }) => {
   const { user } = useAuth();
   const { canDeleteTask } = usePermissions();
   const { enqueueSnackbar } = useSnackbar();
+  
+  // Debug props
+  console.log('TaskComments props:', { taskId, projectId, sprintId });
+  
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
   const commentInputRef = useRef(null);
   
   // Lắng nghe sự kiện comment mới từ WebSocket nếu được bật
@@ -132,17 +139,32 @@ const TaskComments = ({ taskId, projectId, sprintId }) => {
     }
   };
 
+  const handleReply = (comment) => {
+    setReplyingTo(comment);
+    setNewComment("");
+    if (commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  };
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!newComment.trim() || isSending) return;
 
     setIsSending(true);
     try {
-      const result = await addTaskComment(projectId, sprintId, taskId, newComment);
+      const commentData = {
+        content: newComment,
+        taskId: taskId,
+        parentComment: replyingTo?._id
+      };
+
+      const result = await addTaskComment(projectId, sprintId, taskId, commentData);
       
       if (result && result.success) {
         // Xóa comment sau khi gửi thành công
         setNewComment("");
+        setReplyingTo(null);
         
         // Thêm comment mới vào danh sách hiện tại nếu không dùng socket
         if (!USE_WEBSOCKET && result.data) {
@@ -229,96 +251,55 @@ const TaskComments = ({ taskId, projectId, sprintId }) => {
         <List>
           {comments.map((comment) => (
             <React.Fragment key={comment._id}>
-              <ListItem alignItems="flex-start">
-                <ListItemAvatar>
-                  <Avatar alt={comment.user?.fullName || comment.user?.name} src={comment.user?.avatar} />
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">
-                        {comment.user?.fullName || comment.user?.name || "Người dùng"}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", {
-                          locale: vi,
-                        })}
-                      </Typography>
-                    </Box>
-                  }
-                  secondary={
-                    editingComment?._id === comment._id ? (
-                      <Box mt={1}>
-                        <TextField
-                          fullWidth
-                          multiline
-                          rows={2}
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          variant="outlined"
-                          size="small"
-                        />
-                        <Box display="flex" justifyContent="flex-end" gap={1} mt={1}>
-                          <Button
-                            size="small"
-                            onClick={() => {
-                              setEditingComment(null);
-                              setEditText("");
-                            }}
-                          >
-                            Hủy
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            onClick={handleUpdate}
-                            disabled={!editText.trim()}
-                          >
-                            Cập nhật
-                          </Button>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <Typography
-                        component="span"
-                        variant="body2"
-                        color="text.primary"
-                      >
-                        {comment.content}
-                      </Typography>
-                    )
-                  }
-                />
-                {user && comment.user && comment.user._id === user._id && (
-                  <Box>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleEdit(comment)}
-                      sx={{ mr: 0.5 }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(comment._id)}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                )}
-              </ListItem>
-              <Divider variant="inset" component="li" />
+              <CommentItem 
+                comment={comment} 
+                onReply={handleReply}
+                projectId={projectId}
+                sprintId={sprintId}
+                taskId={taskId}
+                currentUserId={user?._id}
+              />
             </React.Fragment>
           ))}
         </List>
       )}
 
       <Box component="form" onSubmit={handleSubmit} display="flex" gap={1} mt={2}>
+        {replyingTo && (
+          <Box 
+            sx={{ 
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              right: 0,
+              p: 1,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: '4px',
+              mb: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Đang trả lời {replyingTo.user?.name || 'Người dùng'}
+            </Typography>
+            <IconButton 
+              size="small" 
+              onClick={() => setReplyingTo(null)}
+              sx={{ ml: 'auto' }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        )}
         <TextField
           fullWidth
           multiline
           rows={2}
-          placeholder="Thêm bình luận... (Ctrl+Enter để gửi nhanh)"
+          placeholder={replyingTo ? `Trả lời ${replyingTo.user?.name || 'Người dùng'}...` : "Thêm bình luận... (Ctrl+Enter để gửi nhanh)"}
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           onKeyDown={handleKeyDown}

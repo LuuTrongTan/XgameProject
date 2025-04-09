@@ -9,19 +9,60 @@ import {
   Avatar,
   Stack,
   Divider,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import api from "../../api/api";
 import ActivityService from "../../services/activityService";
 
-const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrentUser }) => {
+const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrentUser, userRole, userId, sprintId }) => {
   const [content, setContent] = useState(comment?.content || "");
   const [isEditing, setIsEditing] = useState(!comment);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [anchorEl, setAnchorEl] = useState(null);
+  const open = Boolean(anchorEl);
+
+  // Kiểm tra quyền chỉnh sửa/xóa comment
+  const canModifyComment = () => {
+    // Là tác giả của comment
+    const isAuthor = comment?.author?._id === userId || comment?.user?._id === userId;
+    // Là project manager hoặc admin
+    const hasAdminRights = userRole === 'admin' || userRole === 'project_manager';
+    
+    return isAuthor || hasAdminRights;
+  };
+
+  const handleMenuClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    setAnchorEl(null);
+  };
+
+  const handleEditClick = () => {
+    handleMenuClose();
+    setIsEditing(true);
+  };
+
+  const handleDeleteClick = () => {
+    handleMenuClose();
+    handleDelete();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,21 +73,24 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
 
     setLoading(true);
     try {
+      console.log('[DEBUG] Comment content before sending:', content);
+      
       if (comment?._id) {
         await api.put(
-          `/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`,
+          `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${comment._id}`,
           {
-            content,
+            content: content.trim(),
           }
         );
         await ActivityService.logCommentUpdated(content);
       } else {
-        await api.post(`/projects/${projectId}/tasks/${taskId}/comments`, {
-          content,
+        await api.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`, {
+          content: content.trim(),
+          taskId: taskId
         });
         await ActivityService.logCommentCreated(content);
       }
-      onSubmit();
+      onSubmit(content.trim());
       if (comment) {
         setIsEditing(false);
       } else {
@@ -55,9 +99,11 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
     } catch (error) {
       console.error("Error saving comment:", error);
       setError("Có lỗi xảy ra khi lưu bình luận");
-    } finally {
       setLoading(false);
+      return;
     }
+    setLoading(false);
+    setError("");
   };
 
   const handleDelete = async () => {
@@ -65,7 +111,7 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
       setLoading(true);
       try {
         await api.delete(
-          `/projects/${projectId}/tasks/${taskId}/comments/${comment._id}`
+          `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${comment._id}`
         );
         await ActivityService.logCommentDeleted(content);
         onSubmit();
@@ -94,112 +140,217 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
     const isCurrentUserComment = isCurrentUser || (comment.user && comment.user.isCurrentUser);
     
     return (
-      <Paper 
+      <Box 
         sx={{ 
-          p: 2, 
-          mb: 2, 
-          borderRadius: '12px', 
-          boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-          ml: isCurrentUserComment ? 'auto' : 0,
-          mr: isCurrentUserComment ? 0 : 'auto',
-          maxWidth: '85%',
-          bgcolor: isCurrentUserComment ? 'primary.lighter' : 'background.paper',
+          display: 'flex',
+          justifyContent: isCurrentUserComment ? 'flex-end' : 'flex-start',
+          mb: 2,
+          maxWidth: '100%',
         }}
       >
-        {/* Comment header with user info */}
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'flex-start', 
-          mb: 2,
-          flexDirection: isCurrentUserComment ? 'row-reverse' : 'row' 
-        }}>
-          <Avatar 
-            src={comment?.author?.avatar || comment?.user?.avatar} 
-            alt={comment?.author?.name || comment?.user?.name || 'User'}
-            sx={{ 
-              width: 40, 
-              height: 40, 
-              ml: isCurrentUserComment ? 2 : 0,
-              mr: isCurrentUserComment ? 0 : 2,
-              bgcolor: isCurrentUserComment ? 'secondary.main' : 'primary.main',
-              fontSize: '1rem',
-              border: '2px solid white',
-              boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)'
-            }}
-          >
-            {(comment?.author?.name || comment?.user?.name || 'U').charAt(0).toUpperCase()}
-          </Avatar>
-          
-          <Box sx={{ 
-            flexGrow: 1,
-            textAlign: isCurrentUserComment ? 'right' : 'left'
-          }}>
-            <Typography variant="subtitle1" fontWeight="600" color="text.primary">
-              {comment?.author?.name || comment?.user?.name || 'Người dùng'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {formatDate(comment?.createdAt || comment?.timestamp)}
-            </Typography>
-          </Box>
-          
-          <Box sx={{ 
-            order: isCurrentUserComment ? -1 : 1,
-            ml: isCurrentUserComment ? 0 : 'auto',
-            mr: isCurrentUserComment ? 'auto' : 0
-          }}>
-            <IconButton
-              size="small"
-              onClick={() => setIsEditing(true)}
-              title="Chỉnh sửa"
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              onClick={handleDelete}
-              title="Xóa"
-              disabled={loading}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        </Box>
-        
-        <Divider sx={{ my: 1 }} />
-        
-        {/* Comment content */}
-        <Typography 
-          variant="body1" 
+        <Paper 
           sx={{ 
-            whiteSpace: 'pre-wrap', 
-            pt: 1,
-            textAlign: isCurrentUserComment ? 'right' : 'left'
+            p: 2,
+            maxWidth: '70%',
+            borderRadius: isCurrentUserComment ? '20px 4px 20px 20px' : '4px 20px 20px 20px',
+            bgcolor: isCurrentUserComment ? 'primary.lighter' : 'grey.50',
+            boxShadow: 'none',
+            border: '1px solid',
+            borderColor: isCurrentUserComment ? 'primary.light' : 'grey.200',
+            position: 'relative',
           }}
         >
-          {content}
-        </Typography>
-        
-        {/* Show edited indicator if comment was updated */}
-        {comment?.updatedAt && comment.updatedAt !== comment.createdAt && (
+          {/* Comment content first */}
           <Typography 
-            variant="caption" 
-            color="text.secondary" 
+            variant="body2" 
             sx={{ 
-              display: 'block', 
-              mt: 1, 
-              fontStyle: 'italic',
-              textAlign: isCurrentUserComment ? 'right' : 'left'
+              whiteSpace: 'pre-wrap',
+              color: isCurrentUserComment ? 'primary.dark' : 'text.primary',
+              lineHeight: 1.5,
+              mb: 2
             }}
           >
-            Đã chỉnh sửa {formatDate(comment.updatedAt)}
+            {content}
           </Typography>
-        )}
-      </Paper>
+
+          {/* Show edited indicator if comment was updated */}
+          {comment?.updatedAt && comment.updatedAt !== comment.createdAt && (
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                display: 'block',
+                fontStyle: 'italic',
+                color: isCurrentUserComment ? 'primary.dark' : 'text.secondary',
+                opacity: 0.7,
+                textAlign: isCurrentUserComment ? 'right' : 'left',
+                mb: 1,
+                fontSize: '0.75rem'
+              }}
+            >
+              Đã chỉnh sửa {formatDate(comment.updatedAt)}
+            </Typography>
+          )}
+
+          <Divider sx={{ mb: 1.5 }} />
+
+          {/* Comment header with user info at bottom */}
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1,
+            flexDirection: isCurrentUserComment ? 'row-reverse' : 'row',
+          }}>
+            <Avatar 
+              src={comment?.author?.avatar || comment?.user?.avatar} 
+              alt={comment?.author?.name || comment?.user?.name || 'User'}
+              sx={{ 
+                width: 28, 
+                height: 28,
+                bgcolor: isCurrentUserComment ? 'primary.main' : 'secondary.main',
+                fontSize: '0.875rem',
+                border: '2px solid white',
+                boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)'
+              }}
+            >
+              {(comment?.author?.name || comment?.user?.name || 'U').charAt(0).toUpperCase()}
+            </Avatar>
+            
+            <Box sx={{ 
+              flexGrow: 1,
+              textAlign: isCurrentUserComment ? 'right' : 'left',
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 1,
+              flexDirection: isCurrentUserComment ? 'row-reverse' : 'row'
+            }}>
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
+                  fontWeight: 600,
+                  color: isCurrentUserComment ? 'primary.dark' : 'text.primary',
+                  fontSize: '0.875rem'
+                }}
+              >
+                {comment?.author?.name || comment?.user?.name || 'Người dùng'}
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: isCurrentUserComment ? 'primary.dark' : 'text.secondary',
+                  opacity: 0.8,
+                  fontSize: '0.75rem'
+                }}
+              >
+                {formatDate(comment?.createdAt || comment?.timestamp)}
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Action buttons */}
+          {canModifyComment() && (
+            <Box 
+              sx={{ 
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                opacity: 0,
+                transition: 'opacity 0.2s',
+                '.MuiPaper-root:hover &': {
+                  opacity: 1
+                },
+                zIndex: 1400
+              }}
+            >
+              <IconButton
+                size="small"
+                onClick={handleMenuClick}
+                aria-label="more"
+                aria-controls={open ? 'comment-menu' : undefined}
+                aria-haspopup="true"
+                aria-expanded={open ? 'true' : undefined}
+                sx={{ 
+                  bgcolor: 'transparent',
+                  boxShadow: 'none',
+                  width: 24,
+                  height: 24,
+                  '&:hover': {
+                    bgcolor: isCurrentUserComment ? 'primary.main' : 'grey.200'
+                  },
+                  '&.Mui-focusVisible': {
+                    bgcolor: isCurrentUserComment ? 'primary.main' : 'grey.200'
+                  }
+                }}
+              >
+                <MoreVertIcon sx={{ 
+                  fontSize: 16,
+                  color: isCurrentUserComment ? 'primary.dark' : 'text.secondary'
+                }} />
+              </IconButton>
+              <Menu
+                id="comment-menu"
+                anchorEl={anchorEl}
+                open={open}
+                onClose={handleMenuClose}
+                onClick={(e) => e.stopPropagation()}
+                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      zIndex: 1500,
+                      mt: 0.5,
+                      boxShadow: '0px 2px 8px rgba(0,0,0,0.15)'
+                    }
+                  }
+                }}
+                MenuListProps={{
+                  dense: true,
+                  sx: { py: 0.5 }
+                }}
+              >
+                <MenuItem 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditClick();
+                  }}
+                  sx={{ py: 1 }}
+                >
+                  <ListItemIcon>
+                    <EditIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Chỉnh sửa</ListItemText>
+                </MenuItem>
+                <MenuItem 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick();
+                  }}
+                  sx={{ py: 1 }}
+                >
+                  <ListItemIcon>
+                    <DeleteIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Xóa</ListItemText>
+                </MenuItem>
+              </Menu>
+            </Box>
+          )}
+        </Paper>
+      </Box>
     );
   }
 
   return (
-    <Paper sx={{ p: 2, mb: 2, borderRadius: '12px' }}>
+    <Paper 
+      sx={{ 
+        p: 2.5, 
+        mb: 2, 
+        borderRadius: '12px',
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider'
+      }}
+    >
       <Box component="form" onSubmit={handleSubmit}>
         <TextField
           fullWidth
@@ -213,20 +364,18 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
           disabled={loading}
           sx={{ 
             '& .MuiOutlinedInput-root': {
-              borderRadius: '8px'
+              borderRadius: '12px',
+              backgroundColor: 'grey.50',
+              '&:hover': {
+                backgroundColor: 'grey.100',
+              },
+              '&.Mui-focused': {
+                backgroundColor: 'background.paper',
+              }
             }
           }}
         />
-        <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            disabled={loading}
-            sx={{ textTransform: 'none', borderRadius: '8px' }}
-          >
-            {loading ? "Đang lưu..." : comment ? "Cập nhật" : "Gửi bình luận"}
-          </Button>
+        <Box sx={{ mt: 2, display: "flex", gap: 1, justifyContent: 'flex-end' }}>
           {comment && (
             <Button
               variant="outlined"
@@ -237,11 +386,33 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
                 if (onCancel) onCancel();
               }}
               disabled={loading}
-              sx={{ textTransform: 'none', borderRadius: '8px' }}
+              sx={{ 
+                textTransform: 'none', 
+                borderRadius: '10px',
+                px: 3
+              }}
             >
               Hủy
             </Button>
           )}
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={loading}
+            sx={{ 
+              textTransform: 'none', 
+              borderRadius: '10px',
+              px: 3,
+              boxShadow: 'none',
+              '&:hover': {
+                boxShadow: 'none',
+                bgcolor: 'primary.dark'
+              }
+            }}
+          >
+            {loading ? "Đang lưu..." : comment ? "Cập nhật" : "Gửi bình luận"}
+          </Button>
         </Box>
       </Box>
     </Paper>
@@ -249,3 +420,4 @@ const CommentForm = ({ comment, taskId, projectId, onSubmit, onCancel, isCurrent
 };
 
 export default CommentForm;
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -28,6 +28,7 @@ import {
   InputAdornment,
   Grid,
   Link,
+  Paper,
 } from "@mui/material";
 import {
   ExpandMore as ExpandMoreIcon,
@@ -46,6 +47,7 @@ import {
   DragIndicator as DragIndicatorIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Add as AddIcon,
 } from "@mui/icons-material";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -61,10 +63,6 @@ import {
   addTaskAttachment,
   getTaskAttachments,
   deleteTaskAttachment,
-  getTaskComments,
-  addTaskComment,
-  updateTaskComment,
-  deleteTaskComment,
   getTaskHistory,
 } from "../../api/taskApi";
 import UserAvatar from "../common/UserAvatar";
@@ -76,8 +74,15 @@ import {
   getTaskPriorityColor 
 } from "../../config/constants";
 import { useNavigate } from "react-router-dom";
-
+import { getSprintById } from "../../api/sprintApi";
+import api from "../../api/api";
+import { useSnackbar } from "notistack";
+import CommentForm from "../comments/CommentForm";
+import CommentItem from "../comments/CommentItem";
+import FileUploader from "./FileUploader";
+import AttachmentsList from "./AttachmentsList";
 import TaskAuditLog from "./TaskAuditLog";
+import TaskInteractions from './TaskInteractions';
 
 // Styled components
 const TaskCardContainer = styled(Card)(({ theme, status }) => {
@@ -241,15 +246,13 @@ const TaskCard = ({
   const { canDeleteTask } = usePermissions();
   const [expanded, setExpanded] = useState(false);
   const [expandedTab, setExpandedTab] = useState(0);
-  const [comments, setComments] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [history, setHistory] = useState([]);
-  const [newComment, setNewComment] = useState("");
-  const [loadingComments, setLoadingComments] = useState(false);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = useRef();
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
   
   // Tính toán màu dựa trên status
   const getStatusColorLight = (status) => {
@@ -391,31 +394,17 @@ const TaskCard = ({
     setExpandedTab(newValue);
     
     // Load data if not already loaded
-    if (newValue === 0 && comments.length === 0 && !loadingComments) {
-      fetchComments();
-    } else if (newValue === 1 && attachments.length === 0 && !loadingAttachments) {
+    if (newValue === 0 && attachments.length === 0 && !loadingAttachments) {
       fetchAttachments();
-    } else if (newValue === 2 && history.length === 0 && !loadingHistory) {
+    } else if (newValue === 1 && history.length === 0 && !loadingHistory) {
       fetchHistory();
     }
   };
 
   // Thêm useEffect để lưu và nạp lại comment từ localStorage
   React.useEffect(() => {
-    // Chỉ nạp comment từ localStorage khi component được mount lần đầu và nếu có
-    const savedComments = localStorage.getItem(`task_comments_${enhancedTask._id}`);
-    if (savedComments && comments.length === 0) {
-      try {
-        const parsedComments = JSON.parse(savedComments);
-        // Chỉ đặt comments nếu mảng này không rỗng
-        if (parsedComments && parsedComments.length > 0) {
-          setComments(parsedComments);
-        }
-      } catch (error) {
-        console.error("Error parsing saved comments:", error);
-      }
-    }
-  }, [enhancedTask._id, comments.length]); // Thêm comments.length vào dependencies
+    // Không cần nạp comment từ localStorage, để TaskInteractions quản lý
+  }, [enhancedTask._id, attachments.length]); // Thêm attachments.length vào dependencies
 
   // Thêm useEffect cho attachments
   React.useEffect(() => {
@@ -453,79 +442,16 @@ const TaskCard = ({
   React.useEffect(() => {
     // Chỉ tải dữ liệu khi component được mở rộng
     if (expanded) {
-      // Tải dữ liệu cho cả 3 tab khi mở rộng
+      // Tải dữ liệu cho cả 2 tab khi mở rộng
       fetchAllData();
     }
   }, [expanded, enhancedTask._id]); // Chạy khi opened hoặc taskId thay đổi
 
-  // Hàm tải tất cả dữ liệu
+  // Sửa lại hàm fetchAllData để không gọi fetchComments
   const fetchAllData = async () => {
-    // Tải song song cả 3 loại dữ liệu
-    fetchComments();
+    // Chỉ tải tệp đính kèm và lịch sử, để TaskInteractions quản lý comments
     fetchAttachments();
     fetchHistory();
-  };
-
-  // Sửa lại hàm fetchComments để cập nhật localStorage khi lấy comments mới
-  const fetchComments = async () => {
-    try {
-      setLoadingComments(true);
-      // Lấy projectId và sprintId từ task hoặc từ props
-      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
-      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
-      
-      if (!taskProjectId || !taskSprintId) {
-        console.error("Missing projectId or sprintId for fetchComments:", { taskProjectId, taskSprintId, task: enhancedTask });
-        return;
-      }
-      
-      console.log("Fetching comments for task:", { 
-        taskId: enhancedTask._id, 
-        projectId: taskProjectId, 
-        sprintId: taskSprintId 
-      });
-      
-      const result = await getTaskComments(taskProjectId, taskSprintId, enhancedTask._id);
-      console.log("Comments API result:", result);
-      
-      if (result.success) {
-        // Đảm bảo data.comments hoặc data là mảng
-        let fetchedComments = [];
-        
-        // Kiểm tra cấu trúc phản hồi API và lấy mảng comments
-        if (result.data && Array.isArray(result.data)) {
-          fetchedComments = result.data;
-        } else if (result.data && result.data.comments && Array.isArray(result.data.comments)) {
-          fetchedComments = result.data.comments;
-        } else if (result.data && result.data.data && Array.isArray(result.data.data.comments)) {
-          fetchedComments = result.data.data.comments;
-        } else {
-          console.error("Unexpected comments data structure:", result.data);
-        }
-        
-        console.log("Processed comments:", fetchedComments);
-        setComments(fetchedComments);
-        
-        // Lưu comments vào localStorage sau khi fetch
-        if (fetchedComments.length > 0) {
-          try {
-            localStorage.setItem(`task_comments_${enhancedTask._id}`, JSON.stringify(fetchedComments));
-          } catch (error) {
-            console.error("Error saving fetched comments to localStorage:", error);
-          }
-        }
-      } else {
-        console.error("Error in fetchComments:", result.message);
-        // Đặt comments là mảng rỗng để tránh lỗi
-        setComments([]);
-      }
-    } catch (error) {
-      console.error("Error fetching comments:", error);
-      // Đặt comments là mảng rỗng để tránh lỗi
-      setComments([]);
-    } finally {
-      setLoadingComments(false);
-    }
   };
 
   const fetchAttachments = async () => {
@@ -607,101 +533,6 @@ const TaskCard = ({
       console.error("Error fetching history:", error);
     } finally {
       setLoadingHistory(false);
-    }
-  };
-
-  // Cập nhật hàm handleSendComment để tải lại lịch sử sau khi gửi bình luận
-  const handleSendComment = async () => {
-    if (!newComment.trim() || !enhancedTask._id) return;
-    
-    try {
-      // Lấy projectId và sprintId từ task hoặc từ props
-      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
-      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
-      
-      if (!taskProjectId || !taskSprintId) {
-        console.error("Missing projectId or sprintId for handleSendComment:", { taskProjectId, taskSprintId, task: enhancedTask });
-        return;
-      }
-      
-      console.log("Sending comment for task:", { 
-        taskId: enhancedTask._id, 
-        projectId: taskProjectId, 
-        sprintId: taskSprintId,
-        comment: newComment
-      });
-      
-      const result = await addTaskComment(taskProjectId, taskSprintId, enhancedTask._id, newComment);
-      if (result.success) {
-        const updatedComments = [...comments, result.data];
-        setComments(updatedComments);
-        
-        // Lưu comments vào localStorage
-        try {
-          localStorage.setItem(`task_comments_${enhancedTask._id}`, JSON.stringify(updatedComments));
-        } catch (error) {
-          console.error("Error saving comments to localStorage:", error);
-        }
-        
-        setNewComment("");
-        
-        // Tải lại lịch sử sau khi thêm bình luận
-        fetchHistory();
-      } else {
-        console.error("Error in handleSendComment:", result.message);
-      }
-    } catch (error) {
-      console.error("Error sending comment:", error);
-    }
-  };
-
-  // Cập nhật hàm handleFileUpload để tải lại lịch sử sau khi tải lên tệp
-  const handleFileUpload = async (event) => {
-    if (!event.target.files || !event.target.files[0] || !enhancedTask._id) return;
-    
-    const file = event.target.files[0];
-    try {
-      // Lấy projectId và sprintId từ task hoặc từ props
-      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
-      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
-      
-      if (!taskProjectId || !taskSprintId) {
-        console.error("Missing projectId or sprintId for handleFileUpload:", { taskProjectId, taskSprintId, task: enhancedTask });
-        return;
-      }
-      
-      console.log("Uploading file for task:", { 
-        taskId: enhancedTask._id, 
-        projectId: taskProjectId, 
-        sprintId: taskSprintId,
-        fileName: file.name,
-        fileSize: file.size
-      });
-      
-      const result = await addTaskAttachment(taskProjectId, taskSprintId, enhancedTask._id, file);
-      if (result.success) {
-        const updatedAttachments = [...attachments, result.data];
-        setAttachments(updatedAttachments);
-        
-        // Lưu attachments vào localStorage
-        try {
-          localStorage.setItem(`task_attachments_${enhancedTask._id}`, JSON.stringify(updatedAttachments));
-        } catch (error) {
-          console.error("Error saving attachments to localStorage:", error);
-        }
-        
-        // Tải lại lịch sử sau khi thêm tệp đính kèm
-        fetchHistory();
-      } else {
-        console.error("Error in handleFileUpload:", result.message);
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
-    } finally {
-      // Reset input file
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
   };
 
@@ -813,25 +644,13 @@ const TaskCard = ({
           position: "absolute",
           top: "10px",
           left: "0px",
+          right: "0px",
           zIndex: 1,
           height: "20px"
         }}
       >
-        <Box display="flex" alignItems="center" gap={1}>
-          {/* Tags moved here */}
-          {Array.isArray(task.tags) && task.tags.length > 0 && (
-            <Box display="flex" alignItems="center" gap={0.5}>
-              {task.tags.map((tag, index) => (
-                <TagChip
-                  key={`${task._id}-tag-${index}`}
-                  icon={<LabelIcon />}
-                  label={tag}
-                  size="small"
-                />
-              ))}
-            </Box>
-          )}
-          
+        {/* Time info and Tags in one flex container */}
+        <Box display="flex" alignItems="center" gap={0.5}>
           {task.dueDate && (
             <Tooltip title="Ngày hết hạn">
               <Box display="flex" alignItems="center" sx={{ 
@@ -856,7 +675,7 @@ const TaskCard = ({
             </Tooltip>
           )}
 
-          {/* Estimated time moved here */}
+          {/* Estimated time */}
           {task.estimatedTime && (
             <Tooltip title="Thời gian ước tính">
               <Box display="flex" alignItems="center" sx={{ 
@@ -879,6 +698,20 @@ const TaskCard = ({
                 </Typography>
               </Box>
             </Tooltip>
+          )}
+
+          {/* Tags */}
+          {Array.isArray(task.tags) && task.tags.length > 0 && (
+            <Box display="flex" alignItems="center" gap={0.5}>
+              {task.tags.map((tag, index) => (
+                <TagChip
+                  key={`${task._id}-tag-${index}`}
+                  icon={<LabelIcon />}
+                  label={tag}
+                  size="small"
+                />
+              ))}
+            </Box>
           )}
         </Box>
       </Box>
@@ -906,26 +739,6 @@ const TaskCard = ({
           </TaskTitle>
           
           <Box display="flex" alignItems="center" gap={1}>
-            {comments.length > 0 && (
-              <Tooltip title={`${comments.length} bình luận`}>
-                <Box 
-                  display="flex" 
-                  alignItems="center"
-                  sx={{ 
-                    opacity: 0.7,
-                    backgroundColor: "rgba(25, 118, 210, 0.08)",
-                    borderRadius: "12px",
-                    padding: "2px 6px",
-                  }}
-                >
-                  <CommentIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
-                  <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                    {comments.length}
-                  </Typography>
-                </Box>
-              </Tooltip>
-            )}
-            
             {attachments.length > 0 && (
               <Tooltip title={`${attachments.length} tệp đính kèm`}>
                 <Box 
@@ -1094,228 +907,17 @@ const TaskCard = ({
               </Box>
             </Box>
             
-            <Box sx={{ 
-              borderBottom: 1, 
-              borderColor: 'divider', 
-              mb: 2,
-              "& .MuiTab-root": {
-                textTransform: "none",
-                fontWeight: 500,
-                fontSize: "0.85rem",
-                minHeight: "40px",
-                "&.Mui-selected": {
-                  fontWeight: 600
-                }
-              }
-            }}>
-              <Tabs 
-                value={expandedTab}
-                onChange={handleTabChange}
-                variant="fullWidth"
-                textColor="primary"
-                indicatorColor="primary"
-                aria-label="task details tabs"
-              >
-                <Tab label="Bình luận" />
-                <Tab label="Tệp đính kèm" />
-                <Tab label="Lịch sử" />
-              </Tabs>
-            </Box>
-            
-            {/* Tab content */}
-            <Box>
-              {/* Comments tab */}
-              {expandedTab === 0 && (
-                <Box>
-                  {loadingComments ? (
-                    <Box display="flex" justifyContent="center" my={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : comments.length > 0 ? (
-                    <List disablePadding>
-                      {comments.map((comment) => (
-                        <ListItem
-                          key={comment._id}
-                          alignItems="flex-start"
-                          sx={{ px: 0, py: 1 }}
-                        >
-                          <ListItemAvatar sx={{ minWidth: 40 }}>
-                            <Avatar
-                              src={comment.user?.avatar}
-                              sx={{ width: 30, height: 30 }}
-                            >
-                              {comment.user?.name?.charAt(0)}
-                            </Avatar>
-                          </ListItemAvatar>
-                          <ListItemText
-                            primary={
-                              <Typography variant="subtitle2" component="span">
-                                {comment.user?.name || "Người dùng"}
-                              </Typography>
-                            }
-                            secondary={
-                              <React.Fragment>
-                                <Typography
-                                  variant="body2"
-                                  component="span"
-                                  sx={{ display: 'block', whiteSpace: 'pre-wrap' }}
-                                >
-                                  {comment.content}
-                                </Typography>
-                                <Typography
-                                  variant="caption"
-                                  component="span"
-                                  color="text.secondary"
-                                >
-                                  {format(new Date(comment.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                                </Typography>
-                              </React.Fragment>
-                            }
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center">
-                      Chưa có bình luận nào
-                    </Typography>
-                  )}
-                  
-                  {/* Add comment input */}
-                  <Box display="flex" mt={2}>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      placeholder="Thêm bình luận..."
-                      variant="outlined"
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      InputProps={{
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton 
-                              edge="end" 
-                              disabled={!newComment.trim()}
-                              onClick={handleSendComment}
-                              size="small"
-                            >
-                              <SendIcon fontSize="small" />
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </Box>
-                </Box>
-              )}
-              
-              {/* Attachments tab */}
-              {expandedTab === 1 && (
-                <Box>
-                  {loadingAttachments ? (
-                    <Box display="flex" justifyContent="center" my={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : attachments.length > 0 ? (
-                    <List disablePadding>
-                      {attachments.map((attachment) => (
-                        <ListItem
-                          key={attachment._id || attachment.id}
-                          alignItems="flex-start"
-                          sx={{ px: 0, py: 1 }}
-                        >
-                          <ListItemIcon sx={{ minWidth: 40 }}>
-                            <InsertDriveFileIcon />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography variant="subtitle2" component="span">
-                                <Link 
-                                  href={attachment.url} 
-                                  target="_blank" 
-                                  rel="noopener"
-                                  underline="hover"
-                                >
-                                  {attachment.name}
-                                </Link>
-                              </Typography>
-                            }
-                            secondary={
-                              <Typography variant="caption" color="text.secondary">
-                                {format(new Date(attachment.uploadedAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </Typography>
-                            }
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center">
-                      Chưa có tệp đính kèm nào
-                    </Typography>
-                  )}
-                  
-                  {/* Upload file button */}
-                  <Box display="flex" justifyContent="center" mt={2}>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      style={{ display: "none" }}
-                      onChange={handleFileUpload}
-                    />
-                    <Button
-                      variant="outlined"
-                      startIcon={<CloudUploadIcon />}
-                      size="small"
-                      onClick={() => fileInputRef.current.click()}
-                    >
-                      Tải lên tệp đính kèm
-                    </Button>
-                  </Box>
-                </Box>
-              )}
-              
-              {/* History tab */}
-              {expandedTab === 2 && (
-                <Box>
-                  {loadingHistory ? (
-                    <Box display="flex" justifyContent="center" my={2}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  ) : history.length > 0 ? (
-                    <List disablePadding>
-                      {history.map((entry, index) => (
-                        <ListItem
-                          key={entry._id || `history-${index}`}
-                          alignItems="flex-start"
-                          sx={{ px: 0, py: 1 }}
-                        >
-                          <ListItemIcon sx={{ minWidth: 40 }}>
-                            <HistoryIcon fontSize="small" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography variant="subtitle2" component="span">
-                                {entry.user?.name || "Người dùng"} {entry.action}
-                              </Typography>
-                            }
-                            secondary={
-                              <Typography variant="caption" color="text.secondary">
-                                {format(new Date(entry.timestamp || entry.createdAt), "dd/MM/yyyy HH:mm", { locale: vi })}
-                              </Typography>
-                            }
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" align="center">
-                      Chưa có lịch sử thay đổi nào
-                    </Typography>
-                  )}
-                </Box>
-              )}
-            </Box>
+            {/* Replace the existing tabs with TaskInteractions */}
+            <TaskInteractions
+              key={`task-card-interactions-${task._id}`}
+              task={task}
+              project={project}
+              sprint={task.sprint}
+              onUpdate={() => {
+                fetchAttachments();
+                fetchHistory();
+              }}
+            />
           </CardContent>
         </Collapse>
       </CardContent>

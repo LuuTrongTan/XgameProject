@@ -3,7 +3,7 @@ import api from "../api/api";
 class ActivityService {
   static async createActivity(type, action, title, description) {
     try {
-      const response = await api.post("/api/activities", {
+      const response = await api.post("/activities", {
         type,
         action,
         title,

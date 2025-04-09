@@ -9,8 +9,9 @@ import {
   updateTask,
   deleteTask,
   assignTask,
-  uploadAttachment,
+  addAttachment,
   getTaskAttachments,
+  deleteAttachment,
   updateStatus,
   addTag,
   removeTag,
@@ -27,6 +28,8 @@ import { addTaskComment, getComments } from "../controllers/comment.controller.j
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
 import { PERMISSIONS } from "../config/constants.js";
+import { checkAttachmentAccess, checkDeletePermission } from "../middlewares/attachment.middleware.js";
+import { downloadAttachment } from "../controllers/attachment.controller.js";
 
 const router = express.Router();
 
@@ -37,17 +40,76 @@ if (!fs.existsSync(uploadDir)) {
   console.log("Created uploads directory:", uploadDir);
 }
 
+// Cấu hình storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
+    console.log("Processing file destination:", file.originalname);
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+    try {
+      console.log("Processing file name:", file.originalname);
+      
+      // Lưu tên file gốc để debugging
+      console.log("Original file details:", {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        encoding: file.encoding,
+        fieldname: file.fieldname
+      });
+      
+      // Tạo tên file mới với timestamp để đảm bảo duy nhất
+      const timestamp = Date.now();
+      const randomString = Math.round(Math.random() * 1E9).toString(36);
+      
+      // Xác định extension của file
+      const extension = path.extname(file.originalname) || '.unknown';
+      
+      // Tạo filename an toàn cho hệ thống
+      const safeFilename = `${timestamp}-${randomString}${extension}`;
+      console.log("Generated safe filename:", safeFilename);
+      
+      // Lưu mapping giữa tên file gốc và tên file trên đĩa
+      if (!req.fileOriginalNames) {
+        req.fileOriginalNames = {};
+      }
+      req.fileOriginalNames[safeFilename] = file.originalname;
+      
+      cb(null, safeFilename);
+    } catch (error) {
+      console.error("Error generating filename:", error);
+      // Trong trường hợp lỗi, tạo tên file failback an toàn
+      const fallbackName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.${path.extname(file.originalname) || 'bin'}`;
+      cb(null, fallbackName);
+    }
   }
 });
 
-const upload = multer({ storage: storage });
+// Cấu hình multer đơn giản với storage
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  // Thêm debug callback
+  fileFilter: (req, file, cb) => {
+    console.log("\n=== MULTER FILE FILTER ===");
+    console.log("- File being processed:", {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      encoding: file.encoding,
+      mimetype: file.mimetype
+    });
+    
+    console.log("- Request headers:", {
+      contentType: req.headers['content-type'],
+      contentLength: req.headers['content-length']
+    });
+    
+    // Always accept the file
+    cb(null, true);
+  }
+});
 
 /**
  * @swagger
@@ -218,7 +280,7 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", prote
  * @swagger
  * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments:
  *   post:
- *     summary: Upload file đính kèm
+ *     summary: Upload file attachment to a task
  *     tags: [Tasks]
  *     security:
  *       - bearerAuth: []
@@ -242,8 +304,95 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", prote
 router.post(
   "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments",
   protect,
+  checkAttachmentAccess,
+  (req, res, next) => {
+    console.log("\n=== FILE UPLOAD REQUEST - BEFORE MULTER ===");
+    console.log("Request params:", req.params);
+    console.log("Request headers:", {
+      contentType: req.headers['content-type'],
+      contentLength: req.headers['content-length'],
+      authorization: req.headers['authorization'] ? 'Present' : 'Missing',
+    });
+    
+    // Tìm boundary trong Content-Type header
+    const contentType = req.headers['content-type'] || '';
+    const boundaryMatch = contentType.match(/boundary=(?:\"([^\"]*)\"|([^;]*))/) || [];
+    const boundary = boundaryMatch[1] || boundaryMatch[2];
+    
+    console.log("Form data boundary:", boundary || 'Not detected');
+    
+    // Log một số thông tin về body
+    if (req.body) {
+      console.log("Request body keys:", Object.keys(req.body));
+    }
+    
+    next();
+  },
   upload.single("file"),
-  uploadAttachment
+  (req, res, next) => {
+    console.log("\n=== AFTER MULTER MIDDLEWARE ===");
+    console.log("req.file:", req.file ? 'Present' : 'Missing');
+    console.log("req.files:", req.files ? 'Present' : 'Missing');
+    
+    if (req.file) {
+      console.log("File object:", {
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path,
+        encoding: req.file.encoding,
+        fieldname: req.file.fieldname,
+        destination: req.file.destination
+      });
+      
+      // Kiểm tra file trên đĩa
+      try {
+        const fileExists = fs.existsSync(req.file.path);
+        const fileStats = fileExists ? fs.statSync(req.file.path) : null;
+        console.log("File exists on disk:", fileExists);
+        if (fileExists && fileStats) {
+          console.log("File stats:", {
+            size: fileStats.size,
+            created: fileStats.birthtime,
+            modified: fileStats.mtime,
+            isFile: fileStats.isFile()
+          });
+          
+          if (fileStats.size !== req.file.size) {
+            console.warn("WARNING: File size mismatch - reported:", req.file.size, "actual:", fileStats.size);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking file on disk:", error.message);
+      }
+      
+      // Kiểm tra mapping tên file gốc
+      if (req.fileOriginalNames && req.fileOriginalNames[req.file.filename]) {
+        console.log("Original name mapping:", {
+          savedAs: req.file.filename,
+          originalName: req.fileOriginalNames[req.file.filename]
+        });
+      }
+    } else {
+      console.log("No file in request!");
+      
+      // Kiểm tra các thông tin request chi tiết để debug
+      if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
+        console.log("Multipart form detected but no file processed by multer!");
+        console.log("Form data keys:", Object.keys(req.body));
+        console.log("Check field name - expected 'file' but found keys:", Object.keys(req.body));
+      }
+      
+      // Kiểm tra xem có lỗi từ multer không
+      if (req.multerError) {
+        console.error("Multer error:", req.multerError);
+      }
+    }
+    
+    next();
+  },
+  addAttachment
 );
 
 /**
@@ -581,7 +730,12 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks/upcoming", protect, get
  *         schema:
  *           type: string
  */
-router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments", protect, getTaskAttachments);
+router.get(
+  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments",
+  protect,
+  checkAttachmentAccess,
+  getTaskAttachments
+);
 
 /**
  * @swagger
@@ -615,5 +769,50 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/watchers", pro
 
 // Task dependencies and relationships
 router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/dependencies", protect, toggleDependency);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments/{attachmentId}:
+ *   delete:
+ *     summary: Xóa tệp đính kèm của công việc
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: attachmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
+router.delete(
+  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId",
+  protect,
+  checkDeletePermission,
+  deleteAttachment
+);
+
+// Cập nhật route xem/tải tệp đính kèm
+router.get(
+  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId",
+  protect,
+  checkAttachmentAccess,
+  downloadAttachment
+);
 
 export default router;

@@ -24,21 +24,9 @@ const checkCommentPermission = async (commentId, userId) => {
   const comment = await Comment.findById(commentId);
   if (!comment) return { error: "Bình luận không tồn tại" };
 
-  // Kiểm tra quyền trong task/project
-  if (comment.task) {
-    const task = await Task.findById(comment.task).populate({
-      path: "project",
-      populate: { path: "members" },
-    });
-
-    if (!task) return { error: "Công việc không tồn tại" };
-    const project = task.project;
-
-    if (project.owner.toString() === userId.toString()) return { comment };
-    const member = project.members.find(
-      (m) => m.user.toString() === userId.toString()
-    );
-    if (!member) return { error: "Bạn không phải thành viên của dự án" };
+  // Kiểm tra xem người dùng có phải là tác giả của comment không
+  if (comment.user.toString() !== userId.toString()) {
+    return { error: "Bạn không có quyền thực hiện hành động này với bình luận" };
   }
 
   return { comment };
@@ -134,7 +122,7 @@ const notifyCommentParticipants = async (comment, task, actor) => {
 // Thêm bình luận vào task
 export const addTaskComment = async (req, res) => {
   try {
-    const { taskId } = req.params;
+    const { taskId, projectId, sprintId } = req.params;
     const errors = validateCommentData(req.body);
     if (errors.length > 0) {
       return res.status(400).json({
@@ -144,16 +132,20 @@ export const addTaskComment = async (req, res) => {
       });
     }
 
-    // Tìm task để xác nhận tồn tại, nhưng chỉ lấy các thông tin cần thiết
-    const task = await Task.findById(taskId).select('_id').lean();
+    // Tìm task để xác nhận tồn tại và thuộc về project/sprint
+    const task = await Task.findOne({
+      _id: taskId,
+      project: projectId,
+      sprint: sprintId
+    }).select('_id').lean();
+
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: "Công việc không tồn tại",
+        message: "Công việc không tồn tại hoặc không thuộc sprint này",
       });
     }
 
-    // Bỏ qua việc kiểm tra quyền bình luận để cho phép tất cả người dùng bình luận
     // Xử lý mentions từ nội dung
     const mentions = processMentions(req.body.content);
 
@@ -170,68 +162,25 @@ export const addTaskComment = async (req, res) => {
     // Lưu comment
     await comment.save();
 
-    // Lấy thông tin đầy đủ của comment, nhưng không đợi kết quả để đẩy nhanh response
-    const getPopulatedComment = async () => {
-      try {
-        const populatedComment = await Comment.findById(comment._id)
-          .populate("user", "name email avatar")
-          .populate("mentions", "name email avatar")
-          .populate({
-            path: "parentComment",
-            populate: { path: "user", select: "name email avatar" },
-          });
+    // Lấy thông tin đầy đủ của comment
+    const populatedComment = await Comment.findById(comment._id)
+      .populate("user", "name email avatar")
+      .populate("mentions", "name email avatar")
+      .populate({
+        path: "parentComment",
+        populate: { path: "user", select: "name email avatar" },
+      });
 
-        // Lấy thông tin đầy đủ của task để gửi thông báo
-        const fullTask = await Task.findById(taskId).populate('assignees');
-        
-        // Gửi thông báo cho những người liên quan (thực hiện sau khi trả về response)
-        if (fullTask) {
-          notifyCommentParticipants(populatedComment, fullTask, req.user);
-        } else {
-          notifyCommentParticipants(populatedComment, { _id: taskId }, req.user);
-        }
-
-        // Gửi thông báo realtime qua socket
-        if (global.io) {
-          global.io.emit("new_comment", {
-            taskId,
-            comment: populatedComment,
-            creator: {
-              id: req.user.id,
-              name: req.user.name,
-            },
-          });
-        }
-      } catch (error) {
-        console.error("Error populating comment:", error);
-      }
-    };
-
-    // Chạy hàm lấy thông tin đầy đủ và gửi thông báo mà không đợi kết quả
-    getPopulatedComment();
-
-    // Trả về response ngay lập tức với thông tin cơ bản
-    const basicComment = {
-      _id: comment._id,
-      content: comment.content,
-      task: comment.task,
-      user: {
-        _id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        avatar: req.user.avatar,
-      },
-      mentions: comment.mentions,
-      attachments: comment.attachments,
-      parentComment: comment.parentComment,
-      createdAt: comment.createdAt,
-      updatedAt: comment.updatedAt,
-    };
+    // Gửi thông báo cho những người liên quan
+    const fullTask = await Task.findById(taskId).populate('assignees');
+    if (fullTask) {
+      notifyCommentParticipants(populatedComment, fullTask, req.user);
+    }
 
     res.status(201).json({
       success: true,
       message: "Thêm bình luận thành công",
-      data: basicComment,
+      data: populatedComment,
     });
   } catch (error) {
     console.error("Lỗi khi thêm bình luận:", error);
@@ -246,7 +195,7 @@ export const addTaskComment = async (req, res) => {
 // Lấy danh sách bình luận
 export const getComments = async (req, res) => {
   try {
-    const { taskId } = req.query;
+    const { taskId, projectId, sprintId } = req.params;
     const {
       page = 1,
       limit = 20,
@@ -254,27 +203,30 @@ export const getComments = async (req, res) => {
       parentOnly = true,
     } = req.query;
 
-    // Kiểm tra task tồn tại nếu có taskId
-    if (taskId) {
-      const task = await Task.findById(taskId).select('_id').lean();
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          message: "Công việc không tồn tại",
-        });
-      }
-      
-      // Bỏ qua việc kiểm tra quyền truy cập để cho phép tất cả mọi người xem comment
+    console.log("=== Getting comments ===");
+    console.log("Task ID:", taskId);
+    console.log("Project ID:", projectId);
+    console.log("Sprint ID:", sprintId);
+
+    // Kiểm tra task tồn tại và thuộc về project/sprint
+    const task = await Task.findOne({
+      _id: taskId,
+      project: projectId,
+      sprint: sprintId
+    }).select('_id').lean();
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Công việc không tồn tại hoặc không thuộc sprint này",
+      });
     }
 
     // Xây dựng query
     const query = {
+      task: taskId,
       status: "active",
     };
-
-    if (taskId) {
-      query.task = taskId;
-    }
 
     if (parentOnly === "true") {
       query.parentComment = null;
@@ -302,30 +254,66 @@ export const getComments = async (req, res) => {
           { path: "mentions", select: "name email avatar" },
         ],
         options: { sort: { createdAt: 1 } },
-      })
-      .lean();
+      });
+
+    // Properly populate reactions for each comment
+    const populatedComments = await Promise.all(comments.map(async (comment) => {
+      const commentObj = comment.toObject();
+      
+      // Populate reactions user data
+      if (commentObj.reactions && commentObj.reactions.length > 0) {
+        commentObj.reactions = await Promise.all(commentObj.reactions.map(async (reaction) => {
+          if (reaction.user) {
+            try {
+              const user = await User.findById(reaction.user).select('name email avatar');
+              return {
+                ...reaction,
+                user: user ? user : { _id: reaction.user, name: 'Unknown User' }
+              };
+            } catch (err) {
+              console.error("Error populating reaction user:", err);
+              return reaction;
+            }
+          }
+          return reaction;
+        }));
+      }
+
+      // Also populate reactions for replies
+      if (commentObj.replies && commentObj.replies.length > 0) {
+        commentObj.replies = await Promise.all(commentObj.replies.map(async (reply) => {
+          if (reply.reactions && reply.reactions.length > 0) {
+            reply.reactions = await Promise.all(reply.reactions.map(async (reaction) => {
+              if (reaction.user) {
+                try {
+                  const user = await User.findById(reaction.user).select('name email avatar');
+                  return {
+                    ...reaction,
+                    user: user ? user : { _id: reaction.user, name: 'Unknown User' }
+                  };
+                } catch (err) {
+                  console.error("Error populating reply reaction user:", err);
+                  return reaction;
+                }
+              }
+              return reaction;
+            }));
+          }
+          return reply;
+        }));
+      }
+      
+      return commentObj;
+    }));
 
     const total = await Comment.countDocuments(query);
 
-    // Thống kê
-    const stats = {
-      total,
-      replies: await Comment.countDocuments({
-        ...query,
-        parentComment: { $ne: null },
-      }),
-      reactions: await Comment.aggregate([
-        { $match: query },
-        { $unwind: "$reactions" },
-        { $group: { _id: "$reactions.type", count: { $sum: 1 } } },
-      ]),
-    };
+    console.log(`Found ${populatedComments.length} comments for task ${taskId}`);
 
     res.json({
       success: true,
       data: {
-        comments,
-        stats,
+        comments: populatedComments,
         pagination: {
           total,
           currentPage: parseInt(page),
@@ -347,19 +335,10 @@ export const getComments = async (req, res) => {
 export const updateComment = async (req, res) => {
   try {
     const { commentId } = req.params;
-    const errors = validateCommentData(req.body);
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Dữ liệu không hợp lệ",
-        errors,
-      });
-    }
+    const { content } = req.body;
 
-    const { comment, error } = await checkCommentPermission(
-      commentId,
-      req.user.id
-    );
+    // Kiểm tra quyền
+    const { comment, error } = await checkCommentPermission(commentId, req.user.id);
     if (error) {
       return res.status(403).json({
         success: false,
@@ -367,56 +346,15 @@ export const updateComment = async (req, res) => {
       });
     }
 
-    // Chỉ người tạo comment mới được sửa
-    if (comment.user.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền sửa bình luận này",
-      });
-    }
-
-    // Xử lý mentions mới
-    const mentions = processMentions(req.body.content);
-
-    comment.content = req.body.content;
-    comment.mentions = mentions;
-    comment.isEdited = true;
-    comment.editHistory.push({
-      content: req.body.content,
-      editedBy: req.user.id,
-      editedAt: new Date(),
-    });
-
+    // Cập nhật nội dung
+    comment.content = content;
+    comment.edited = true;
     await comment.save();
-
-    const populatedComment = await Comment.findById(comment._id)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar")
-      .populate({
-        path: "parentComment",
-        populate: { path: "user", select: "name email avatar" },
-      });
-
-    // Gửi thông báo cho mentions mới
-    const task = await Task.findById(comment.task);
-    if (task) {
-      await notifyCommentParticipants(comment, task, req.user);
-    }
-
-    // Gửi thông báo realtime
-    global.io.emit("comment_updated", {
-      commentId: comment._id,
-      comment: populatedComment,
-      updater: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
 
     res.json({
       success: true,
-      message: "Cập nhật bình luận thành công",
-      data: populatedComment,
+      message: "Đã cập nhật bình luận",
+      data: comment,
     });
   } catch (error) {
     console.error("Lỗi khi cập nhật bình luận:", error);
@@ -428,14 +366,13 @@ export const updateComment = async (req, res) => {
   }
 };
 
-// Xóa bình luận (soft delete)
+// Xóa bình luận
 export const deleteComment = async (req, res) => {
   try {
     const { commentId } = req.params;
-    const { comment, error } = await checkCommentPermission(
-      commentId,
-      req.user.id
-    );
+
+    // Kiểm tra quyền
+    const { comment, error } = await checkCommentPermission(commentId, req.user.id);
     if (error) {
       return res.status(403).json({
         success: false,
@@ -443,51 +380,12 @@ export const deleteComment = async (req, res) => {
       });
     }
 
-    // Chỉ người tạo comment hoặc admin mới được xóa
-    if (
-      comment.user.toString() !== req.user.id &&
-      !req.user.roles.includes("Admin")
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền xóa bình luận này",
-      });
-    }
-
-    await comment.softDelete(req.user.id);
-
-    // Nếu là comment gốc, soft delete tất cả replies
-    if (!comment.parentComment) {
-      await Comment.updateMany(
-        { parentComment: comment._id },
-        {
-          $set: {
-            status: "deleted",
-            editHistory: {
-              $push: {
-                content: "Comment đã bị xóa",
-                editedBy: req.user.id,
-                editedAt: new Date(),
-              },
-            },
-          },
-        }
-      );
-    }
-
-    // Gửi thông báo realtime
-    global.io.emit("comment_deleted", {
-      commentId: comment._id,
-      taskId: comment.task,
-      deleter: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
+    // Xóa comment
+    await comment.remove();
 
     res.json({
       success: true,
-      message: "Xóa bình luận thành công",
+      message: "Đã xóa bình luận",
     });
   } catch (error) {
     console.error("Lỗi khi xóa bình luận:", error);
@@ -499,69 +397,118 @@ export const deleteComment = async (req, res) => {
   }
 };
 
-// Thêm/xóa reaction
+// Thêm/xóa reaction cho comment
 export const toggleReaction = async (req, res) => {
   try {
     const { commentId } = req.params;
     const { type } = req.body;
+    
+    // Get user ID, handle both formats (MongoDB ObjectId and string ID)
+    const userId = req.user._id || req.user.id;
+    
+    console.log('toggleReaction:', {
+      commentId,
+      type,
+      userId: userId.toString(),
+      userName: req.user.name
+    });
 
-    if (!["like", "heart", "laugh", "wow", "sad", "angry"].includes(type)) {
+    // Kiểm tra comment tồn tại
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+      console.log(`Comment ${commentId} not found`);
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy bình luận",
+      });
+    }
+
+    // Kiểm tra loại reaction hợp lệ
+    const validTypes = ["like", "heart"];
+    if (!validTypes.includes(type)) {
+      console.log(`Invalid reaction type: ${type}`);
       return res.status(400).json({
         success: false,
         message: "Loại reaction không hợp lệ",
       });
     }
 
-    const { comment, error } = await checkCommentPermission(
-      commentId,
-      req.user.id
+    // Convert IDs to strings for comparison
+    const userIdStr = userId.toString();
+    
+    // Tìm reaction hiện tại của user
+    const existingReactionIndex = comment.reactions.findIndex(
+      (r) => r.user.toString() === userIdStr && r.type === type
     );
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
+    
+    console.log('Existing reaction check:', {
+      existingReactionIndex,
+      currentReactions: comment.reactions.map(r => ({
+        user: r.user.toString(),
+        type: r.type
+      }))
+    });
+
+    if (existingReactionIndex !== -1) {
+      // Nếu đã có reaction thì xóa
+      console.log(`Removing existing reaction from user ${userIdStr}`);
+      comment.reactions.splice(existingReactionIndex, 1);
+    } else {
+      // Nếu chưa có thì thêm mới
+      console.log(`Adding new reaction for user ${userIdStr}`);
+      comment.reactions.push({
+        user: userId,
+        type: type,
       });
     }
 
-    const reactions = await comment.addReaction(req.user.id, type);
+    await comment.save();
+    console.log('Comment saved with updated reactions');
 
-    // Thông báo cho người viết comment
-    if (comment.user.toString() !== req.user.id) {
-      const task = await Task.findById(comment.task);
-      if (task) {
-        await createNotification({
-          userId: comment.user,
-          type: "comment_reaction",
-          message: `${req.user.name} đã bày tỏ cảm xúc ${type} với bình luận của bạn`,
-          link: `/tasks/${task._id}`,
-          task: task._id,
-          project: task.project,
-          comment: comment._id,
-          senderId: req.user.id,
-        });
-      }
+    // Trả về comment đã được cập nhật với thông tin người dùng đầy đủ
+    const updatedComment = await Comment.findById(commentId)
+      .populate("user", "name email avatar")
+      .populate("mentions", "name email avatar")
+      .populate({
+        path: "replies",
+        match: { status: "active" },
+        populate: [
+          { path: "user", select: "name email avatar" },
+          { path: "mentions", select: "name email avatar" },
+        ],
+      });
+
+    // Populate reactions with user data
+    const commentObj = updatedComment.toObject();
+    if (commentObj.reactions && commentObj.reactions.length > 0) {
+      commentObj.reactions = await Promise.all(commentObj.reactions.map(async (reaction) => {
+        if (reaction.user) {
+          try {
+            const user = await User.findById(reaction.user).select('name email avatar');
+            return {
+              ...reaction,
+              user: user ? user : { _id: reaction.user, name: 'Unknown User' }
+            };
+          } catch (err) {
+            console.error("Error populating reaction user:", err);
+            return reaction;
+          }
+        }
+        return reaction;
+      }));
     }
-
-    // Gửi thông báo realtime
-    global.io.emit("comment_reaction_updated", {
-      commentId: comment._id,
-      reactions,
-      reactor: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
-
+    
+    console.log('Updated comment reactions:', commentObj.reactions);
+    
     res.json({
       success: true,
-      message: "Cập nhật reaction thành công",
-      data: reactions,
+      data: commentObj,
     });
   } catch (error) {
-    console.error("Lỗi khi cập nhật reaction:", error);
+    console.error("Error toggling reaction:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi cập nhật reaction",
+      message: "Có lỗi xảy ra khi xử lý reaction",
       error: error.message,
     });
   }

@@ -4,8 +4,8 @@ import {
   getComments,
   updateComment,
   deleteComment,
-  addReply,
   toggleReaction,
+  addReply,
 } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 
@@ -51,7 +51,7 @@ const router = express.Router();
  *       401:
  *         description: Không có quyền truy cập
  */
-router.post("/", addTaskComment);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, addTaskComment);
 
 /**
  * @swagger
@@ -81,7 +81,7 @@ router.post("/", addTaskComment);
  *       200:
  *         description: Danh sách bình luận
  */
-router.get("/", getComments);
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, getComments);
 
 /**
  * @swagger
@@ -120,7 +120,7 @@ router.get("/", getComments);
  *       404:
  *         description: Không tìm thấy bình luận
  */
-router.put("/:id", updateComment);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments/:commentId", protect, updateComment);
 
 /**
  * @swagger
@@ -144,38 +144,7 @@ router.put("/:id", updateComment);
  *       404:
  *         description: Không tìm thấy bình luận
  */
-router.delete("/:id", deleteComment);
-
-/**
- * @swagger
- * /comments/{id}/replies:
- *   post:
- *     summary: Thêm phản hồi cho bình luận
- *     tags: [Comments]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - content
- *             properties:
- *               content:
- *                 type: string
- *     responses:
- *       201:
- *         description: Phản hồi đã được thêm
- */
-router.post("/:id/replies", addReply);
+router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments/:commentId", protect, deleteComment);
 
 /**
  * @swagger
@@ -207,6 +176,37 @@ router.post("/:id/replies", addReply);
  *       200:
  *         description: Reaction đã được cập nhật
  */
-router.post("/:id/reactions", toggleReaction);
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments/:commentId/reactions", protect, toggleReaction);
+
+/**
+ * @swagger
+ * /comments/{id}/replies:
+ *   post:
+ *     summary: Thêm phản hồi cho bình luận
+ *     tags: [Comments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Phản hồi đã được thêm
+ */
+router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments/:commentId/replies", protect, addReply);
 
 export default router;

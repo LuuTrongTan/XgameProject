@@ -1,4 +1,5 @@
 import API from "./api";
+import axios from "axios";
 
 // Lấy danh sách công việc trong sprint
 export const getSprintTasks = async (projectId, sprintId) => {
@@ -396,126 +397,80 @@ export const addTaskAttachment = async (projectId, sprintId, taskId, fileOrFormD
   }
 };
 
-// Tải lên tệp đính kèm
+// Upload file đính kèm
 export const uploadTaskAttachment = async (projectId, sprintId, taskId, file) => {
   try {
     if (!projectId || !sprintId || !taskId || !file) {
-      console.error("Missing required parameters for uploadTaskAttachment:", { projectId, sprintId, taskId });
-      return { 
-        success: false, 
-        message: "Thiếu thông tin cần thiết để tải lên tệp đính kèm" 
-      };
+      throw new Error("Missing required parameters");
     }
-    
-  const formData = new FormData();
-  formData.append("file", file);
-    
-    // Đặt timeout dài hơn cho upload file
+
+    const formData = new FormData();
+    formData.append("file", file);
+
     const response = await API.post(
       `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`,
       formData,
       {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-        timeout: 60000 // 60 giây cho upload file
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       }
     );
-    
-  return response.data;
+    return response.data;
   } catch (error) {
     console.error("Error uploading attachment:", error);
-    return { 
-      success: false, 
-      message: error.response?.data?.message || "Không thể tải lên tệp đính kèm. Vui lòng thử lại sau.",
-      isNetworkError: !error.response
-    };
+    throw error;
   }
 };
 
-// Lấy danh sách tệp đính kèm
+// Lấy danh sách file đính kèm
 export const getTaskAttachments = async (projectId, sprintId, taskId) => {
   try {
     if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters for getTaskAttachments:", { projectId, sprintId, taskId });
-      return { 
-        success: false, 
-        message: "Thiếu thông tin cần thiết để lấy danh sách tệp đính kèm" 
-      };
+      throw new Error("Missing required parameters");
     }
 
-    console.log(`Fetching attachments for task: ${taskId} in project: ${projectId}, sprint: ${sprintId}`);
-    
-  const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`);
-    console.log("Attachment API raw response:", response);
-    
-    // Kiểm tra và chuẩn hóa dữ liệu
-    if (response.data) {
-      // Nếu có dữ liệu nhưng không có thuộc tính success
-      if (response.data.success === undefined) {
-        console.log("Converting attachment data to standard format");
-        return {
-          success: true,
-          message: "Dữ liệu tệp đính kèm nhận được",
-          data: Array.isArray(response.data) ? response.data : [response.data]
-        };
-      } 
-      
-      // Nếu dữ liệu đã ở định dạng standard (có success)
-  return response.data;
-    }
-    
-    // Trường hợp response rỗng hoặc không hợp lệ
-    console.warn("Empty or invalid attachment response", response);
-    return {
-      success: true,
-      message: "Không có tệp đính kèm",
-      data: []
-    };
+    const response = await API.get(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`
+    );
+    return response.data;
   } catch (error) {
-    console.error("[API Error] GET attachments:", error);
-    
-    // Log thêm thông tin chi tiết về lỗi
-    if (error.response) {
-      console.error("Error details:", {
-        status: error.response.status,
-        data: error.response.data,
-        headers: error.response.headers
-      });
-    }
-    
-    // Nếu API trả về 404, trả về mảng rỗng thay vì báo lỗi
-    if (error.response && error.response.status === 404) {
-      return {
-        success: true,
-        message: "Không có tệp đính kèm",
-        data: []
-      };
-    }
-    
-    // Trả về thông báo lỗi cụ thể hơn
-    return { 
-      success: false, 
-      message: error.response?.data?.message || "Không thể lấy danh sách tệp đính kèm. Vui lòng thử lại sau.",
-      error: error.message,
-      isNetworkError: !error.response,
-      status: error.response?.status
-    };
+    console.error("Error fetching attachments:", error);
+    throw error;
   }
 };
 
-// Xóa tệp đính kèm
+// Xóa file đính kèm
 export const deleteTaskAttachment = async (projectId, sprintId, taskId, attachmentId) => {
   try {
-  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments/${attachmentId}`);
-  return response.data;
+    if (!projectId || !sprintId || !taskId || !attachmentId) {
+      throw new Error("Missing required parameters");
+    }
+
+    const response = await API.delete(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments/${attachmentId}`
+    );
+    return response.data;
   } catch (error) {
-    console.error("[API Error] DELETE attachment:", error);
-    return { 
-      success: false, 
-      message: error.response?.data?.message || "Không thể xóa tệp đính kèm. Vui lòng thử lại sau.",
-      isNetworkError: !error.response
-    };
+    console.error("Error deleting attachment:", error);
+    throw error;
+  }
+};
+
+// Lấy lịch sử thay đổi của task
+export const getTaskHistory = async (projectId, sprintId, taskId) => {
+  try {
+    if (!projectId || !sprintId || !taskId) {
+      throw new Error("Missing required parameters");
+    }
+
+    const response = await API.get(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching task history:", error);
+    throw error;
   }
 };
 
@@ -523,156 +478,65 @@ export const deleteTaskAttachment = async (projectId, sprintId, taskId, attachme
 export const getTaskComments = async (projectId, sprintId, taskId) => {
   try {
     if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters for getTaskComments:", { projectId, sprintId, taskId });
-      return { 
-        success: false, 
-        message: "Thiếu thông tin cần thiết để lấy bình luận" 
-      };
+      throw new Error("Missing required parameters");
     }
-    
-    console.log(`Fetching comments for task: ${taskId} in project: ${projectId}, sprint: ${sprintId}`);
-    
-    // Sử dụng route mới
-    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`);
-    
-    console.log("Comments API response:", response.data);
-    
-    // Chuẩn hóa dữ liệu trả về
-    if (response.data) {
-      return {
-        success: true,
-        data: response.data.data || [],
-        message: "Lấy danh sách bình luận thành công"
-      };
-    } else {
-      console.warn("Comment data format unexpected:", response.data);
-      return {
-        success: true,
-        data: [],
-        message: "Không có bình luận"
-      };
-    }
+    const response = await API.get(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`
+    );
+    return response.data;
   } catch (error) {
-    console.error('Error fetching comments:', error);
-    return { 
-      success: false, 
-      message: error.response?.data?.message || 'Không thể tải bình luận. Vui lòng thử lại sau.',
-      isNetworkError: !error.response
-    };
+    console.error("Error fetching comments:", error);
+    throw error;
   }
 };
 
 // Thêm bình luận
-export const addTaskComment = async (projectId, sprintId, taskId, content) => {
-  let retryCount = 0;
-  const maxRetries = 3;
-  
-  const attemptAddComment = async () => {
-    try {
-      if (!projectId || !sprintId || !taskId || !content) {
-        console.error("Missing required parameters for addTaskComment:", { projectId, sprintId, taskId, content });
-        return { 
-          success: false, 
-          message: "Thiếu thông tin cần thiết để thêm bình luận" 
-        };
-      }
-  
-      console.log(`Thêm bình luận cho task ${taskId}, lần thử ${retryCount + 1}/${maxRetries}`);
-      
-      // Tạo bản sao của dữ liệu comment để có thể sử dụng ngay lập tức trên UI
-      const optimisticComment = {
-        _id: `temp_${Date.now()}`,
-        content: content,
-        taskId: taskId,
-        createdAt: new Date().toISOString(),
-        user: JSON.parse(localStorage.getItem('user') || '{}')
-      };
-      
-      // Lưu thông tin backup cho comment
-      const backupKey = `comment_backup_${taskId}_${Date.now()}`;
-      localStorage.setItem(backupKey, JSON.stringify({
-        projectId,
-        sprintId,
-        taskId,
-        content,
-        timestamp: Date.now()
-      }));
-  
-      // Gửi yêu cầu API với timeout 10 giây
-      const response = await API.post(
-        `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`, 
-        { content },
-        { timeout: 10000 }
-      );
-      
-      // Xóa backup sau khi gửi thành công
-      localStorage.removeItem(backupKey);
-      
-      return {
-        success: true,
-        message: "Thêm bình luận thành công",
-        data: response.data?.data || optimisticComment,
-        isOptimistic: !response.data?.data
-      };
-    } catch (error) {
-      console.error(`[API Error] POST comment (attempt ${retryCount + 1}/${maxRetries}):`, error);
-      
-      // Nếu là lỗi mạng hoặc lỗi 500 và chưa retry đủ số lần, thử lại
-      if ((error.message === 'Network Error' || (error.response && error.response.status >= 500)) 
-          && retryCount < maxRetries - 1) {
-        retryCount++;
-        console.log(`Thử lại lần ${retryCount}/${maxRetries} sau ${retryCount * 2} giây...`);
-        
-        // Đợi mỗi lần retry dài hơn (2s, 4s, 6s)
-        await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
-        return attemptAddComment();
-      }
-      
-      return {
-        success: false,
-        message: error.response?.data?.message || "Không thể thêm bình luận. Vui lòng thử lại sau.",
-        isNetworkError: !error.response,
-        hasBackup: true
-      };
+export const addTaskComment = async (projectId, sprintId, taskId, comment) => {
+  try {
+    if (!projectId || !sprintId || !taskId || !comment) {
+      throw new Error("Missing required parameters");
     }
-  };
-  
-  return attemptAddComment();
+    const response = await API.post(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments`,
+      comment
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error adding comment:", error);
+    throw error;
+  }
 };
 
 // Cập nhật bình luận
-export const updateTaskComment = async (projectId, sprintId, taskId, commentId, content) => {
-  const response = await API.put(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`, { content });
-  return response.data;
+export const updateTaskComment = async (projectId, sprintId, taskId, commentId, comment) => {
+  try {
+    if (!projectId || !sprintId || !taskId || !commentId || !comment) {
+      throw new Error("Missing required parameters");
+    }
+    const response = await API.put(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`,
+      comment
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error updating comment:", error);
+    throw error;
+  }
 };
 
 // Xóa bình luận
 export const deleteTaskComment = async (projectId, sprintId, taskId, commentId) => {
-  const response = await API.delete(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`);
-  return response.data;
-};
-
-// Lấy lịch sử thay đổi
-export const getTaskHistory = async (projectId, sprintId, taskId) => {
   try {
-    if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters for getTaskHistory:", { projectId, sprintId, taskId });
-      return { 
-        success: false, 
-        message: "Thiếu thông tin cần thiết để lấy lịch sử thay đổi" 
-      };
+    if (!projectId || !sprintId || !taskId || !commentId) {
+      throw new Error("Missing required parameters");
     }
-
-    const response = await API.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`);
+    const response = await API.delete(
+      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/comments/${commentId}`
+    );
     return response.data;
   } catch (error) {
-    console.error("[API Error] GET history:", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Không thể lấy lịch sử thay đổi",
-      error: error.message,
-      isNetworkError: !error.response
-    };
+    console.error("Error deleting comment:", error);
+    throw error;
   }
 };
 

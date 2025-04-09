@@ -9,6 +9,7 @@ import { specs } from "./config/swagger.js";
 import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 // Lấy __dirname từ ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +31,7 @@ import settingsRoutes from "./routes/settings.routes.js";
 import sprintRoutes from "./routes/sprint.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import activityRoutes from "./routes/activity.routes.js";
 import connectDB from "./config/database.js";
 
 const app = express();
@@ -57,9 +59,26 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// Phục vụ tệp tĩnh từ thư mục uploads
+// Phục vụ tệp tĩnh từ thư mục uploads với CORS headers
 const uploadsDir = path.join(process.cwd(), "uploads");
-app.use("/uploads", express.static(uploadsDir));
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("Created uploads directory:", uploadsDir);
+}
+
+// Middleware đảm bảo thư mục uploads có thể truy cập
+app.use("/uploads", (req, res, next) => {
+  // Thêm CORS headers
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, HEAD");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  
+  // Thêm cache headers cho hiệu suất
+  res.header("Cache-Control", "public, max-age=86400"); // Cache 1 ngày
+  
+  next();
+}, express.static(uploadsDir));
+
 console.log("Serving static files from:", uploadsDir);
 
 // Route kiểm tra kết nối
@@ -126,7 +145,7 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api", taskRoutes);
-app.use("/api/comments", commentRoutes);
+app.use("/api", commentRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/timelogs", timelogsRoutes);
@@ -137,6 +156,135 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api", sprintRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/activities", activityRoutes);
+
+// API test file để kiểm tra nội dung file và quyền truy cập
+app.get('/api/test-file/:filename', (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(uploadsDir, filename);
+    
+    const fileInfo = {
+      filename: filename,
+      exists: fs.existsSync(filePath),
+      stats: fs.existsSync(filePath) ? fs.statSync(filePath) : null,
+      accessible: false,
+      url: `/uploads/${filename}`,
+      fullUrl: `${req.protocol}://${req.get('host')}/uploads/${filename}`
+    };
+    
+    // Kiểm tra quyền truy cập
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.accessSync(filePath, fs.constants.R_OK);
+        fileInfo.accessible = true;
+      }
+    } catch (accessError) {
+      fileInfo.accessError = accessError.message;
+    }
+    
+    res.json({
+      success: true,
+      message: 'File information',
+      data: fileInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error getting file information',
+      error: error.message
+    });
+  }
+});
+
+// Add debug endpoint for file system testing
+app.get('/api/test-files', (req, res) => {
+  try {
+    const uploadDirInfo = {
+      path: uploadsDir,
+      exists: fs.existsSync(uploadsDir),
+      files: fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir).slice(0, 20) : [],
+      serving: '/uploads'
+    };
+    
+    res.json({
+      success: true,
+      message: 'File system information',
+      data: {
+        uploadDirInfo,
+        env: {
+          NODE_ENV: process.env.NODE_ENV,
+          BACKEND_URL: process.env.BACKEND_URL || null,
+          host: req.get('host'),
+          protocol: req.protocol
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error getting file system information',
+      error: error.message
+    });
+  }
+});
+
+// API test tệp uploads
+app.get('/api/test-upload-system', (req, res) => {
+  try {
+    // Đường dẫn thư mục uploads
+    const uploadsInfo = {
+      path: uploadsDir,
+      url: '/uploads',
+      exists: fs.existsSync(uploadsDir),
+      isDirectory: fs.existsSync(uploadsDir) ? fs.statSync(uploadsDir).isDirectory() : false,
+      permissions: fs.existsSync(uploadsDir) ? fs.statSync(uploadsDir).mode.toString(8) : null,
+      files: []
+    };
+    
+    // Kiểm tra file trong thư mục (tối đa 10 file)
+    if (uploadsInfo.exists && uploadsInfo.isDirectory) {
+      const files = fs.readdirSync(uploadsDir).slice(0, 10);
+      uploadsInfo.files = files.map(file => {
+        const filePath = path.join(uploadsDir, file);
+        const stats = fs.statSync(filePath);
+        return {
+          name: file,
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime,
+          permissions: stats.mode.toString(8),
+          url: `/uploads/${file}`,
+          fullUrl: `${req.protocol}://${req.get('host')}/uploads/${file}`,
+        };
+      });
+    }
+    
+    // Kiểm tra model Upload
+    res.json({
+      success: true,
+      message: 'File system information',
+      data: {
+        uploadsInfo,
+        server: {
+          env: process.env.NODE_ENV || 'development',
+          baseUrl: `${req.protocol}://${req.get('host')}`,
+          cors: {
+            origin: res.getHeader('Access-Control-Allow-Origin') || '*',
+            methods: res.getHeader('Access-Control-Allow-Methods') || 'GET, POST, PUT, DELETE',
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in test-upload-system:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking upload system',
+      error: error.message
+    });
+  }
+});
 
 // ✅ Xử lý lỗi 404 (API không tồn tại)
 app.use((req, res) => {

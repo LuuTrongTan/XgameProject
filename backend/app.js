@@ -1,8 +1,8 @@
-const express = require("express");
-const cors = require("cors");
-const userRoutes = require("./routes/userRoutes");
-const activityRoutes = require("./routes/activities");
-const { errorHandler } = require("./middleware/errorMiddleware");
+import express from "express";
+import cors from "cors";
+import userRoutes from "./src/routes/user.routes.js";
+import activityRoutes from "./src/routes/activity.routes.js";
+import { errorHandler } from "./src/middlewares/error.middleware.js";
 
 const app = express();
 
@@ -18,6 +18,12 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Debug middleware
+app.use((req, res, next) => {
+  console.log(`[API Request] ${req.method} ${req.url}`);
+  next();
+});
+
 // Routes
 app.use("/api/users", userRoutes);
 app.use("/api/activities", activityRoutes);
@@ -25,4 +31,4 @@ app.use("/api/activities", activityRoutes);
 // Error handling
 app.use(errorHandler);
 
-module.exports = app;
+export default app;

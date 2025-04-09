@@ -84,18 +84,57 @@ const TaskSchema = new mongoose.Schema(
     ],
     attachments: [
       {
-        name: String,
-        path: String,
-        size: Number,
-        type: String,
+        _id: {
+          type: mongoose.Schema.Types.ObjectId,
+          default: () => new mongoose.Types.ObjectId()
+        },
+        name: {
+          type: String,
+          default: ''
+        },
+        filename: {
+          type: String,
+          required: true
+        },
+        url: {
+          type: String,
+          required: true
+        },
+        path: {
+          type: String,
+          required: true
+        },
+        type: {
+          type: String,
+          default: 'application/octet-stream'
+        },
+        size: {
+          type: Number,
+          default: 0
+        },
         uploadedBy: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
+          required: true
         },
         uploadedAt: {
           type: Date,
-          default: Date.now,
+          default: Date.now
         },
+        uploadId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Upload",
+        },
+        accessControl: {
+          public: {
+            type: Boolean,
+            default: true
+          },
+          permissions: [{
+            type: String,
+            enum: ["read", "write", "delete"]
+          }]
+        }
       },
     ],
     customFields: [
