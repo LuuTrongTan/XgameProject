@@ -255,20 +255,41 @@ export const deleteTask = async (projectId, sprintId, taskId) => {
 // Cập nhật trạng thái công việc
 export const updateTaskStatus = async ({ taskId, status, position, projectId, sprintId }) => {
   try {
-    console.log(`Updating task status to: ${status} for task ${taskId}, position: ${position}`);
+    console.log(`[TaskApi] ===== UPDATING TASK STATUS =====`);
+    console.log(`[TaskApi] Task ID: ${taskId}`);
+    console.log(`[TaskApi] Project ID: ${projectId}`);
+    console.log(`[TaskApi] Sprint ID: ${sprintId}`);
+    console.log(`[TaskApi] New status: ${status}`);
+    console.log(`[TaskApi] New position: ${position}`);
     
     // Kiểm tra các tham số
     if (!taskId) {
-      console.error("Missing required parameters:", { taskId });
+      console.error("[TaskApi] Missing required parameter: taskId");
       return { 
         success: false, 
         message: "Thiếu thông tin cần thiết cho việc cập nhật trạng thái",
       };
     }
     
+    if (!projectId) {
+      console.error("[TaskApi] Missing required parameter: projectId");
+      return { 
+        success: false, 
+        message: "Thiếu thông tin dự án",
+      };
+    }
+    
+    if (!sprintId) {
+      console.error("[TaskApi] Missing required parameter: sprintId");
+      return { 
+        success: false, 
+        message: "Thiếu thông tin sprint",
+      };
+    }
+    
     // Đảm bảo status hợp lệ
     if (!["todo", "inProgress", "review", "done"].includes(status)) {
-      console.error("Invalid status value:", status);
+      console.error("[TaskApi] Invalid status value:", status);
       return {
         success: false,
         message: "Giá trị trạng thái không hợp lệ",
@@ -288,14 +309,34 @@ export const updateTaskStatus = async ({ taskId, status, position, projectId, sp
     
     // Xác định đường dẫn API
     let apiPath = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskIdStr}/status`;
+    console.log(`[TaskApi] API Path: ${apiPath}`);
+    console.log(`[TaskApi] Request payload:`, data);
     
     // Gọi API để cập nhật status, sử dụng PUT method
+    console.log(`[TaskApi] Sending PUT request...`);
     const response = await API.put(apiPath, data);
     
-    console.log('Status update response:', response.data);
+    console.log(`[TaskApi] Status update response:`, response.data);
+    console.log(`[TaskApi] Response status: ${response.status}`);
+    console.log(`[TaskApi] Response success: ${response.data.success}`);
+    
+    if (response.data.oldStatus) {
+      console.log(`[TaskApi] Old status: ${response.data.oldStatus}`);
+    }
+    
     return response.data;
   } catch (error) {
-    console.error("Error updating task status:", error);
+    console.error("[TaskApi] Error updating task status:", error);
+    
+    if (error.response) {
+      console.error(`[TaskApi] Response status: ${error.response.status}`);
+      console.error(`[TaskApi] Response data:`, error.response.data);
+    } else if (error.request) {
+      console.error(`[TaskApi] Request was made but no response received:`, error.request);
+    } else {
+      console.error(`[TaskApi] Error setting up request:`, error.message);
+    }
+    
     return { 
       success: false, 
       message: error.response?.data?.message || "Không thể cập nhật trạng thái công việc",

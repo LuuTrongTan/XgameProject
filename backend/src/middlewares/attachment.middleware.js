@@ -55,7 +55,7 @@ const checkFileAccessPermission = async (taskId, userId) => {
           memberRole: member.role
         });
         return member.user?.toString() === userId.toString() && 
-          (member.role === 'manager' || member.role === 'admin');
+          member.role === 'project_manager';
       }
     );
     
@@ -175,7 +175,7 @@ export const checkDeletePermission = async (req, res, next) => {
           memberRole: member.role
         });
         return member.user?.toString() === userId.toString() && 
-          (member.role === 'manager' || member.role === 'admin');
+          member.role === 'project_manager';
       }
     );
     

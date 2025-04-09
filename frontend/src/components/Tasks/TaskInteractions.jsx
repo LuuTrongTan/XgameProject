@@ -185,23 +185,44 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
 
   // Fetch history
   const fetchHistory = async () => {
-    if (!task?._id || !project?._id || !sprint?._id) return;
+    if (!task?._id || !project?._id || !sprint?._id) {
+      console.log('Missing required IDs for fetching history');
+      return;
+    }
     
     setLoadingHistory(true);
+    setHistory([]); // Reset history before fetching
+    
     try {
+      console.log(`Fetching history for task ${task._id}`);
       const response = await api.get(
         `/projects/${project._id}/sprints/${sprint._id}/tasks/${task._id}/history`
       );
       
+      console.log('History response:', response.data);
+      
+      let historyData = [];
       if (response.data?.data?.history) {
-        setHistory(response.data.data.history);
+        historyData = response.data.data.history;
       } else if (Array.isArray(response.data?.data)) {
-        setHistory(response.data.data);
+        historyData = response.data.data;
       } else if (Array.isArray(response.data)) {
-        setHistory(response.data);
+        historyData = response.data;
       }
+      
+      // Format history data
+      const formattedHistory = historyData.map(item => ({
+        ...item,
+        timestamp: new Date(item.timestamp || item.createdAt).toLocaleString('vi-VN'),
+        changes: item.changes || {},
+        user: item.user || { name: 'Unknown User' }
+      }));
+      
+      console.log('Formatted history:', formattedHistory);
+      setHistory(formattedHistory);
     } catch (error) {
-      console.error("Error fetching history:", error);
+      console.error('Error fetching task history:', error);
+      setHistory([]);
     } finally {
       setLoadingHistory(false);
     }

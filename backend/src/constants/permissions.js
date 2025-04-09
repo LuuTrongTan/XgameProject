@@ -21,6 +21,11 @@ export const PERMISSIONS = {
   ASSIGN_TASK: "assign_task",
   UPDATE_TASK_STATUS: "update_task_status",
 
+  // Task attachment permissions
+  ADD_TASK_ATTACHMENT: "add_task_attachment",
+  VIEW_TASK_ATTACHMENT: "view_task_attachment",
+  DELETE_TASK_ATTACHMENT: "delete_task_attachment",
+
   // User permissions
   VIEW_USERS: "view_users",
   EDIT_USERS: "edit_users",

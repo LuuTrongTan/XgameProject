@@ -76,52 +76,59 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
     }
 
     setLoading(true);
+    setError(null);
+    setLogs([]);
+    
     try {
+      console.log(`Fetching audit logs for task ${taskId}`);
       const response = await getTaskHistory(projectId, sprintId, taskId);
       
-      // Kiểm tra và xử lý dữ liệu trả về
+      console.log('Audit logs response:', response);
+      
       if (response && response.success) {
         let historyData = [];
         
-        // Kiểm tra xem response.data có phải là mảng không
         if (Array.isArray(response.data)) {
           historyData = response.data;
         } else if (response.data && Array.isArray(response.data.history)) {
           historyData = response.data.history;
-        } else {
-          // Nếu không phải mảng, set logs là mảng rỗng
-          historyData = [];
         }
         
-        // Xử lý dữ liệu logs để chuẩn hóa định dạng
+        // Xử lý và format dữ liệu logs
         const processedLogs = historyData.map(log => {
-          // Sao chép log để tránh thay đổi trực tiếp
-          const processedLog = { ...log };
+          const processedLog = { 
+            ...log,
+            timestamp: new Date(log.timestamp || log.createdAt).toLocaleString('vi-VN'),
+            details: log.details || {},
+            changes: log.changes || {},
+            user: log.user || { name: 'Unknown User' }
+          };
           
-          // Bảo đảm rằng details tồn tại
-          if (!processedLog.details) {
-            processedLog.details = {};
+          // Format các trường đặc biệt
+          if (processedLog.details.field === 'status') {
+            processedLog.details.oldValue = getStatusLabel(processedLog.details.oldValue);
+            processedLog.details.newValue = getStatusLabel(processedLog.details.newValue);
           }
           
-          // Bảo đảm rằng changes tồn tại
-          if (!processedLog.changes) {
-            processedLog.changes = {};
+          if (processedLog.details.field === 'priority') {
+            processedLog.details.oldValue = getPriorityLabel(processedLog.details.oldValue);
+            processedLog.details.newValue = getPriorityLabel(processedLog.details.newValue);
           }
           
           return processedLog;
         });
         
-        // Sắp xếp theo thời gian giảm dần (mới nhất lên đầu)
-        processedLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        // Sắp xếp theo thời gian giảm dần
+        processedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
-        console.log("Loaded history logs:", processedLogs);
+        console.log('Processed audit logs:', processedLogs);
         setLogs(processedLogs);
       } else {
-        console.log("No history data in response");
+        console.log('No history data in response');
         setLogs([]);
       }
     } catch (error) {
-      console.error("Error fetching audit logs:", error);
+      console.error('Error fetching audit logs:', error);
       setError("Không thể tải lịch sử thay đổi");
       setLogs([]);
     } finally {
@@ -172,12 +179,10 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
       return value.toString();
     };
     
-    // Hàm hiển thị tên trạng thái
     const getStatusLabel = (status) => {
       return STATUS_MAP[status]?.label || status;
     };
     
-    // Hàm hiển thị tên độ ưu tiên
     const getPriorityLabel = (priority) => {
       return PRIORITY_MAP[priority]?.label || priority;
     };
@@ -187,47 +192,57 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
         return "đã tạo công việc";
         
       case "update":
-        if (log.details && log.details.field) {
-          switch(log.details.field) {
-            case "status":
-              return `đã thay đổi trạng thái từ "${getStatusLabel(log.details.oldValue)}" thành "${getStatusLabel(log.details.newValue)}"`;
-            case "priority":
-              return `đã thay đổi độ ưu tiên từ "${getPriorityLabel(log.details.oldValue)}" thành "${getPriorityLabel(log.details.newValue)}"`;
-            case "title":
-              return `đã đổi tên công việc từ "${getValueText(log.details.oldValue)}" thành "${getValueText(log.details.newValue)}"`;
-            case "description":
-              return "đã cập nhật mô tả công việc";
-            case "dueDate":
-              return `đã thay đổi thời hạn từ "${formatDate(log.details.oldValue)}" thành "${formatDate(log.details.newValue)}"`;
-            case "startDate":
-              return `đã thay đổi ngày bắt đầu từ "${formatDate(log.details.oldValue)}" thành "${formatDate(log.details.newValue)}"`;
-            case "estimatedTime":
-              return `đã cập nhật thời gian dự kiến từ "${getValueText(log.details.oldValue)}" thành "${getValueText(log.details.newValue)}"`;
-            default:
-              return `đã cập nhật ${log.details.field}`;
-          }
+        if (log.details) {
+          const changes = Object.entries(log.details)
+            .filter(([key]) => key !== 'changedBy' && key !== 'changedAt')
+            .map(([key, value]) => {
+              switch(key) {
+                case 'title':
+                  return `đổi tên từ "${getValueText(value.oldValue)}" thành "${getValueText(value.newValue)}"`;
+                case 'description':
+                  return 'cập nhật mô tả';
+                case 'status':
+                  return `thay đổi trạng thái từ "${getStatusLabel(value.oldValue)}" thành "${getStatusLabel(value.newValue)}"`;
+                case 'priority':
+                  return `thay đổi độ ưu tiên từ "${getPriorityLabel(value.oldValue)}" thành "${getPriorityLabel(value.newValue)}"`;
+                case 'dueDate':
+                  return `thay đổi hạn chót từ "${formatDate(value.oldValue)}" thành "${formatDate(value.newValue)}"`;
+                case 'estimatedTime':
+                  return `thay đổi thời gian dự kiến từ "${getValueText(value.oldValue)}" thành "${getValueText(value.newValue)}"`;
+                case 'assignees':
+                  return 'thay đổi người được giao';
+                case 'tags':
+                  return 'cập nhật nhãn';
+                default:
+                  return `cập nhật ${key}`;
+              }
+            });
+          return `đã ${changes.join(', ')}`;
         }
         return "đã cập nhật công việc";
         
-      case "status":
-        return `đã thay đổi trạng thái từ "${getStatusLabel(log.details?.oldStatus)}" thành "${getStatusLabel(log.details?.newStatus)}"`;
+      case "view":
+        return "đã xem chi tiết công việc";
         
       case "delete":
         return "đã xóa công việc";
         
+      case "status":
+        return `đã thay đổi trạng thái từ "${getStatusLabel(log.details?.oldStatus)}" thành "${getStatusLabel(log.details?.newStatus)}"`;
+        
       case "assign":
-        return `đã gán công việc cho ${log.details?.assigneeName || log.details?.name || 'người dùng'}`;
+        return `đã gán công việc cho ${log.details?.assigneeName || 'người dùng'}`;
         
       case "unassign":
-        return `đã hủy gán công việc từ ${log.details?.assigneeName || log.details?.name || 'người dùng'}`;
+        return `đã hủy gán công việc từ ${log.details?.assigneeName || 'người dùng'}`;
         
       case "attachment":
         if (log.details?.action === "add") {
-          return `đã thêm tệp đính kèm: ${log.details?.fileName || log.details?.name || 'tệp'}`;
+          return `đã thêm tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
         } else if (log.details?.action === "delete") {
-          return `đã xóa tệp đính kèm: ${log.details?.fileName || log.details?.name || 'tệp'}`;
+          return `đã xóa tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
         }
-        return `đã thao tác với tệp đính kèm: ${log.details?.fileName || log.details?.name || 'tệp'}`;
+        return `đã thao tác với tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
         
       case "comment":
         if (log.details?.action === "add") {
@@ -238,9 +253,6 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
           return "đã xóa bình luận";
         }
         return "đã thao tác với bình luận";
-        
-      case "calendar":
-        return `đã đồng bộ với ${log.details?.calendarType || log.details?.type || 'lịch'}`;
         
       default:
         return "đã thực hiện một thao tác";
@@ -270,7 +282,6 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
   const renderLogDetails = (log) => {
     if (!log.details) return null;
     
-    // Xử lý hiển thị chi tiết dựa trên loại action
     switch (log.action) {
       case "create":
         return (
@@ -327,65 +338,54 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
         );
         
       case "update":
-      case "status":
-        if (log.details.field === "status" || log.action === "status") {
-          return (
-            <Box mt={1} display="flex" alignItems="center" gap={1}>
-              <Chip
-                label={STATUS_MAP[log.details.oldValue || log.details.oldStatus]?.label || log.details.oldValue || log.details.oldStatus}
-                color={STATUS_MAP[log.details.oldValue || log.details.oldStatus]?.color || "default"}
-                size="small"
-              />
-              <ArrowRightAltIcon fontSize="small" />
-              <Chip
-                label={STATUS_MAP[log.details.newValue || log.details.newStatus]?.label || log.details.newValue || log.details.newStatus}
-                color={STATUS_MAP[log.details.newValue || log.details.newStatus]?.color || "default"}
-                size="small"
-              />
-            </Box>
-          );
-        } else if (log.details.field === "priority") {
-          return (
-            <Box mt={1} display="flex" alignItems="center" gap={1}>
-              <Chip
-                label={PRIORITY_MAP[log.details.oldValue]?.label || log.details.oldValue}
-                color={PRIORITY_MAP[log.details.oldValue]?.color || "default"}
-                size="small"
-              />
-              <ArrowRightAltIcon fontSize="small" />
-              <Chip
-                label={PRIORITY_MAP[log.details.newValue]?.label || log.details.newValue}
-                color={PRIORITY_MAP[log.details.newValue]?.color || "default"}
-                size="small"
-              />
-            </Box>
-          );
-        }
-        break;
+        return (
+          <Card variant="outlined" sx={{ mt: 1, borderRadius: 1 }}>
+            <CardContent sx={{ p: "8px 12px !important" }}>
+              {Object.entries(log.details)
+                .filter(([key]) => key !== 'changedBy' && key !== 'changedAt')
+                .map(([key, value]) => (
+                  <Box key={key} mb={0.5}>
+                    <Typography variant="body2" component="span" fontWeight={600}>
+                      {key.charAt(0).toUpperCase() + key.slice(1)}: 
+                    </Typography>
+                    <Box display="flex" alignItems="center" gap={1} mt={0.5}>
+                      <Chip
+                        label={getValueText(value.oldValue)}
+                        size="small"
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: '0.75rem' }}
+                      />
+                      <ArrowRightAltIcon fontSize="small" />
+                      <Chip
+                        label={getValueText(value.newValue)}
+                        size="small"
+                        variant="outlined"
+                        sx={{ height: 20, fontSize: '0.75rem' }}
+                      />
+                    </Box>
+                  </Box>
+                ))}
+            </CardContent>
+          </Card>
+        );
         
-      case "comment":
-        if (log.details.content) {
-          return (
-            <Paper variant="outlined" sx={{ mt: 1, p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
-              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                {log.details.content}
-              </Typography>
-            </Paper>
-          );
-        }
-        break;
+      case "view":
+        return (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Xem lúc: {formatDateTime(log.details.viewedAt)}
+          </Typography>
+        );
+        
+      case "delete":
+        return (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Xóa bởi: {log.details.deletedBy} vào lúc: {formatDateTime(log.details.deletedAt)}
+          </Typography>
+        );
+        
+      default:
+        return null;
     }
-    
-    // Hiển thị mặc định khi không có xử lý đặc biệt
-    if (log.details.description) {
-      return (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          {log.details.description}
-        </Typography>
-      );
-    }
-    
-    return null;
   };
 
   if (loading) {

@@ -19,6 +19,27 @@ const auditLogService = {
    */
   async addLog(logData) {
     try {
+      console.log(`[AuditLog Service] ===== CREATING NEW LOG =====`);
+      console.log(`[AuditLog Service] Entity: ${logData.entityType} ${logData.entityId}`);
+      console.log(`[AuditLog Service] Action: ${logData.action}`);
+      console.log(`[AuditLog Service] User: ${logData.userId}`);
+      console.log(`[AuditLog Service] Project: ${logData.projectId}`);
+      console.log(`[AuditLog Service] Sprint: ${logData.sprintId}`);
+      console.log(`[AuditLog Service] Details: ${JSON.stringify(logData.details || {})}`);
+      console.log(`[AuditLog Service] Changes: ${JSON.stringify(logData.changes || {})}`);
+      
+      // Kiểm tra dữ liệu đầu vào
+      const validationErrors = [];
+      if (!logData.entityId) validationErrors.push('Missing entityId');
+      if (!logData.entityType) validationErrors.push('Missing entityType');
+      if (!logData.action) validationErrors.push('Missing action');
+      if (!logData.userId) validationErrors.push('Missing userId');
+      
+      if (validationErrors.length > 0) {
+        console.error(`[AuditLog Service] Validation errors: ${validationErrors.join(', ')}`);
+        throw new Error(`Validation errors: ${validationErrors.join(', ')}`);
+      }
+      
       const newLog = new AuditLog({
         entityId: logData.entityId,
         entityType: logData.entityType,
@@ -30,9 +51,20 @@ const auditLogService = {
         sprintId: logData.sprintId,
       });
       
-      return await newLog.save();
+      console.log(`[AuditLog Service] Prepared new log document: ${newLog._id}`);
+      console.log(`[AuditLog Service] Saving to database...`);
+      
+      const savedLog = await newLog.save();
+      console.log(`[AuditLog Service] Successfully saved log with ID: ${savedLog._id}`);
+      console.log(`[AuditLog Service] Created at: ${savedLog.createdAt}`);
+      return savedLog;
     } catch (error) {
-      console.error('Error adding audit log:', error);
+      console.error('[AuditLog Service] Error adding audit log:', error);
+      if (error.name === 'ValidationError') {
+        console.error('[AuditLog Service] Mongoose validation errors:', Object.keys(error.errors).map(key => 
+          `${key}: ${error.errors[key].message}`
+        ));
+      }
       throw error;
     }
   },
@@ -45,14 +77,18 @@ const auditLogService = {
    */
   async getEntityLogs(entityId, entityType) {
     try {
-      return await AuditLog.find({ 
+      console.log(`[AuditLog Service] Getting logs for ${entityType} ${entityId}`);
+      const logs = await AuditLog.find({ 
         entityId, 
         entityType 
       })
       .populate('user', 'name email avatar')
       .sort({ createdAt: -1 });
+      
+      console.log(`[AuditLog Service] Found ${logs.length} logs for ${entityType} ${entityId}`);
+      return logs;
     } catch (error) {
-      console.error('Error getting entity logs:', error);
+      console.error('[AuditLog Service] Error getting entity logs:', error);
       throw error;
     }
   },
@@ -64,9 +100,10 @@ const auditLogService = {
    */
   async getTaskLogs(taskId) {
     try {
+      console.log(`[AuditLog Service] Getting logs for Task ${taskId}`);
       return await this.getEntityLogs(taskId, 'Task');
     } catch (error) {
-      console.error('Error getting task logs:', error);
+      console.error('[AuditLog Service] Error getting task logs:', error);
       throw error;
     }
   },
@@ -78,13 +115,17 @@ const auditLogService = {
    */
   async getProjectLogs(projectId) {
     try {
-      return await AuditLog.find({ 
+      console.log(`[AuditLog Service] Getting logs for Project ${projectId}`);
+      const logs = await AuditLog.find({ 
         projectId 
       })
       .populate('user', 'name email avatar')
       .sort({ createdAt: -1 });
+      
+      console.log(`[AuditLog Service] Found ${logs.length} logs for Project ${projectId}`);
+      return logs;
     } catch (error) {
-      console.error('Error getting project logs:', error);
+      console.error('[AuditLog Service] Error getting project logs:', error);
       throw error;
     }
   },
@@ -96,13 +137,17 @@ const auditLogService = {
    */
   async getSprintLogs(sprintId) {
     try {
-      return await AuditLog.find({ 
+      console.log(`[AuditLog Service] Getting logs for Sprint ${sprintId}`);
+      const logs = await AuditLog.find({ 
         sprintId 
       })
       .populate('user', 'name email avatar')
       .sort({ createdAt: -1 });
+      
+      console.log(`[AuditLog Service] Found ${logs.length} logs for Sprint ${sprintId}`);
+      return logs;
     } catch (error) {
-      console.error('Error getting sprint logs:', error);
+      console.error('[AuditLog Service] Error getting sprint logs:', error);
       throw error;
     }
   },
@@ -115,14 +160,18 @@ const auditLogService = {
    */
   async getUserActivity(userId, limit = 20) {
     try {
-      return await AuditLog.find({ 
+      console.log(`[AuditLog Service] Getting user activity for User ${userId}`);
+      const logs = await AuditLog.find({ 
         user: userId 
       })
       .populate('entityId')
       .limit(limit)
       .sort({ createdAt: -1 });
+      
+      console.log(`[AuditLog Service] Found ${logs.length} activity logs for User ${userId}`);
+      return logs;
     } catch (error) {
-      console.error('Error getting user activity:', error);
+      console.error('[AuditLog Service] Error getting user activity:', error);
       throw error;
     }
   }

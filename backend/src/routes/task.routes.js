@@ -9,9 +9,6 @@ import {
   updateTask,
   deleteTask,
   assignTask,
-  addAttachment,
-  getTaskAttachments,
-  deleteAttachment,
   updateStatus,
   addTag,
   removeTag,
@@ -23,13 +20,17 @@ import {
   toggleDependency,
   getUpcomingTasks,
   getTaskHistory,
+  updateTime,
+  updateAssignees
 } from "../controllers/task.controller.js";
+import { addAttachment, getTaskAttachments, deleteAttachment } from "../controllers/task.attachment.controller.js";
 import { addTaskComment, getComments } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { checkPermission } from "../middlewares/permission.middleware.js";
 import { PERMISSIONS } from "../config/constants.js";
 import { checkAttachmentAccess, checkDeletePermission } from "../middlewares/attachment.middleware.js";
 import { downloadAttachment } from "../controllers/attachment.controller.js";
+import Task from "../models/task.model.js";
 import {
   logTaskCreate,
   logTaskUpdate,
@@ -38,7 +39,11 @@ import {
   logAttachmentAction,
   logAttachmentDelete,
   logCommentAction,
-  logAssignUser
+  logAssignUser,
+  logTaskView,
+  logTaskProgress,
+  logTaskTime,
+  logTaskAssignee
 } from "../middlewares/auditlog.middleware.js";
 
 const router = express.Router();
@@ -175,7 +180,7 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks", protect, getTasks);
  *         schema:
  *           type: string
  */
-router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, getTaskById);
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, logTaskView, getTaskById);
 
 /**
  * @swagger
@@ -311,100 +316,20 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/assign", prote
  *         schema:
  *           type: string
  */
-router.post(
-  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments",
-  protect,
-  checkAttachmentAccess,
-  (req, res, next) => {
-    console.log("\n=== FILE UPLOAD REQUEST - BEFORE MULTER ===");
-    console.log("Request params:", req.params);
-    console.log("Request headers:", {
-      contentType: req.headers['content-type'],
-      contentLength: req.headers['content-length'],
-      authorization: req.headers['authorization'] ? 'Present' : 'Missing',
-    });
-    
-    // Tìm boundary trong Content-Type header
-    const contentType = req.headers['content-type'] || '';
-    const boundaryMatch = contentType.match(/boundary=(?:\"([^\"]*)\"|([^;]*))/) || [];
-    const boundary = boundaryMatch[1] || boundaryMatch[2];
-    
-    console.log("Form data boundary:", boundary || 'Not detected');
-    
-    // Log một số thông tin về body
-    if (req.body) {
-      console.log("Request body keys:", Object.keys(req.body));
-    }
-    
-    next();
-  },
-  upload.single("file"),
-  (req, res, next) => {
-    console.log("\n=== AFTER MULTER MIDDLEWARE ===");
-    console.log("req.file:", req.file ? 'Present' : 'Missing');
-    console.log("req.files:", req.files ? 'Present' : 'Missing');
-    
-    if (req.file) {
-      console.log("File object:", {
-        filename: req.file.filename,
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        path: req.file.path,
-        encoding: req.file.encoding,
-        fieldname: req.file.fieldname,
-        destination: req.file.destination
-      });
-      
-      // Kiểm tra file trên đĩa
-      try {
-        const fileExists = fs.existsSync(req.file.path);
-        const fileStats = fileExists ? fs.statSync(req.file.path) : null;
-        console.log("File exists on disk:", fileExists);
-        if (fileExists && fileStats) {
-          console.log("File stats:", {
-            size: fileStats.size,
-            created: fileStats.birthtime,
-            modified: fileStats.mtime,
-            isFile: fileStats.isFile()
-          });
-          
-          if (fileStats.size !== req.file.size) {
-            console.warn("WARNING: File size mismatch - reported:", req.file.size, "actual:", fileStats.size);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking file on disk:", error.message);
-      }
-      
-      // Kiểm tra mapping tên file gốc
-      if (req.fileOriginalNames && req.fileOriginalNames[req.file.filename]) {
-        console.log("Original name mapping:", {
-          savedAs: req.file.filename,
-          originalName: req.fileOriginalNames[req.file.filename]
-        });
-      }
-    } else {
-      console.log("No file in request!");
-      
-      // Kiểm tra các thông tin request chi tiết để debug
-      if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
-        console.log("Multipart form detected but no file processed by multer!");
-        console.log("Form data keys:", Object.keys(req.body));
-        console.log("Check field name - expected 'file' but found keys:", Object.keys(req.body));
-      }
-      
-      // Kiểm tra xem có lỗi từ multer không
-      if (req.multerError) {
-        console.error("Multer error:", req.multerError);
-      }
-    }
-    
-    next();
-  },
-  logAttachmentAction,
-  addAttachment
-);
+router
+  .route("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments")
+  .post(
+    protect,
+    checkPermission(PERMISSIONS.ADD_TASK_ATTACHMENT),
+    upload.single("file"),
+    addAttachment
+  )
+  .get(
+    protect,
+    checkPermission(PERMISSIONS.VIEW_TASK_ATTACHMENT),
+    checkAttachmentAccess,
+    getTaskAttachments
+  );
 
 /**
  * @swagger
@@ -458,7 +383,68 @@ router.delete("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, l
  *         schema:
  *           type: string
  */
-router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", protect, logStatusChange, updateStatus);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/status", 
+  protect, 
+  async (req, res, next) => {
+    try {
+      console.log('\n\n[STATUS CHANGE DEBUGGING] ===============================');
+      console.log('[STATUS CHANGE DEBUGGING] Request received');
+      console.log('[STATUS CHANGE DEBUGGING] URL:', req.originalUrl);
+      console.log('[STATUS CHANGE DEBUGGING] Method:', req.method);
+      console.log('[STATUS CHANGE DEBUGGING] Headers:', JSON.stringify(req.headers));
+      console.log('[STATUS CHANGE DEBUGGING] User:', req.user ? {
+        id: req.user.id || req.user._id,
+        name: req.user.name,
+        email: req.user.email
+      } : 'No user in request');
+      console.log('[STATUS CHANGE DEBUGGING] Params:', JSON.stringify(req.params));
+      console.log('[STATUS CHANGE DEBUGGING] Body:', JSON.stringify(req.body));
+      
+      // Kiểm tra path params
+      if (!req.params.taskId || !req.params.projectId || !req.params.sprintId) {
+        console.error('[STATUS CHANGE DEBUGGING] Missing required path parameters');
+      }
+      
+      // Kiểm tra body
+      if (!req.body.status) {
+        console.error('[STATUS CHANGE DEBUGGING] Missing status in request body');
+      }
+      
+      next();
+    } catch (error) {
+      console.error('[STATUS CHANGE DEBUGGING] Error in debug middleware:', error);
+      next();
+    }
+  },
+  async (req, res, next) => {
+    // Tìm và lưu trạng thái hiện tại của task vào request để logStatusChange có thể sử dụng
+    try {
+      console.log('[Pre-middleware] Loading task for status change logging');
+      const taskId = req.params.taskId;
+      const task = await Task.findById(taskId);
+      
+      if (task) {
+        req.task = task;
+        console.log(`[Pre-middleware] Found task ${taskId} with status: ${task.status}`);
+        console.log(`[Pre-middleware] Task details:`, {
+          id: task._id.toString(),
+          title: task.title,
+          status: task.status,
+          projectId: task.project.toString(),
+          createdBy: task.createdBy.toString()
+        });
+      } else {
+        console.log(`[Pre-middleware] Task ${taskId} not found`);
+      }
+      next();
+    } catch (error) {
+      console.error('[Pre-middleware] Error loading task:', error);
+      next(); // Vẫn tiếp tục middleware chain
+    }
+  },
+  logStatusChange, 
+  updateStatus
+);
 
 /**
  * @swagger
@@ -692,7 +678,7 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/time-stats", pr
  *         schema:
  *           type: string
  */
-router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/progress", protect, updateProgress);
+router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/progress", protect, logTaskProgress, updateProgress);
 
 /**
  * @swagger
@@ -715,38 +701,6 @@ router.put("/projects/:projectId/sprints/:sprintId/tasks/:taskId/progress", prot
  *           type: string
  */
 router.get("/projects/:projectId/sprints/:sprintId/tasks/upcoming", protect, getUpcomingTasks);
-
-/**
- * @swagger
- * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments:
- *   get:
- *     summary: Lấy danh sách tệp đính kèm của task
- *     tags: [Tasks]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: projectId
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: sprintId
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: taskId
- *         required: true
- *         schema:
- *           type: string
- */
-router.get(
-  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments",
-  protect,
-  checkAttachmentAccess,
-  getTaskAttachments
-);
 
 /**
  * @swagger
@@ -781,50 +735,34 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/watchers", pro
 // Task dependencies and relationships
 router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/dependencies", protect, toggleDependency);
 
-/**
- * @swagger
- * /api/projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/attachments/{attachmentId}:
- *   delete:
- *     summary: Xóa tệp đính kèm của công việc
- *     tags: [Tasks]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: projectId
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: sprintId
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: taskId
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: attachmentId
- *         required: true
- *         schema:
- *           type: string
- */
-router.delete(
-  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId",
-  protect,
-  checkDeletePermission,
-  logAttachmentDelete,
-  deleteAttachment
+// Attachment routes
+router
+  .route("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId")
+  .delete(
+    protect,
+    checkPermission(PERMISSIONS.DELETE_TASK_ATTACHMENT),
+    checkDeletePermission,
+    deleteAttachment
+  )
+  .get(
+    protect,
+    checkPermission(PERMISSIONS.VIEW_TASK_ATTACHMENT),
+    checkAttachmentAccess,
+    downloadAttachment
+  );
+
+// Route cập nhật thời gian task
+router.put('/projects/:projectId/sprints/:sprintId/tasks/:taskId/time', 
+  protect, 
+  logTaskTime,
+  updateTime
 );
 
-// Cập nhật route xem/tải tệp đính kèm
-router.get(
-  "/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId",
-  protect,
-  checkAttachmentAccess,
-  downloadAttachment
+// Route gán/hủy gán người thực hiện task
+router.put('/projects/:projectId/sprints/:sprintId/tasks/:taskId/assignees', 
+  protect, 
+  logTaskAssignee,
+  updateAssignees
 );
 
 export default router;

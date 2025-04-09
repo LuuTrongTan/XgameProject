@@ -100,16 +100,30 @@ const Tasks = () => {
         newStatus = params.status;
         position = params.position;
         taskProjectId = params.projectId || projectId;
-        taskSprintId = params.sprintId || sprintId;
+        
+        // Đảm bảo sprintId là string, không phải object
+        if (params.sprintId) {
+          if (typeof params.sprintId === 'object' && params.sprintId._id) {
+            taskSprintId = params.sprintId._id; // Lấy ID từ object
+            console.log(`Đã chuyển đổi sprintId từ object sang ID: ${taskSprintId}`);
+          } else {
+            taskSprintId = String(params.sprintId); // Đảm bảo là string
+          }
+        } else {
+          // Nếu không có params.sprintId, sử dụng giá trị từ props
+          taskSprintId = typeof sprintId === 'object' ? sprintId._id : sprintId;
+        }
       } else {
         // Định dạng cũ, nhận 2 tham số riêng biệt
         taskId = params;
         newStatus = arguments[1];
         taskProjectId = projectId;
-        taskSprintId = sprintId;
+        // Đảm bảo sprintId là string, không phải object
+        taskSprintId = typeof sprintId === 'object' ? sprintId._id : sprintId;
       }
       
       console.log(`Updating task ${taskId} to status ${newStatus} at position ${position}`);
+      console.log(`Using projectId: ${taskProjectId}, sprintId: ${taskSprintId}`);
       
       // Tìm task trong tất cả các trạng thái
       let taskToUpdate = null;
@@ -165,7 +179,7 @@ const Tasks = () => {
         status: newStatus,
         position: position,
         projectId: taskProjectId,
-        sprintId: taskSprintId
+        sprintId: taskSprintId  // Đảm bảo đây là string ID
       });
       
       if (!response.success) {
