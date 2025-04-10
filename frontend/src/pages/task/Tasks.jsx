@@ -407,26 +407,51 @@ const Tasks = () => {
   };
 
   const handleCreateTask = async (task) => {
+    // CHÚ Ý: Hàm này KHÔNG gọi API createTask
+    // API đã được gọi từ TaskForm.jsx, hàm này chỉ cập nhật UI
+    console.log("Nhận task từ form và cập nhật UI:", task);
+    
     try {
-      const response = await createTask(projectId, sprintId, task);
+      // CHỈNH SỬA: Kiểm tra cẩn thận cấu trúc dữ liệu task
+      console.log("[DEBUG] Detailed task structure received from form:", JSON.stringify(task));
       
-      if (response.success) {
-        const newTask = response.data;
-        
-        // Thêm task mới vào state
-        setTasks((prevTasks) => ({
-          ...prevTasks,
-          [newTask.status]: [...prevTasks[newTask.status], newTask],
-        }));
-        
-        setOpenCreateDialog(false);
-        enqueueSnackbar("Tạo công việc thành công", { variant: "success" });
-      } else {
-        enqueueSnackbar(response.message || "Không thể tạo công việc", { variant: "error" });
+      if (!task) {
+        console.error("[ERROR] No task data received");
+        enqueueSnackbar("Không nhận được dữ liệu task", { variant: "error" });
+        return;
       }
+      
+      if (!task._id) {
+        console.error("[ERROR] Task doesn't have a valid ID:", task);
+        enqueueSnackbar("Task không có ID hợp lệ", { variant: "error" });
+        return;
+      }
+      
+      // Thêm task mới vào state
+      setTasks((prevTasks) => {
+        console.log("[DEBUG] Current tasks state:", prevTasks);
+        console.log("[DEBUG] Adding task to status:", task.status);
+        
+        // Tạo bản sao sâu của state hiện tại
+        const newTasks = JSON.parse(JSON.stringify(prevTasks));
+        
+        // Đảm bảo trạng thái tồn tại
+        if (!newTasks[task.status]) {
+          console.warn(`[WARN] Status "${task.status}" not found, defaulting to "todo"`);
+          newTasks.todo = [...(newTasks.todo || []), task];
+        } else {
+          newTasks[task.status] = [...newTasks[task.status], task];
+        }
+        
+        console.log("[DEBUG] Updated tasks state:", newTasks);
+        return newTasks;
+      });
+      
+      setOpenCreateDialog(false);
+      enqueueSnackbar("Tạo công việc thành công", { variant: "success" });
     } catch (error) {
-      console.error("Error creating task:", error);
-      enqueueSnackbar("Lỗi khi tạo công việc", { variant: "error" });
+      console.error("[ERROR] Error updating UI:", error);
+      enqueueSnackbar("Lỗi khi cập nhật UI: " + error.message, { variant: "error" });
     }
   };
 

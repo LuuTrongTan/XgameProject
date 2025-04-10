@@ -160,6 +160,14 @@ const ProjectDetails = () => {
 
   const fetchProjectSprints = async () => {
     try {
+      // Kiểm tra xem projectId đã có trước khi gọi API
+      if (!projectId) {
+        console.error("fetchProjectSprints: projectId is undefined or null");
+        setSprints([]);
+        setLoadingSprints(false);
+        return;
+      }
+      
       setLoadingSprints(true);
       const response = await getSprints(projectId);
       if (response?.success && response?.data) {

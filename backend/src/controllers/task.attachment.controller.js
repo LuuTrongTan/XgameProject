@@ -3,6 +3,7 @@ import User from "../models/user.model.js";
 import fs from "fs";
 import path from "path";
 import uploadService from "../services/upload.services.js";
+import auditLogService from "../services/auditlog.service.js";
 
 // Upload attachment for a task
 export const addAttachment = async (req, res) => {
@@ -21,14 +22,26 @@ export const addAttachment = async (req, res) => {
       path: req.file.path
     } : 'No file');
     
-    const { projectId, sprintId, taskId } = req.params;
+    // Kiểm tra xem có files từ multer hay không (req.files cho uploads nhiều file)
+    const uploadedFiles = req.files || (req.file ? [req.file] : []);
+    console.log(`Số lượng files được tải lên: ${uploadedFiles.length}`);
     
-    // Validate required parameters
-    if (!projectId || !sprintId || !taskId) {
-      console.error("Missing required parameters:", { projectId, sprintId, taskId });
+    if (uploadedFiles.length === 0) {
+      console.error("Không có file nào được tải lên");
       return res.status(400).json({ 
         success: false,
-        message: "Missing required parameters: projectId, sprintId, taskId" 
+        message: "Không có file nào được tải lên" 
+      });
+    }
+    
+    // Validate required parameters
+    const { projectId, sprintId, taskId } = req.params;
+    
+    if (!projectId || !taskId) {
+      console.error("Missing required parameters:", { projectId, taskId });
+      return res.status(400).json({ 
+        success: false,
+        message: "Thiếu thông tin bắt buộc: projectId, taskId" 
       });
     }
 
@@ -37,7 +50,7 @@ export const addAttachment = async (req, res) => {
       console.error("User not authenticated");
       return res.status(401).json({ 
         success: false,
-        message: "User not authenticated" 
+        message: "Người dùng chưa đăng nhập" 
       });
     }
     
@@ -46,187 +59,173 @@ export const addAttachment = async (req, res) => {
       console.error("User ID not found in request");
       return res.status(401).json({ 
         success: false,
-        message: "User ID not found" 
+        message: "Không tìm thấy ID người dùng" 
       });
     }
 
-    // Check if the file was uploaded
-    if (!req.file) {
-      console.error("No file in request");
-      return res.status(400).json({ 
-        success: false,
-        message: "No file uploaded" 
-      });
-    }
-    
     // Get the task from the database
     const task = await Task.findById(taskId);
     if (!task) {
       console.error("Task not found with ID:", taskId);
       return res.status(404).json({ 
         success: false,
-        message: "Task not found with ID: " + taskId
+        message: "Không tìm thấy task với ID: " + taskId
       });
     }
 
-    // Create a sanitized filename from the original name
-    let originalName = req.file.originalname;
-    
-    // Log the raw filename before processing
-    console.log("Original raw filename:", originalName);
-    
-    // Ensure originalName is properly decoded
-    if (req.fileOriginalNames && req.fileOriginalNames[req.file.filename]) {
-      // Use the already decoded filename from multer middleware
-      originalName = req.fileOriginalNames[req.file.filename];
-      console.log("Using decoded filename from multer:", originalName);
-    } else {
-      // Try to decode if it's URI encoded (for Vietnamese characters)
-      try {
-        if (originalName.includes('%')) {
-          originalName = decodeURIComponent(originalName);
-          console.log("Decoded URI encoded filename:", originalName);
-        }
-        
-        // Try to fix encoding issues by assuming Latin1 misinterpretation
-        if (/[\u0080-\uFFFF]/.test(originalName)) {
-          console.log("Filename contains non-ASCII characters");
-          const latinBytes = Buffer.from(originalName, 'latin1');
-          const utf8Name = latinBytes.toString('utf8');
-          if (utf8Name !== originalName) {
-            console.log("Converted from latin1 to utf8:", utf8Name);
-            originalName = utf8Name;
-          }
-        }
-      } catch (error) {
-        console.error("Error decoding filename:", error);
-        // Continue with the original name if decoding fails
-      }
-    }
-
-    console.log("Final filename after processing:", originalName);
-
-    // Lưu file vào Upload model thông qua service
-    console.log("Saving file to Upload model");
-    
-    // Prepare file data before passing to uploadService
-    // Make sure all required fields are present
-    const fileData = {
-      file: {
-        ...req.file,
-        originalname: originalName
-      }
-    };
-    
-    // Log the data being sent to uploadService
-    console.log("File data being sent to uploadService:", {
-      filename: fileData.file.filename,
-      originalname: fileData.file.originalname,
-      mimetype: fileData.file.mimetype,
-      size: fileData.file.size,
-      path: fileData.file.path
-    });
-    
-    // Check for any null or undefined values
-    if (!fileData.file.filename || !fileData.file.path) {
-      console.error("Critical file data missing:", {
-        filename: fileData.file.filename, 
-        path: fileData.file.path
-      });
-      return res.status(500).json({
-        success: false,
-        message: "File upload failed - missing critical data"
-      });
-    }
-
-    const uploadResult = await uploadService.saveFileInfo(fileData, {
-      userId,
-      taskId,
-      projectId,
-      permissions: 'public' // Mặc định là công khai
-    });
-
-    console.log("File saved to Upload model:", uploadResult._id);
-
-    // Create the attachment entry for Task model
-    const attachment = {
-      _id: uploadResult._id, // Sử dụng ID từ Upload model
-      name: originalName,
-      filename: req.file.filename,
-      path: req.file.path,
-      url: `uploads/${req.file.filename}`, // Chắc chắn đúng định dạng đường dẫn truy cập
-      size: req.file.size,
-      type: req.file.mimetype,
-      uploadedBy: userId,
-      uploadedAt: new Date(),
-      // Thêm tham chiếu đến model Upload
-      uploadId: uploadResult._id,
-      // Thêm quyền truy cập "public" để cho phép mọi người xem
-      accessControl: {
-        public: true, 
-        permissions: []
-      }
-    };
-
-    console.log("Adding attachment to task:", {
-      taskId: task._id,
-      attachment: {
-        name: attachment.name,
-        size: attachment.size,
-        type: attachment.type,
-        url: attachment.url,
-        accessControl: attachment.accessControl
-      }
-    });
-
-    // Add the attachment to the task
+    // Khởi tạo mảng attachments nếu task chưa có
     if (!task.attachments) {
       task.attachments = [];
     }
     
-    task.attachments.push(attachment);
+    // Kết quả tải lên
+    const uploadResults = [];
+    const failedUploads = [];
     
-    // Save the task with the new attachment
-    await task.save();
-    console.log("Task saved with new attachment");
-
-    // Get the ID of the newly added attachment
-    const newAttachmentId = task.attachments[task.attachments.length - 1]._id;
-
-    // Sử dụng service để lấy URL đầy đủ
-    const fullUrl = uploadService.getFullUrl({
-      filename: req.file.filename
-    }, req);
-
-    const attachmentWithFullUrl = {
-      ...attachment,
-      _id: newAttachmentId,
-      id: newAttachmentId, // Add both formats for frontend compatibility
-      fullUrl: fullUrl
-    };
-
-    console.log("Successfully added attachment:", {
-      taskId: task._id,
-      attachmentId: newAttachmentId,
-      filename: originalName,
-      fullUrl: fullUrl
-    });
-
-    // Return success response with the attachment data
+    // Xử lý từng file tải lên
+    for (const file of uploadedFiles) {
+      try {
+        console.log(`Đang xử lý file: ${file.originalname}`);
+        
+        // Lấy tên file gốc và xử lý encoding nếu cần
+        let originalName = file.originalname;
+        
+        // Sử dụng tên file đã được decode từ middleware nếu có
+        if (req.fileOriginalNames && req.fileOriginalNames[file.filename]) {
+          originalName = req.fileOriginalNames[file.filename];
+        }
+        
+        console.log("Đã xử lý tên file:", originalName);
+        
+        // Lưu file vào Upload model
+        console.log("Đang lưu vào Upload model...");
+        const uploadResult = await uploadService.saveFileInfo(
+          { file: { ...file, originalname: originalName } },
+          {
+            userId,
+            taskId,
+            projectId,
+            permissions: 'public'
+          }
+        );
+        
+        if (!uploadResult || !uploadResult._id) {
+          console.error("Lỗi: Không thể lưu file vào Upload model");
+          failedUploads.push({
+            name: originalName,
+            error: "Không thể lưu vào cơ sở dữ liệu"
+          });
+          continue;
+        }
+        
+        console.log(`File đã được lưu với ID: ${uploadResult._id}`);
+        
+        // Tạo bản ghi đính kèm cho task
+        const attachment = {
+          _id: uploadResult._id,
+          name: originalName,
+          filename: file.filename,
+          path: file.path,
+          url: `uploads/${file.filename}`,
+          size: file.size,
+          type: file.mimetype,
+          uploadedBy: userId,
+          uploadedAt: new Date(),
+          uploadId: uploadResult._id,
+          accessControl: {
+            public: true, 
+            permissions: []
+          }
+        };
+        
+        // Thêm vào task và lưu
+        task.attachments.push(attachment);
+        
+        // Lấy URL đầy đủ
+        const fullUrl = uploadService.getFullUrl({
+          filename: file.filename
+        }, req);
+        
+        uploadResults.push({
+          ...attachment,
+          id: attachment._id,
+          fullUrl
+        });
+        
+      } catch (fileError) {
+        console.error(`Lỗi khi xử lý file ${file.originalname}:`, fileError);
+        failedUploads.push({
+          name: file.originalname,
+          error: fileError.message
+        });
+      }
+    }
+    
+    // Lưu task sau khi đã thêm tất cả các file thành công
+    if (uploadResults.length > 0) {
+      await task.save();
+      console.log(`Đã lưu task với ${uploadResults.length} tệp đính kèm mới`);
+      
+      // Ghi log cho việc thêm tệp đính kèm
+      try {
+        for (const attachment of uploadResults) {
+          // Log chi tiết attachment để debug
+          console.log('[DEBUG] Logging attachment to history:', {
+            name: attachment.name,
+            size: attachment.size,
+            type: attachment.type,
+            id: attachment._id || attachment.id
+          });
+          
+          await auditLogService.addLog({
+            entityId: taskId,
+            entityType: 'Task',
+            action: 'attachment',
+            userId: userId,
+            projectId: projectId,
+            sprintId: sprintId || task.sprint,
+            details: {
+              attachmentId: attachment._id || attachment.id,
+              attachmentName: attachment.name,
+              name: attachment.name, // Thêm trường name để đảm bảo tương thích
+              fileName: attachment.name, // Thêm trường fileName để đảm bảo tương thích
+              action: 'add',
+              size: attachment.size,
+              fileSize: attachment.size, // Thêm trường fileSize để đảm bảo tương thích
+              type: attachment.type
+            }
+          });
+        }
+        console.log(`Đã ghi log cho ${uploadResults.length} tệp đính kèm`);
+      } catch (logError) {
+        console.error("Error logging attachment activity:", logError);
+        // Không ảnh hưởng đến việc trả về kết quả nếu ghi log thất bại
+      }
+    }
+    
+    // Trả về kết quả
     return res.status(200).json({
       success: true,
-      message: "Attachment added successfully",
+      message: uploadResults.length > 0 
+        ? `Đã tải lên ${uploadResults.length} tệp đính kèm thành công` 
+        : "Không có tệp nào được tải lên thành công",
       data: {
-        attachment: attachmentWithFullUrl,
-        task: task
+        attachments: uploadResults,
+        failedUploads: failedUploads,
+        task: {
+          _id: task._id,
+          title: task.title,
+          attachmentsCount: task.attachments.length
+        }
       }
     });
+    
   } catch (error) {
     console.error("Error adding attachment:", error);
     console.error("Error stack:", error.stack);
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      message: "Server error when adding attachment", 
+      message: "Lỗi server khi tải lên tệp đính kèm", 
       error: error.message
     });
   }
@@ -355,89 +354,119 @@ export const getTaskAttachments = async (req, res) => {
 export const deleteAttachment = async (req, res) => {
   try {
     const { taskId, attachmentId } = req.params;
-    console.log(`Xóa attachment ${attachmentId} từ task ${taskId}`);
-
-    // Tìm task
-    const task = await Task.findById(taskId)
-      .populate('project')
-      .populate('assignees');
+    const userId = req.user.id || req.user._id;
     
+    console.log(`Delete attachment request: Task=${taskId}, Attachment=${attachmentId}`);
+    
+    // Validate required parameters
+    if (!taskId || !attachmentId) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Thiếu thông tin bắt buộc: taskId, attachmentId" 
+      });
+    }
+
+    // Get the task from the database
+    const task = await Task.findById(taskId);
     if (!task) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         success: false,
-        message: 'Không tìm thấy task'
+        message: "Không tìm thấy task với ID: " + taskId
+      });
+    }
+
+    // Tìm attachment trong danh sách
+    const attachmentIndex = task.attachments.findIndex(
+      att => att._id.toString() === attachmentId || 
+            att.id?.toString() === attachmentId
+    );
+    
+    if (attachmentIndex === -1) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Không tìm thấy tệp đính kèm trong task" 
       });
     }
     
-    // Tìm attachment trong task
-    if (!task.attachments || task.attachments.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task không có attachments'
-      });
-    }
-
-    // Tìm vị trí của attachment trong mảng
-    const index = task.attachments.findIndex(att => 
-      att._id.toString() === attachmentId
-    );
-
-    if (index === -1) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy attachment'
-      });
-    }
-
-    // Lấy thông tin attachment trước khi xóa
-    const attachment = task.attachments[index];
-    console.log("Attachment to delete:", attachment);
-
-    // 1. Xóa từ Upload model nếu có tham chiếu
-    const uploadId = attachment.uploadId || attachment._id;
-    if (uploadId) {
+    // Lưu thông tin attachment trước khi xóa để ghi log
+    const attachment = task.attachments[attachmentIndex];
+    const attachmentName = attachment.name || 'Unknown file';
+    const attachmentType = attachment.type || '';
+    const attachmentSize = attachment.size || 0;
+    
+    // Xóa file khỏi upload model nếu có
+    if (attachment.uploadId) {
       try {
-        // Xóa file thông qua service
-        await uploadService.deleteFile(uploadId, req.user.id);
-        console.log(`Đã xóa file từ Upload model: ${uploadId}`);
+        await uploadService.deleteFile(attachment.uploadId);
+        console.log(`Đã xóa file từ Upload model: ${attachment.uploadId}`);
       } catch (uploadError) {
-        console.error("Lỗi khi xóa từ Upload model:", uploadError);
-        // Tiếp tục xử lý ngay cả khi có lỗi
+        console.error(`Lỗi khi xóa file từ Upload model: ${uploadError.message}`);
       }
     }
-
-    // 2. Xóa file thực tế từ đĩa nếu không xóa qua service
-    if (!uploadId) {
+    
+    // Xóa file vật lý nếu có path
+    if (attachment.path) {
       try {
-        if (attachment.path && fs.existsSync(attachment.path)) {
-          fs.unlinkSync(attachment.path);
-          console.log(`Đã xóa file: ${attachment.path}`);
-        } else if (attachment.filename) {
-          const filePath = path.join(process.cwd(), 'uploads', attachment.filename);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            console.log(`Đã xóa file: ${filePath}`);
-          }
-        }
+        fs.unlinkSync(attachment.path);
+        console.log(`Đã xóa file vật lý: ${attachment.path}`);
       } catch (fileError) {
-        console.error("Lỗi khi xóa file từ đĩa:", fileError);
+        console.error(`Lỗi khi xóa file vật lý: ${fileError.message}`);
       }
     }
-
-    // 3. Xóa attachment khỏi task
-    task.attachments.splice(index, 1);
+    
+    // Xóa khỏi task
+    task.attachments.splice(attachmentIndex, 1);
     await task.save();
-
-    res.status(200).json({
+    
+    // Ghi log cho việc xóa tệp đính kèm
+    try {
+      // Log chi tiết attachment để debug khi xóa
+      console.log('[DEBUG] Logging attachment deletion to history:', {
+        name: attachmentName,
+        size: attachmentSize,
+        type: attachmentType,
+        id: attachmentId
+      });
+      
+      await auditLogService.addLog({
+        entityId: taskId,
+        entityType: 'Task',
+        action: 'attachment',
+        userId: userId,
+        projectId: task.project || null,
+        sprintId: task.sprint || null,
+        details: {
+          attachmentId: attachmentId,
+          attachmentName: attachmentName,
+          name: attachmentName, // Thêm trường name để đảm bảo tương thích
+          fileName: attachmentName, // Thêm trường fileName để đảm bảo tương thích
+          action: 'delete',
+          type: attachmentType,
+          size: attachmentSize,
+          fileSize: attachmentSize // Thêm trường fileSize để đảm bảo tương thích
+        }
+      });
+      console.log(`Đã ghi log cho việc xóa tệp đính kèm ${attachmentId}`);
+    } catch (logError) {
+      console.error("Error logging attachment deletion:", logError);
+    }
+    
+    return res.status(200).json({
       success: true,
-      message: "Đã xóa tệp đính kèm",
+      message: "Đã xóa tệp đính kèm thành công",
+      data: {
+        taskId: task._id,
+        attachmentId: attachmentId,
+        remainingAttachments: task.attachments.length
+      }
     });
+    
   } catch (error) {
-    console.error("Lỗi khi xóa tệp đính kèm:", error);
-    res.status(500).json({
+    console.error("Error deleting attachment:", error);
+    return res.status(500).json({
       success: false,
-      message: "Lỗi khi xóa tệp đính kèm",
-      error: error.message,
+      message: "Lỗi server khi xóa tệp đính kèm", 
+      error: error.message
     });
   }
 };

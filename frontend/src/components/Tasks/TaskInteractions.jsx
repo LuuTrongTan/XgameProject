@@ -70,8 +70,12 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     // Reset loaded flag when task changes
     commentsLoadedRef.current = false;
     
-    if (task?._id && project?._id && sprint?._id) {
-      console.log(`TaskInteractions [${instanceIdRef.current}] task changed, fetching data`);
+    // Sửa điều kiện để chỉ cần task._id, không nhất thiết phải có project._id và sprint._id
+    // vì các phương thức fetchComments, fetchAttachments, fetchHistory đã được cập nhật
+    // để lấy thông tin sprint và project từ task object
+    if (task?._id) {
+      console.log(`TaskInteractions [${instanceIdRef.current}] task changed, fetching data for task ${task._id}`);
+      
       if (activeTab === 0) {
         fetchComments();
       } else if (activeTab === 1) {
@@ -80,11 +84,12 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         fetchHistory();
       }
     }
-  }, [task?._id, project?._id, sprint?._id]);
+  }, [task?._id]);
 
   // Handle tab changes
   useEffect(() => {
-    if (!task?._id || !project?._id || !sprint?._id) return;
+    // Sửa điều kiện để chỉ cần task._id, không nhất thiết phải có project._id và sprint._id
+    if (!task?._id) return;
 
     if (activeTab === 0 && !commentsLoadedRef.current) {
       console.log(`TaskInteractions [${instanceIdRef.current}] tab changed to comments`);
@@ -96,12 +101,17 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
       console.log(`TaskInteractions [${instanceIdRef.current}] tab changed to history`);
       fetchHistory();
     }
-  }, [activeTab, task?._id, project?._id, sprint?._id]);
+  }, [activeTab, task?._id]);
 
   // Fetch comments
   const fetchComments = async () => {
+    // Lấy ID từ task nếu không có từ tham số
+    const taskId = task?._id;
+    const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+    const taskProjectId = project?._id || task?.project || task?.projectId;
+
     // Không fetch lại nếu đang loading hoặc thiếu thông tin cần thiết
-    if (!task?._id || !project?._id || !sprint?._id || loadingComments) return;
+    if (!taskId || !taskProjectId || loadingComments) return;
     
     // Nếu đã load comments và có comments, không cần fetch lại
     if (commentsLoadedRef.current && comments.length > 0) {
@@ -113,11 +123,16 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     commentsLoadedRef.current = false;  // Reset loaded flag when fetching
     
     try {
-      console.log(`TaskInteractions [${instanceIdRef.current}] fetching comments for task ${task._id}`);
+      console.log(`TaskInteractions [${instanceIdRef.current}] fetching comments for task ${taskId} using projectId=${taskProjectId}, sprintId=${taskSprintId}`);
       
-      const response = await api.get(
-        `/projects/${project._id}/sprints/${sprint._id}/tasks/${task._id}/comments`
-      );
+      // Thay đổi endpoint để đảm bảo sử dụng đúng sprint ID
+      let endpoint = `/projects/${taskProjectId}/`;
+      if (taskSprintId) {
+        endpoint += `sprints/${taskSprintId}/`;
+      }
+      endpoint += `tasks/${taskId}/comments`;
+      
+      const response = await api.get(endpoint);
       
       // Reset comments state trước khi set cái mới để tránh duplicate
       setComments([]);
@@ -154,13 +169,25 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
 
   // Fetch attachments
   const fetchAttachments = async () => {
-    if (!task?._id || !project?._id || !sprint?._id) return;
+    // Lấy ID từ task nếu không có từ tham số
+    const taskId = task?._id;
+    const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+    const taskProjectId = project?._id || task?.project || task?.projectId;
+    
+    if (!taskId || !taskProjectId) return;
     
     setLoadingAttachments(true);
     try {
-      const response = await api.get(
-        `/projects/${project._id}/sprints/${sprint._id}/tasks/${task._id}/attachments`
-      );
+      // Thay đổi endpoint để đảm bảo sử dụng đúng sprint ID
+      let endpoint = `/projects/${taskProjectId}/`;
+      if (taskSprintId) {
+        endpoint += `sprints/${taskSprintId}/`;
+      }
+      endpoint += `tasks/${taskId}/attachments`;
+      
+      console.log(`Fetching attachments from: ${endpoint}`);
+      
+      const response = await api.get(endpoint);
       
       let attachmentsData = [];
       
@@ -185,7 +212,12 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
 
   // Fetch history
   const fetchHistory = async () => {
-    if (!task?._id || !project?._id || !sprint?._id) {
+    // Lấy ID từ task nếu không có từ tham số
+    const taskId = task?._id;
+    const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+    const taskProjectId = project?._id || task?.project || task?.projectId;
+    
+    if (!taskId || !taskProjectId) {
       console.log('Missing required IDs for fetching history');
       return;
     }
@@ -194,10 +226,16 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     setHistory([]); // Reset history before fetching
     
     try {
-      console.log(`Fetching history for task ${task._id}`);
-      const response = await api.get(
-        `/projects/${project._id}/sprints/${sprint._id}/tasks/${task._id}/history`
-      );
+      console.log(`Fetching history for task ${taskId} using projectId=${taskProjectId}, sprintId=${taskSprintId}`);
+      
+      // Thay đổi endpoint để đảm bảo sử dụng đúng sprint ID
+      let endpoint = `/projects/${taskProjectId}/`;
+      if (taskSprintId) {
+        endpoint += `sprints/${taskSprintId}/`;
+      }
+      endpoint += `tasks/${taskId}/history`;
+      
+      const response = await api.get(endpoint);
       
       console.log('History response:', response.data);
       
@@ -339,10 +377,24 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         timestamp: currentTimestamp
       }));
       
-      console.log(`TaskInteractions [${instanceIdRef.current}] adding comment for task ${task._id}`);
+      // LẤY SPRINT ID TỪ TASK OBJECT NẾU SPRINT KHÔNG CÓ
+      const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+      const taskProjectId = project?._id || task?.project || task?.projectId;
+      
+      if (!taskSprintId) {
+        console.error(`TaskInteractions [${instanceIdRef.current}] missing sprintId for task ${task._id}`);
+        throw new Error("Thiếu thông tin sprint ID");
+      }
+      
+      if (!taskProjectId) {
+        console.error(`TaskInteractions [${instanceIdRef.current}] missing projectId for task ${task._id}`);
+        throw new Error("Thiếu thông tin project ID");
+      }
+      
+      console.log(`TaskInteractions [${instanceIdRef.current}] adding comment for task ${task._id}, using projectId=${taskProjectId}, sprintId=${taskSprintId}`);
       
       const response = await api.post(
-        `/projects/${project._id}/sprints/${sprint._id}/tasks/${task._id}/comments`,
+        `/projects/${taskProjectId}/sprints/${taskSprintId}/tasks/${task._id}/comments`,
         {
           content: commentText,
           taskId: task._id,
@@ -396,19 +448,32 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
       // Check for files
       if (!event.target.files || event.target.files.length === 0) {
         setUploading(false);
-        setUploadError("No file selected");
+        setUploadError("Không có file nào được chọn");
         return;
       }
+      
+      // LẤY SPRINT ID & PROJECT ID TỪ TASK OBJECT NẾU KHÔNG CÓ TRONG THAM SỐ
+      const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+      const taskProjectId = project?._id || task?.project || task?.projectId;
+      const taskId = task?._id;
       
       // Check for required IDs
-      if (!project?._id || !sprint?._id || !task?._id) {
+      if (!taskProjectId || !taskId) {
         setUploading(false);
-        setUploadError("Missing required task information");
-        console.error("Missing required IDs", { projectId: project?._id, sprintId: sprint?._id, taskId: task?._id });
+        setUploadError("Thiếu thông tin task hoặc project");
+        console.error("Missing required IDs", { projectId: taskProjectId, taskId: taskId });
         return;
       }
       
-      // Kiểm tra quyền upload file - sử dụng hàm đã tạo
+      console.log("Task data for upload:", {
+        taskId,
+        projectId: taskProjectId,
+        sprintId: taskSprintId,
+        hasTaskSprintField: !!task?.sprint,
+        hasTaskSprintIdField: !!task?.sprintId
+      });
+      
+      // Kiểm tra quyền upload file
       if (!isAdminOrManager() && !isTaskAssignee()) {
         setUploading(false);
         setUploadError("Bạn không có quyền upload file");
@@ -416,19 +481,49 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         return;
       }
       
-      const file = event.target.files[0];
-      console.log("Uploading file:", file.name, "Size:", file.size, "Type:", file.type);
+      // Lấy danh sách các files được chọn
+      const selectedFiles = Array.from(event.target.files);
+      const maxFileSize = 10 * 1024 * 1024; // 10MB
+      
+      // Kiểm tra kích thước file
+      const oversizedFiles = selectedFiles.filter(file => file.size > maxFileSize);
+      if (oversizedFiles.length > 0) {
+        const fileNames = oversizedFiles.map(f => f.name).join(', ');
+        toast.warning(`Các file sau vượt quá 10MB và sẽ không được tải lên: ${fileNames}`);
+      }
+      
+      // Lọc các file có kích thước hợp lệ
+      const validFiles = selectedFiles.filter(file => file.size <= maxFileSize);
+      if (validFiles.length === 0) {
+        setUploading(false);
+        setUploadError("Không có file nào hợp lệ để tải lên");
+        return;
+      }
+      
+      console.log(`Chuẩn bị tải lên ${validFiles.length} file`);
       
       // Create FormData
       const formData = new FormData();
-      formData.append('file', file);
+      validFiles.forEach(file => {
+        formData.append('attachments', file);
+        console.log(`Đã thêm file: ${file.name} (${(file.size/1024).toFixed(2)}KB)`);
+      });
       
-      // Debug FormData contents
-      console.log("FormData created with key 'file'");
+      // Xác định endpoint 
+      let endpoint;
+      if (taskSprintId) {
+        // Nếu có sprint ID, sử dụng endpoint đầy đủ
+        endpoint = `/projects/${taskProjectId}/sprints/${taskSprintId}/tasks/${taskId}/attachments`;
+      } else {
+        // Nếu không có sprint ID, sử dụng endpoint không có sprint
+        endpoint = `/projects/${taskProjectId}/tasks/${taskId}/attachments`;
+      }
+      
+      console.log(`Đang gửi request đến: ${endpoint}`);
       
       // Send the request
       const response = await api.post(
-        `/projects/${project?._id}/sprints/${sprint?._id}/tasks/${task?._id}/attachments`,
+        endpoint,
         formData,
         {
           headers: {
@@ -441,81 +536,97 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
         }
       );
       
-      // Handle successful response
+      // Handle response
       console.log("Upload response:", response.data);
       
       if (response.data.success) {
-        // Add the new attachment to the list
-        const newAttachment = response.data.data.file;
-        if (newAttachment) {
+        // Lấy danh sách các file đã tải lên thành công
+        const uploadedAttachments = response.data.data.attachments || [];
+        const failedUploads = response.data.data.failedUploads || [];
+        
+        if (uploadedAttachments.length > 0) {
+          // Thêm vào danh sách hiện có
           setAttachments(prev => {
-            // Ensure prev is an array
+            // Đảm bảo prev là một mảng
             const prevArray = Array.isArray(prev) ? prev : [];
-            return [newAttachment, ...prevArray];
+            return [...uploadedAttachments, ...prevArray];
           });
+          
+          // Thông báo thành công
+          toast.success(`Đã tải lên ${uploadedAttachments.length} file thành công`);
         }
         
-        // Update task if data is returned
+        // Thông báo nếu có upload thất bại
+        if (failedUploads.length > 0) {
+          const failedNames = failedUploads.map(f => f.name).join(', ');
+          toast.error(`${failedUploads.length} file không thể tải lên: ${failedNames}`);
+        }
+        
+        // Cập nhật task nếu có thay đổi
         if (response.data.data.task) {
           onUpdate && onUpdate(response.data.data.task);
         }
         
-        // Show success message
-        toast.success("File uploaded successfully");
-        
         // Reset file input
         event.target.value = "";
       } else {
-        setUploadError(response.data.message || "Upload failed");
+        setUploadError(response.data.message || "Tải lên thất bại");
+        toast.error(response.data.message || "Tải lên thất bại");
       }
     } catch (error) {
       console.error("Error uploading file:", error);
-      setUploadError(error.response?.data?.message || error.message || "Failed to upload file");
-      toast.error("Failed to upload file: " + (error.response?.data?.message || error.message));
+      const errorMessage = error.response?.data?.message || error.message || "Không thể tải lên file";
+      setUploadError(errorMessage);
+      toast.error("Lỗi khi tải lên file: " + errorMessage);
     } finally {
       setUploading(false);
     }
   };
 
-  // Handle file delete
+  // Handle delete attachment
   const handleDeleteAttachment = async (attachment) => {
+    if (!attachment || !attachment._id) {
+      console.error("Invalid attachment", attachment);
+      return;
+    }
+    
     try {
-      const attachmentId = attachment.id || attachment._id;
-      if (!attachmentId) {
-        console.error('Không thể xác định ID của tệp đính kèm:', attachment);
+      // Lấy ID từ task nếu không có từ tham số
+      const taskId = task?._id;
+      const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
+      const taskProjectId = project?._id || task?.project || task?.projectId;
+      
+      if (!taskId || !taskProjectId) {
+        console.error("Missing task or project ID", { taskId, taskProjectId });
         return;
       }
       
-      console.log(`Deleting attachment ${attachmentId}:`, attachment);
+      console.log(`Deleting attachment ${attachment._id} for task ${taskId}`);
       
-      // Use the uploadApi utility to handle file deletion
-      await uploadApi.deleteFile(attachmentId, {
-        taskId: task._id,
-        projectId: project._id,
-        sprintId: sprint._id
-      });
+      // Xác định endpoint
+      let endpoint = `/projects/${taskProjectId}/`;
+      if (taskSprintId) {
+        endpoint += `sprints/${taskSprintId}/`;
+      }
+      endpoint += `tasks/${taskId}/attachments/${attachment._id}`;
       
-      // Xóa tệp khỏi state
-      setAttachments(prev => {
-        // Make sure prev is an array
-        if (!Array.isArray(prev)) return [];
+      const response = await api.delete(endpoint);
+      
+      if (response.data?.success || response.status === 200) {
+        // Cập nhật UI
+        setAttachments(prev => prev.filter(a => a._id !== attachment._id));
+        toast.success("Đã xóa tệp đính kèm thành công");
         
-        return prev.filter(att => {
-          // Check if attachment exists
-          if (!att) return false;
-          
-          const attId = att.id || att._id;
-          // Make sure attachment ID and the ID we're comparing with both exist
-          return attId && attachmentId && attId !== attachmentId;
-        });
-      });
-      
-      // Cập nhật component cha nếu cần
-      if (onUpdate) onUpdate();
-      
-      console.log('Attachment deleted successfully');
+        // Cập nhật task nếu cần
+        if (onUpdate) {
+          onUpdate();
+        }
+      } else {
+        toast.error("Không thể xóa tệp đính kèm");
+      }
     } catch (error) {
-      console.error('Error deleting attachment:', error.response?.data || error.message || error);
+      console.error("Error deleting attachment:", error);
+      toast.error("Lỗi khi xóa tệp đính kèm");
     }
   };
 
@@ -717,6 +828,7 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
               taskId={task._id}
               projectId={project._id}
               sprintId={sprint._id}
+              task={task}
             />
           )}
         </Box>

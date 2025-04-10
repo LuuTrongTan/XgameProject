@@ -15,6 +15,8 @@ import Upload from "../models/upload.model.js";
 import uploadService from "../services/upload.services.js";
 import auditLogService from "../services/auditlog.service.js";
 import { addAttachment, getTaskAttachments, deleteAttachment, checkAttachmentAccess, checkDeletePermission } from "./task.attachment.controller.js";
+import path from "path";
+import fs from "fs";
 
 // Validate dữ liệu đầu vào
 const validateTaskData = (data) => {
@@ -396,7 +398,12 @@ export const createTask = async (req, res) => {
 
     await task.save();
     
+    // Thêm task vào mảng tasks của sprint
+    sprint.tasks.push(task._id);
+    await sprint.save();
+    
     console.log(`New task created with position ${newPosition} in column ${task.status}`);
+    console.log(`Task ${task._id} added to sprint ${sprintId}, sprint now has ${sprint.tasks.length} tasks`);
 
     res.json({
       success: true,
@@ -1187,138 +1194,71 @@ export const assignTask = async (req, res) => {
 // Xóa công việc
 export const deleteTask = async (req, res) => {
   try {
-    console.log("=== DEBUG DELETE TASK ===");
-    console.log("Request params:", req.params);
-    console.log("Request URL:", req.originalUrl);
-    console.log("Request path:", req.path);
-    
-    // Lấy ID từ params
-    const taskId = req.params.taskId || req.params.id;
-    const projectId = req.params.projectId;
-    const sprintId = req.params.sprintId;
-    
-    console.log("Extracted IDs:", { taskId, projectId, sprintId });
-    
-    if (!taskId) {
-      return res.status(400).json({
-        success: false,
-        message: "Thiếu ID công việc",
-      });
-    }
-    
-    const userId = req.user.id;
+    const { taskId } = req.params;
 
-    // Lấy thông tin task
-    const task = await Task.findById(taskId).populate({
-      path: "project",
-      populate: { path: "members" },
-    });
-
+    // Kiểm tra task tồn tại
+    const task = await Task.findById(taskId);
     if (!task) {
-      console.log("Task not found with ID:", taskId);
       return res.status(404).json({
         success: false,
         message: "Công việc không tồn tại",
       });
     }
-    
-    console.log("Found task:", {
-      id: task._id,
-      title: task.title,
-      project: task.project?._id,
-      assignees: task.assignees?.length || 0
-    });
 
-    const project = task.project;
-
-    // Kiểm tra quyền xóa task
-    // 1. Admin và Project Manager có thể xóa mọi task
-    // 2. Member chỉ có thể xóa task mà họ tạo và chưa được gán cho người khác
-    const isAdmin = req.user.role === ROLES.ADMIN;
-    const isProjectManager = project.members.some(
-      (m) =>
-        m.user.toString() === userId.toString() &&
-        m.role === ROLES.PROJECT_MANAGER
+    // Kiểm tra quyền truy cập
+    const { error, task: taskDetail } = await checkTaskPermission(
+      taskId,
+      req.user._id,
+      [ROLES.ADMIN, ROLES.PROJECT_MANAGER]
     );
-    const isProjectOwner = project.owner.toString() === userId.toString();
-    const isTaskCreator = task.createdBy.toString() === userId.toString();
-    const hasAssignees = task.assignees && task.assignees.length > 0;
 
-    // Nếu là admin, project manager hoặc owner - cho phép xóa
-    const canDelete =
-      isAdmin ||
-      isProjectManager ||
-      isProjectOwner ||
-      // Hoặc là người tạo task và task chưa được gán
-      (isTaskCreator && !hasAssignees);
+    const isTaskCreator = task.createdBy.toString() === req.user._id.toString();
+    const isUnassigned = task.assignees.length === 0;
 
-    if (!canDelete) {
+    if (error && !(isTaskCreator && isUnassigned)) {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền xóa công việc này",
+        message: error,
       });
     }
 
-    // Kiểm tra xem task có phải là parent của task khác không
-    const hasSubtasks = await Task.exists({ parent: task._id });
-    if (hasSubtasks) {
-      return res.status(400).json({
-        success: false,
-        message: "Không thể xóa công việc vì còn công việc con",
-      });
-    }
-
-    // Kiểm tra xem task có phải là dependency của task khác không
-    const hasDependents = await Task.exists({ "dependencies.task": task._id });
-    if (hasDependents) {
-      return res.status(400).json({
-        success: false,
-        message: "Không thể xóa công việc vì có công việc khác phụ thuộc",
-      });
-    }
-
-    // Xóa tất cả timelogs liên quan
-    await Timelog.deleteMany({ task: task._id });
-
-    // Xóa tất cả comments liên quan
-    await Comment.deleteMany({ task: task._id });
-
-    // Nếu là subtask, cập nhật parent task
-    if (task.parent) {
-      const parentTask = await Task.findById(task.parent);
-      if (parentTask) {
-        parentTask.subtasks = parentTask.subtasks.filter(
-          (id) => id.toString() !== task._id.toString()
-        );
-        await parentTask.save();
+    // Xóa task ID khỏi mảng tasks của sprint nếu có sprint
+    if (task.sprint) {
+      const sprint = await Sprint.findById(task.sprint);
+      if (sprint) {
+        sprint.tasks = sprint.tasks.filter(t => t.toString() !== taskId.toString());
+        await sprint.save();
+        console.log(`Task ${taskId} removed from sprint ${task.sprint}, sprint now has ${sprint.tasks.length} tasks`);
       }
     }
-    
-    // Cập nhật các sprint chứa task này
-    const Sprint = mongoose.model('Sprint');
-    const sprints = await Sprint.find({ tasks: task._id });
-    
-    console.log(`Found ${sprints.length} sprints containing this task`);
-    
-    for (const sprint of sprints) {
-      console.log(`Removing task from sprint ${sprint._id}`);
-      sprint.tasks = sprint.tasks.filter(
-        (id) => id.toString() !== task._id.toString()
-      );
-      await sprint.save();
+
+    // Xóa các dữ liệu liên quan
+    await Comment.deleteMany({ task: taskId });
+    await Timelog.deleteMany({ task: taskId });
+
+    // Xóa tất cả file đính kèm
+    for (const attachment of task.attachments || []) {
+      if (attachment.path) {
+        // Xóa file từ hệ thống
+        try {
+          const fullPath = path.join(process.cwd(), attachment.path);
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            console.log(`Deleted file: ${fullPath}`);
+          }
+        } catch (err) {
+          console.error(`Error deleting file: ${err.message}`);
+        }
+      }
+
+      // Xóa upload record nếu có
+      if (attachment.uploadId) {
+        await Upload.findByIdAndDelete(attachment.uploadId);
+      }
     }
 
-    await task.deleteOne();
-
-    // Gửi thông báo realtime
-    global.io.emit("task_deleted", {
-      taskId: task._id,
-      projectId: task.project,
-      deleter: {
-        id: req.user.id,
-        name: req.user.name,
-      },
-    });
+    // Xóa task
+    await Task.findByIdAndDelete(taskId);
 
     res.json({
       success: true,

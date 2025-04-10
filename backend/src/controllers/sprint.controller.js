@@ -138,14 +138,7 @@ export const getSprints = async (req, res) => {
     console.log("=== DEBUG getSprints Controller ===");
     console.log("ProjectId:", projectId);
     console.log("UserId:", req.user.id);
-
-    if (!projectId) {
-      return res.status(400).json({
-        success: false,
-        message: "Thiếu ID dự án",
-      });
-    }
-
+    
     // Lấy thông tin project và kiểm tra quyền
     const project = await Project.findById(projectId);
     if (!project) {
@@ -320,13 +313,6 @@ export const createSprint = async (req, res) => {
     console.log("Project ID:", projectId);
     console.log("Request body:", req.body);
     console.log("=== END DEBUG ===");
-
-    if (!projectId) {
-      return res.status(400).json({
-        success: false,
-        message: "Thiếu ID dự án",
-      });
-    }
 
     const errors = validateSprintData(req.body);
     if (errors.length > 0) {

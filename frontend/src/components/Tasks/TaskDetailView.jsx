@@ -414,7 +414,7 @@ const TaskDetailView = ({
                       <Typography variant="body2" fontWeight={500} color="text.primary">
                         {task.sprint?.name || "Chưa có sprint"}
                       </Typography>
-                      {task.sprint && (
+                      {task.sprint && task.sprint.startDate && task.sprint.endDate && (
                         <Typography variant="caption" color="text.secondary">
                           {format(new Date(task.sprint.startDate), "dd/MM/yyyy", { locale: vi })} - {format(new Date(task.sprint.endDate), "dd/MM/yyyy", { locale: vi })}
                         </Typography>

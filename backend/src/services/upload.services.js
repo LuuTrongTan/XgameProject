@@ -12,21 +12,35 @@ class UploadService {
       // Kiểm tra dữ liệu đầu vào
       if (!fileData) {
         console.error("fileData is NULL or UNDEFINED");
-        throw new Error('File data is required');
+        throw new Error('Không có dữ liệu file');
       }
       
       console.log("fileData keys:", Object.keys(fileData));
       
       if (!fileData.file) {
         console.error("fileData.file is missing");
-        throw new Error('File data is required');
+        throw new Error('Không có thông tin file');
       }
       
       const { userId, taskId = null, projectId = null, commentId = null, permissions = 'public' } = options;
       console.log("Options:", { userId, taskId, projectId, commentId, permissions });
       
+      // Bắt buộc phải có userId
+      if (!userId) {
+        throw new Error('Thiếu thông tin người dùng tải lên');
+      }
+      
       // Lấy thông tin file
       const file = fileData.file;
+      
+      if (!file.filename || !file.path) {
+        console.error("Missing critical file data", { 
+          filename: file.filename,
+          path: file.path
+        });
+        throw new Error('Thiếu thông tin quan trọng của file');
+      }
+      
       console.log("File details:", {
         filename: file.filename || 'missing',
         originalname: file.originalname || 'missing',
@@ -57,27 +71,34 @@ class UploadService {
       try {
         const fileExists = fs.existsSync(file.path);
         console.log("File exists check:", fileExists);
-        const stats = fileExists ? fs.statSync(file.path) : null;
-        if (stats) {
-          console.log("File stats:", {
-            size: stats.size,
-            isFile: stats.isFile(),
-            createdAt: stats.birthtime
-          });
+        
+        if (!fileExists) {
+          throw new Error('File không tồn tại trên đĩa');
+        }
+        
+        const stats = fs.statSync(file.path);
+        console.log("File stats:", {
+          size: stats.size,
+          isFile: stats.isFile(),
+          createdAt: stats.birthtime
+        });
+        
+        if (!stats.isFile()) {
+          throw new Error('Đường dẫn không phải là file hợp lệ');
         }
       } catch (fsError) {
         console.warn("File system check error:", fsError.message);
-        // Tiếp tục xử lý dù có lỗi
+        throw new Error(`Lỗi kiểm tra file: ${fsError.message}`);
       }
 
       // Tạo bản ghi upload
       console.log("Creating Upload record");
       const upload = new Upload({
         filename: file.filename,
-        originalname: file.originalname,
+        originalname: file.originalname || 'unknown',
         path: file.path,
-        mimetype: file.mimetype,
-        size: file.size,
+        mimetype: file.mimetype || 'application/octet-stream',
+        size: file.size || 0,
         uploadedBy: userId,
         task: taskId,
         project: projectId,
@@ -88,9 +109,14 @@ class UploadService {
       });
 
       // Lưu vào database
-      await upload.save();
-      console.log("Upload record saved with ID:", upload._id);
-      return upload;
+      const savedUpload = await upload.save();
+      console.log("Upload record saved with ID:", savedUpload._id);
+      
+      if (!savedUpload || !savedUpload._id) {
+        throw new Error('Không thể lưu thông tin file vào database');
+      }
+      
+      return savedUpload;
     } catch (error) {
       console.error('Lỗi khi lưu thông tin file:', error);
       throw error;

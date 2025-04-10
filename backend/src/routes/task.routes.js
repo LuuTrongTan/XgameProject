@@ -321,7 +321,7 @@ router
   .post(
     protect,
     checkPermission(PERMISSIONS.ADD_TASK_ATTACHMENT),
-    upload.single("file"),
+    upload.array("attachments", 10),
     addAttachment
   )
   .get(

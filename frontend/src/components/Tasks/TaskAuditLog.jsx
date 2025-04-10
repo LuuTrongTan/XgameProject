@@ -45,6 +45,7 @@ import UserAvatar from "../common/UserAvatar";
 import DateTimeDisplay from "../common/DateTimeDisplay";
 import { format, formatDistance } from "date-fns";
 import { vi } from "date-fns/locale";
+import { decodeFileName } from "../../utilities/fileNameUtils";
 
 // Map trạng thái task sang tên hiển thị và màu sắc
 const STATUS_MAP = {
@@ -79,28 +80,65 @@ const ACTION_COLORS = {
   'time': { primary: '#ff5722', secondary: '#fbe9e7' },
 };
 
-const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
+const TaskAuditLog = ({ taskId, projectId, sprintId, task }) => {
   const { user } = useAuth();
   const theme = useTheme();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedLogs, setExpandedLogs] = useState({});
-  const [maxLogs, setMaxLogs] = useState(5);
+  const [maxLogs, setMaxLogs] = useState(30);
+  
+  // Trích xuất ID từ task nếu không được truyền trực tiếp
+  const effectiveTaskId = taskId || (task && task._id);
+  const effectiveProjectId = projectId || (task && task.project);
+  const effectiveSprintId = sprintId || (task && task.sprint);
 
+  // Thêm log debug các thông tin đầu vào
   useEffect(() => {
+    console.log('[TaskAuditLog] Component initialized with params:', {
+      taskId: effectiveTaskId, 
+      projectId: effectiveProjectId, 
+      sprintId: effectiveSprintId,
+      directTaskId: taskId,
+      taskObject: task ? `Task ${task._id} in project ${task.project}` : 'No task object'
+    });
+  }, []);
+  
+  useEffect(() => {
+    console.log('[TaskAuditLog] Dependencies changed, fetching logs:', {
+      taskId: effectiveTaskId, 
+      projectId: effectiveProjectId, 
+      sprintId: effectiveSprintId
+    });
     fetchAuditLogs();
-  }, [taskId, projectId, sprintId]);
+  }, [effectiveTaskId, effectiveProjectId, effectiveSprintId, task]);
 
   // Khi thay đổi task, reset trạng thái expanded
   useEffect(() => {
     setExpandedLogs({});
-    setMaxLogs(5);
-  }, [taskId]);
+    setMaxLogs(30);
+  }, [effectiveTaskId]);
 
   const fetchAuditLogs = async () => {
-    if (!taskId || !projectId || !sprintId) {
-      setError("Thiếu thông tin cần thiết");
+    // Kiểm tra đầy đủ và chi tiết từng tham số
+    if (!effectiveTaskId) {
+      console.error('[TaskAuditLog] Missing taskId parameter');
+      setError("Thiếu thông tin task ID");
+      setLoading(false);
+      return;
+    }
+    
+    if (!effectiveProjectId) {
+      console.error('[TaskAuditLog] Missing projectId parameter');
+      setError("Thiếu thông tin project ID");
+      setLoading(false);
+      return;
+    }
+    
+    if (!effectiveSprintId) {
+      console.error('[TaskAuditLog] Missing sprintId parameter');
+      setError("Thiếu thông tin sprint ID");
       setLoading(false);
       return;
     }
@@ -110,18 +148,29 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
     setLogs([]);
     
     try {
-      console.log(`Fetching audit logs for task ${taskId}`);
-      const response = await getTaskHistory(projectId, sprintId, taskId);
+      console.log(`[TaskAuditLog] Fetching audit logs with params: projectId=${effectiveProjectId}, sprintId=${effectiveSprintId}, taskId=${effectiveTaskId}`);
+      const response = await getTaskHistory(effectiveProjectId, effectiveSprintId, effectiveTaskId);
       
-      console.log('Audit logs response:', response);
+      console.log('[TaskAuditLog] API response:', response);
       
       if (response && response.success) {
         let historyData = [];
         
         if (Array.isArray(response.data)) {
           historyData = response.data;
+          console.log('[TaskAuditLog] Found array data directly in response.data, length:', historyData.length);
         } else if (response.data && Array.isArray(response.data.history)) {
           historyData = response.data.history;
+          console.log('[TaskAuditLog] Found array data in response.data.history, length:', historyData.length);
+        } else {
+          console.warn('[TaskAuditLog] No valid history array found in response, data structure:', response.data);
+        }
+        
+        // Debug logs cho attachment events
+        const attachmentLogs = historyData.filter(log => log.action === 'attachment');
+        if (attachmentLogs.length > 0) {
+          console.log('[DEBUG] Attachment logs found:', attachmentLogs.length);
+          console.log('[DEBUG] First attachment log details:', attachmentLogs[0].details);
         }
         
         // Xử lý và format dữ liệu logs
@@ -151,15 +200,21 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
         // Sắp xếp theo thời gian giảm dần
         processedLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         
-        console.log('Processed audit logs:', processedLogs);
+        console.log('[TaskAuditLog] Processed logs, count:', processedLogs.length);
         setLogs(processedLogs);
       } else {
-        console.log('No history data in response');
+        console.warn('[TaskAuditLog] No success flag in response or empty data');
+        if (response && response.message) {
+          setError(response.message);
+        } else {
+          setError("Không có dữ liệu lịch sử");
+        }
         setLogs([]);
       }
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
-      setError("Không thể tải lịch sử thay đổi");
+      console.error('[TaskAuditLog] Error fetching audit logs:', error);
+      const errorMsg = error.response?.data?.message || error.message || "Không thể tải lịch sử thay đổi";
+      setError(errorMsg);
       setLogs([]);
     } finally {
       setLoading(false);
@@ -234,6 +289,28 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
       case "create":
         return "đã tạo công việc";
         
+      case "attachment":
+        if (log.details) {
+          // Xác định tên file từ nhiều trường có thể có
+          const rawFileName = log.details.attachmentName || log.details.fileName || log.details.name || '';
+          
+          // Giải mã tên file để hiển thị đúng tiếng Việt
+          const fileName = decodeFileName(rawFileName);
+          console.log('[DEBUG] Filename after decoding:', fileName, 'Original:', rawFileName);
+          
+          // Xác định loại hành động
+          const action = log.details.action || 'update';
+          
+          if (action === 'add') {
+            return `đã tải lên tệp đính kèm ${fileName ? `"${fileName}"` : ''}`;
+          } else if (action === 'delete') {
+            return `đã xóa tệp đính kèm ${fileName ? `"${fileName}"` : ''}`;
+          } else {
+            return `đã thay đổi tệp đính kèm ${fileName ? `"${fileName}"` : ''}`;
+          }
+        }
+        return "đã thay đổi tệp đính kèm";
+        
       case "update":
         if (log.details) {
           const changes = Object.entries(log.details)
@@ -278,14 +355,6 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
         
       case "unassign":
         return `đã hủy gán công việc từ ${log.details?.assigneeName || 'người dùng'}`;
-        
-      case "attachment":
-        if (log.details?.action === "add") {
-          return `đã thêm tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
-        } else if (log.details?.action === "delete") {
-          return `đã xóa tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
-        }
-        return `đã thao tác với tệp đính kèm: ${log.details?.fileName || 'tệp'}`;
         
       case "comment":
         if (log.details?.action === "add") {
@@ -346,6 +415,96 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
     }
   };
   
+  const getValueText = (value, fieldType) => {
+    if (value === null || value === undefined) return 'Không có';
+    
+    // Xử lý hiển thị dữ liệu theo từng loại trường
+    switch(fieldType) {
+      case 'status':
+        return STATUS_MAP[value]?.label || value;
+      case 'priority':
+        return PRIORITY_MAP[value]?.label || value;
+      case 'date':
+        try {
+          return formatDateTime(value);
+        } catch (e) {
+          return value;
+        }
+      case 'assignees':
+        if (Array.isArray(value)) {
+          if (value.length === 0) return 'Không có';
+          // Kiểm tra xem mảng có chứa object hay string
+          if (typeof value[0] === 'object') {
+            return value.map(assignee => assignee.name || assignee.email || 'Không xác định').join(', ');
+          }
+          return value.join(', ');
+        }
+        return value.toString();
+      case 'tags':
+        if (Array.isArray(value)) {
+          return value.length > 0 ? value.join(', ') : 'Không có';
+        }
+        return value.toString();
+      case 'array':
+        if (Array.isArray(value)) {
+          return value.length > 0 ? value.join(', ') : 'Không có';
+        }
+        return value.toString();
+      case 'time':
+        return `${value} giờ`;
+      default:
+        if (typeof value === 'object') return JSON.stringify(value);
+        return value.toString();
+    }
+  };
+
+  // Phương thức để xác định loại trường
+  const getFieldType = (fieldName) => {
+    switch(fieldName) {
+      case 'status': return 'status';
+      case 'priority': return 'priority';
+      case 'dueDate': 
+      case 'startDate': 
+      case 'endDate': 
+      case 'createdAt': 
+      case 'updatedAt': 
+        return 'date';
+      case 'assignees': return 'assignees';
+      case 'tags': return 'tags';
+      case 'estimatedHours':
+      case 'actualHours':
+      case 'estimatedTime':
+      case 'actualTime':
+        return 'time';
+      default: return 'text';
+    }
+  };
+
+  // Phương thức để hiển thị tên trường dễ đọc
+  const getFieldLabel = (fieldName) => {
+    const fieldLabels = {
+      'title': 'Tên công việc',
+      'description': 'Mô tả',
+      'status': 'Trạng thái',
+      'priority': 'Độ ưu tiên',
+      'dueDate': 'Hạn chót',
+      'startDate': 'Ngày bắt đầu',
+      'endDate': 'Ngày kết thúc',
+      'estimatedHours': 'Thời gian ước tính',
+      'actualHours': 'Thời gian thực tế',
+      'estimatedTime': 'Thời gian ước tính',
+      'actualTime': 'Thời gian thực tế',
+      'assignees': 'Người thực hiện',
+      'tags': 'Nhãn',
+      'position': 'Vị trí',
+      'progress': 'Tiến độ',
+      'comments': 'Bình luận',
+      'attachments': 'Tệp đính kèm'
+    };
+    
+    return fieldLabels[fieldName] || fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
+  };
+
   // Hiển thị chi tiết của log
   const renderLogDetails = (log) => {
     if (!log.details) return null;
@@ -455,48 +614,41 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
               .map(([key, value]) => {
                 // Icon cho từng loại thay đổi
                 let fieldIcon;
-                let fieldLabel;
+                const fieldType = getFieldType(key);
+                const fieldLabel = getFieldLabel(key);
                 
                 switch(key) {
                   case 'title':
                     fieldIcon = <TitleIcon fontSize="small" />;
-                    fieldLabel = 'Tên công việc';
                     break;
                   case 'description':
                     fieldIcon = <DescriptionIcon fontSize="small" />;
-                    fieldLabel = 'Mô tả';
                     break;
                   case 'status':
                     fieldIcon = <TaskIcon fontSize="small" />;
-                    fieldLabel = 'Trạng thái';
                     break;
                   case 'priority':
                     fieldIcon = <PriorityIcon fontSize="small" />;
-                    fieldLabel = 'Ưu tiên';
                     break;
                   case 'dueDate':
-                    fieldIcon = <ScheduleIcon fontSize="small" />;
-                    fieldLabel = 'Hạn chót';
-                    break;
                   case 'startDate':
-                    fieldIcon = <EventIcon fontSize="small" />;
-                    fieldLabel = 'Ngày bắt đầu';
+                  case 'endDate':
+                    fieldIcon = <ScheduleIcon fontSize="small" />;
                     break;
+                  case 'estimatedHours':
+                  case 'actualHours':
                   case 'estimatedTime':
+                  case 'actualTime':
                     fieldIcon = <TimeIcon fontSize="small" />;
-                    fieldLabel = 'Thời gian dự kiến';
                     break;
                   case 'assignees':
                     fieldIcon = <AssignmentIcon fontSize="small" />;
-                    fieldLabel = 'Người thực hiện';
                     break;
                   case 'tags':
                     fieldIcon = <LabelIcon fontSize="small" />;
-                    fieldLabel = 'Nhãn';
                     break;
                   default:
                     fieldIcon = <EditIcon fontSize="small" />;
-                    fieldLabel = key.charAt(0).toUpperCase() + key.slice(1);
                 }
                 
                 // Style đặc biệt cho các loại trường
@@ -523,6 +675,176 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
                   };
                 }
                 
+                // Style đặc biệt cho description
+                if (key === 'description') {
+                  return (
+                    <Box key={key} mb={1.5}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: 'text.secondary',
+                          mb: 0.5
+                        }}
+                      >
+                        {fieldIcon}
+                        <Box component="span" sx={{ ml: 0.5 }}>{fieldLabel}</Box>
+                      </Typography>
+                      
+                      <Paper 
+                        variant="outlined" 
+                        sx={{
+                          backgroundColor: 'rgba(255,255,255,0.8)',
+                          borderRadius: 1.5,
+                          p: 1.5,
+                          borderColor: 'rgba(0,0,0,0.09)',
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          Mô tả đã được cập nhật
+                        </Typography>
+                        
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          onClick={() => toggleExpand(`${log._id || log.id}-desc`)}
+                          endIcon={expandedLogs[`${log._id || log.id}-desc`] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          sx={{ mb: 1 }}
+                        >
+                          {expandedLogs[`${log._id || log.id}-desc`] ? 'Ẩn chi tiết' : 'Xem chi tiết thay đổi'}
+                        </Button>
+                        
+                        <Collapse in={expandedLogs[`${log._id || log.id}-desc`]}>
+                          <Box sx={{ mt: 1, mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                              Nội dung cũ:
+                            </Typography>
+                            <Paper 
+                              variant="outlined" 
+                              sx={{ 
+                                p: 1, 
+                                bgcolor: 'grey.50', 
+                                borderColor: 'grey.200',
+                                whiteSpace: 'pre-wrap'
+                              }}
+                            >
+                              <Typography variant="body2">
+                                {value.oldValue || 'Không có nội dung'}
+                              </Typography>
+                            </Paper>
+                          </Box>
+                          
+                          <Box sx={{ mt: 1 }}>
+                            <Typography variant="caption" color="primary" sx={{ display: 'block', mb: 0.5 }}>
+                              Nội dung mới:
+                            </Typography>
+                            <Paper 
+                              variant="outlined" 
+                              sx={{ 
+                                p: 1, 
+                                bgcolor: 'primary.50', 
+                                borderColor: 'primary.100',
+                                whiteSpace: 'pre-wrap'
+                              }}
+                            >
+                              <Typography variant="body2">
+                                {value.newValue || 'Không có nội dung'}
+                              </Typography>
+                            </Paper>
+                          </Box>
+                        </Collapse>
+                      </Paper>
+                    </Box>
+                  );
+                }
+                
+                // Xử lý cho các mảng (tags, assignees)
+                if (Array.isArray(value.oldValue) || Array.isArray(value.newValue)) {
+                  return (
+                    <Box key={key} mb={1.5}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: 'text.secondary',
+                          mb: 0.5
+                        }}
+                      >
+                        {fieldIcon}
+                        <Box component="span" sx={{ ml: 0.5 }}>{fieldLabel}</Box>
+                      </Typography>
+                      
+                      <Paper 
+                        variant="outlined" 
+                        sx={{
+                          backgroundColor: 'rgba(255,255,255,0.8)',
+                          borderRadius: 1.5,
+                          p: 1.5,
+                          borderColor: 'rgba(0,0,0,0.09)',
+                        }}
+                      >
+                        <Box display="flex" alignItems="flex-start" flexDirection="column">
+                          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+                            Đã thay đổi từ:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+                            {Array.isArray(value.oldValue) && value.oldValue.length > 0 ? (
+                              value.oldValue.map((item, idx) => (
+                                <Chip
+                                  key={idx}
+                                  label={typeof item === 'object' ? (item.name || item.email || JSON.stringify(item)) : item}
+                                  size="small"
+                                  sx={{ 
+                                    height: 24, 
+                                    fontSize: '0.75rem',
+                                    backgroundColor: theme.palette.grey[100],
+                                    fontWeight: 500
+                                  }}
+                                />
+                              ))
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                Không có
+                              </Typography>
+                            )}
+                          </Box>
+                          
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, mb: 0.5 }}>
+                            Thành:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {Array.isArray(value.newValue) && value.newValue.length > 0 ? (
+                              value.newValue.map((item, idx) => (
+                                <Chip
+                                  key={idx}
+                                  label={typeof item === 'object' ? (item.name || item.email || JSON.stringify(item)) : item}
+                                  size="small"
+                                  sx={{ 
+                                    height: 24, 
+                                    fontSize: '0.75rem',
+                                    backgroundColor: theme.palette.primary.light,
+                                    color: theme.palette.primary.contrastText,
+                                    fontWeight: 500
+                                  }}
+                                />
+                              ))
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                Không có
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      </Paper>
+                    </Box>
+                  );
+                }
+                
+                // Hiển thị mặc định cho các trường đơn giản khác
                 return (
                   <Box key={key} mb={1.5}>
                     <Typography 
@@ -550,7 +872,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
                     >
                       <Box display="flex" alignItems="center" flexWrap="wrap">
                         <Chip
-                          label={getValueText(value.oldValue)}
+                          label={getValueText(value.oldValue, fieldType)}
                           size="small"
                           sx={{ 
                             height: 24, 
@@ -571,7 +893,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
                         />
                         
                         <Chip
-                          label={getValueText(value.newValue)}
+                          label={getValueText(value.newValue, fieldType)}
                           size="small"
                           sx={{ 
                             height: 24, 
@@ -696,6 +1018,65 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
           </Typography>
         );
         
+      case "attachment":
+        // Debug log chi tiết
+        console.log('[DEBUG] Rendering attachment log details:', log.details);
+        
+        // Xác định tên file từ nhiều trường có thể có
+        const rawFileName = log.details.attachmentName || log.details.fileName || log.details.name || 'Tệp không xác định';
+        
+        // Giải mã tên file để hiển thị đúng tiếng Việt
+        const fileName = decodeFileName(rawFileName);
+        console.log('[DEBUG] Filename after decoding:', fileName, 'Original:', rawFileName);
+        
+        // Xác định kích thước file
+        const fileSize = log.details.size || log.details.fileSize || 0;
+        
+        // Xác định loại hành động
+        const actionType = log.details.action || 'update';
+        
+        return (
+          <Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                color: 'text.secondary',
+                mb: 0.5
+              }}
+            >
+              <AttachFileIcon fontSize="small" sx={{ mr: 0.5 }} />
+              {actionType === 'add' ? 'Thêm tệp đính kèm' : 
+               actionType === 'delete' ? 'Xóa tệp đính kèm' : 'Thao tác tệp đính kèm'}
+            </Typography>
+            
+            <Paper 
+              variant="outlined" 
+              sx={{
+                backgroundColor: 'rgba(255,255,255,0.8)',
+                borderRadius: 1.5,
+                p: 1.5,
+                borderColor: 'rgba(0,0,0,0.09)',
+              }}
+            >
+              <Box display="flex" alignItems="center">
+                <AttachFileIcon fontSize="small" sx={{ mr: 1, color: theme.palette.text.secondary }} />
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {fileName}
+                </Typography>
+                
+                {fileSize > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    ({(fileSize / 1024).toFixed(2)} KB)
+                  </Typography>
+                )}
+              </Box>
+            </Paper>
+          </Box>
+        );
+        
       default:
         return null;
     }
@@ -773,9 +1154,9 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
   }, {});
 
   return (
-    <Box>
+    <Box sx={{ width: '100%', maxWidth: '100%' }}>
       {Object.entries(groupedLogs).map(([day, dayLogs], dayIndex) => (
-        <Box key={day} mb={3}>
+        <Box key={day} mb={3} sx={{ width: '100%' }}>
           <Typography 
             variant="subtitle2" 
             sx={{ 
@@ -789,6 +1170,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
               fontWeight: 600,
               color: theme.palette.text.secondary,
               boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              width: '100%',
             }}
           >
             <HistoryIcon sx={{ mr: 1, fontSize: '1.1rem' }} />
@@ -800,6 +1182,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
             position: 'relative',
             pl: 7,
             pr: 2,
+            width: '100%',
             '&::before': {
               content: '""',
               position: 'absolute',
@@ -837,8 +1220,10 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
                     sx={{ 
                       position: 'absolute',
                       left: -85,
+                      width: '60px',
                       top: index === 0 ? 12 : 22,
                       height: 26,
+                      minWidth: '60px',
                       fontSize: '0.7rem',
                       fontWeight: 600,
                       borderRadius: 1,
@@ -888,7 +1273,7 @@ const TaskAuditLog = ({ taskId, projectId, sprintId }) => {
                       overflow: 'hidden',
                     }}
                   >
-                    <CardContent sx={{ p: '12px 16px !important' }}>
+                    <CardContent sx={{ p: '12px 16px !important', '&:last-child': { pb: '12px !important' } }}>
                       {/* Header */}
                       <Box display="flex" alignItems="flex-start" justifyContent="space-between">
                         <Box display="flex" alignItems="center">

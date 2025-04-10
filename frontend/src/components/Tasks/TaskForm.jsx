@@ -23,6 +23,7 @@ import {
   Tooltip,
   CircularProgress,
   Divider,
+  LinearProgress,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
@@ -104,6 +105,9 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [fileErrors, setFileErrors] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
@@ -136,6 +140,19 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       });
     } else {
       // Reset form when creating new task
+      const projectIdValue = projectId || project?._id;
+      
+      // Kiểm tra và log thông tin
+      console.log('[DEBUG] Reset form with project:', projectIdValue);
+      console.log('[DEBUG] Sprint information:', { 
+        providedSprintId: sprintId, 
+        currentProjectSprint: project?.currentSprint?._id 
+      });
+      
+      if (!projectIdValue) {
+        console.error('[ERROR] No project ID available when resetting form');
+      }
+      
       setFormData({
         title: "",
         description: "",
@@ -146,8 +163,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         assignees: [],
         estimatedHours: 0,
         actualHours: 0, // Mặc định là 0
-        project: projectId || project?._id,
-        sprint: sprintId || project?.currentSprint?._id,
+        project: projectIdValue, // Đảm bảo có project ID
+        sprint: sprintId || project?.currentSprint?._id, // Sprint có thể null
         tags: [],
         syncWithCalendar: false,
         calendarType: "google",
@@ -200,19 +217,24 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     setUsers([]);
     
     try {
-      // Kiểm tra sprint ID và project ID
-      if (!formData.sprint || !formData.project) {
-        console.error('[ERROR] Missing sprint or project ID', { 
-          sprint: formData.sprint, 
-          project: formData.project 
-        });
+      // Kiểm tra project ID
+      if (!formData.project) {
+        console.error('[ERROR] Missing project ID', { project: formData.project });
         return; // Thoát sớm nếu thiếu thông tin
       }
       
-      // Gọi API Sprint Members 
-      console.log(`[DEBUG] Fetching sprint members: /projects/${formData.project}/sprints/${formData.sprint}/members`);
-      const response = await API.get(`/projects/${formData.project}/sprints/${formData.sprint}/members`);
-      console.log('[DEBUG] Sprint Members API Response:', response.data);
+      // Nếu không có sprint, lấy danh sách thành viên project thay vì sprint
+      let response;
+      if (!formData.sprint) {
+        console.log(`[DEBUG] No sprint ID, fetching project members: /projects/${formData.project}/members`);
+        response = await API.get(`/projects/${formData.project}/members`);
+        console.log('[DEBUG] Project Members API Response:', response.data);
+      } else {
+        // Gọi API Sprint Members 
+        console.log(`[DEBUG] Fetching sprint members: /projects/${formData.project}/sprints/${formData.sprint}/members`);
+        response = await API.get(`/projects/${formData.project}/sprints/${formData.sprint}/members`);
+        console.log('[DEBUG] Sprint Members API Response:', response.data);
+      }
       
       if (!response.data || !response.data.data) {
         console.error('[ERROR] Invalid response format:', response.data);
@@ -221,10 +243,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       
       // Trích xuất thông tin thành viên từ cấu trúc dữ liệu API
       // Cấu trúc mong đợi: response.data.data là mảng các thành viên, mỗi thành viên có user property
-      const sprintMembers = response.data.data;
+      const members = response.data.data;
       
       // Chuyển đổi thành định dạng phù hợp cho dropdown
-      const processedMembers = sprintMembers
+      const processedMembers = members
         .filter(member => member && member.user)
         .map(member => ({
           _id: member.user._id || member.user.id,
@@ -234,20 +256,20 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           avatar: member.user.avatar
         }));
       
-      console.log('[DEBUG] Processed sprint members:', processedMembers);
-      console.log('[DEBUG] Sprint member count:', processedMembers.length);
+      console.log('[DEBUG] Processed members:', processedMembers);
+      console.log('[DEBUG] Member count:', processedMembers.length);
       
       // Cập nhật state
       setUsers(processedMembers);
       
     } catch (error) {
-      console.error('[ERROR] Error fetching sprint members:', error.response || error);
+      console.error('[ERROR] Error fetching members:', error.response || error);
       
       // Dùng dữ liệu giả để kiểm tra UI
       console.log('[FALLBACK] Using test data for debugging');
       const testMembers = [
-        { _id: 'test1', name: 'Thành viên sprint 1', email: 'member1@test.com' },
-        { _id: 'test2', name: 'Thành viên sprint 2', email: 'member2@test.com' }
+        { _id: 'test1', name: 'Thành viên 1', email: 'member1@test.com' },
+        { _id: 'test2', name: 'Thành viên 2', email: 'member2@test.com' }
       ];
       setUsers(testMembers);
     }
@@ -357,11 +379,102 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
 
   const handleFileChange = (event) => {
     const selectedFiles = Array.from(event.target.files);
-    setFiles((prevFiles) => [...prevFiles, ...selectedFiles]);
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'application/zip', 'application/x-zip-compressed'
+    ];
+    
+    // Kiểm tra và lọc files
+    const validFiles = [];
+    const errors = [];
+    
+    selectedFiles.forEach(file => {
+      // Kiểm tra kích thước
+      if (file.size > maxSize) {
+        errors.push(`File "${file.name}" quá lớn. Kích thước tối đa là 10MB.`);
+        return;
+      }
+      
+      // Kiểm tra loại file (tùy chọn)
+      if (!allowedTypes.includes(file.type) && file.type !== '') {
+        errors.push(`File "${file.name}" không được hỗ trợ. Các định dạng hỗ trợ: ảnh, PDF, Word, Excel, và văn bản.`);
+        return;
+      }
+      
+      validFiles.push(file);
+    });
+    
+    // Cập nhật state
+    setFiles(prevFiles => [...prevFiles, ...validFiles]);
+    setFileErrors(errors);
+    
+    // Hiển thị thông báo lỗi nếu có
+    if (errors.length > 0) {
+      errors.forEach(error => {
+        enqueueSnackbar(error, { variant: 'warning', autoHideDuration: 5000 });
+      });
+    }
+    
+    // Reset input file để có thể chọn lại cùng một file nếu muốn
+    event.target.value = '';
   };
 
   const handleRemoveFile = (index) => {
-    setFiles((prevFiles) => prevFiles.filter((_, i) => i !== index));
+    setFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+    setFileErrors([]);
+  };
+
+  const uploadTaskFiles = async (taskId, projectId, sprintId) => {
+    if (files.length === 0) return null;
+    
+    try {
+      setIsUploading(true);
+      const fileFormData = new FormData();
+      
+      // Thêm tất cả files vào formData
+      files.forEach(file => {
+        fileFormData.append("attachments", file);
+      });
+      
+      // Xác định endpoint đúng
+      let attachmentEndpoint;
+      if (sprintId) {
+        attachmentEndpoint = `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/attachments`;
+      } else {
+        attachmentEndpoint = `/projects/${projectId}/tasks/${taskId}/attachments`;
+      }
+      
+      console.log(`[DEBUG] Uploading files to: ${attachmentEndpoint}`);
+      console.log(`[DEBUG] Number of files: ${files.length}`);
+      
+      // Thực hiện request tải lên với progress tracking
+      const response = await API.post(
+        attachmentEndpoint,
+        fileFormData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data"
+          },
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(progress);
+            console.log(`Upload progress: ${progress}%`);
+          }
+        }
+      );
+      
+      console.log("[DEBUG] File upload response:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error uploading files:", error);
+      throw error;
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const validate = () => {
@@ -375,6 +488,9 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     if (formData.estimatedHours < 0) {
       newErrors.estimatedHours = "Thời gian ước tính không hợp lệ";
     }
+    if (!formData.project) {
+      newErrors.project = "Công việc phải thuộc về một dự án";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -386,77 +502,277 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
+  const handleSave = async (e) => {
+    if (e) e.preventDefault();
+    setErrors({});
 
-    setLoading(true);
+    // Validate form data
+    const validationErrors = {};
+    if (!formData.title || formData.title.trim().length < 3) {
+      validationErrors.title = 'Tiêu đề phải có ít nhất 3 ký tự';
+    }
+    if (!formData.description || formData.description.trim().length < 10) {
+      validationErrors.description = 'Mô tả phải có ít nhất 10 ký tự';
+    }
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
     try {
-      // Log thông tin trước khi gửi
-      console.log('[DEBUG] Submitting task form with data:', {
-        projectId: formData.project,
-        sprintId: formData.sprint,
+      setLoading(true);
+      console.log("[Task Debug] Saving task with form data:", formData);
+      console.log("[Task Debug] Files to upload:", files.length > 0 ? files.map(f => f.name) : "No files");
+      
+      // Chuẩn bị payload cho task
+      const taskPayload = {
+        title: formData.title,
+        description: formData.description,
+        priority: formData.priority,
+        status: formData.status,
+        startDate: formData.startDate,
+        dueDate: formData.dueDate,
         assignees: formData.assignees,
-        startDate: formatDateTime(formData.startDate),
-        dueDate: formatDateTime(formData.dueDate),
-        sprintIdProp: sprintId
-      });
+        estimatedHours: formData.estimatedHours,
+        actualHours: formData.actualHours,
+        tags: formData.tags
+      };
       
-      // Kiểm tra xem có sprint và project ID hay không
-      if (!formData.sprint || !formData.project) {
-        throw new Error("Missing sprint or project ID in form data");
-      }
-      
-      // Tạo form data để upload file
-      const formDataObj = new FormData();
-      Object.keys(formData).forEach((key) => {
-        if (key === "assignees" || key === "tags") {
-          formDataObj.append(key, JSON.stringify(formData[key]));
-        } else {
-          formDataObj.append(key, formData[key]);
-        }
-      });
-
-      // Thêm các file vào form data
-      files.forEach((file) => {
-        formDataObj.append("attachments", file);
-      });
-
       let response;
-      if (task?._id) {
-        response = await API.put(`/tasks/${task._id}`, formDataObj, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
-        await ActivityService.logTaskUpdated(formData.title);
-
-        // Nếu có yêu cầu đồng bộ lịch
-        if (formData.syncWithCalendar) {
-          await API.post(`/tasks/${response.data._id}/sync-calendar`, {
-            calendarType: formData.calendarType,
-          });
+      
+      // CHỈNH SỬA: Kiểm tra cẩn thận nếu task tồn tại
+      if (task && task._id) {
+        console.log("[Task Debug] Updating existing task:", task._id);
+        
+        // Tạo endpoint đúng cho việc cập nhật task
+        let updateEndpoint;
+        if (formData.sprint) {
+          updateEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${task._id}`;
+        } else {
+          updateEndpoint = `/projects/${formData.project}/tasks/${task._id}`;
         }
-      } else {
-        response = await API.post("/tasks", formDataObj, {
+        
+        console.log("[Task Debug] Using update endpoint:", updateEndpoint);
+        
+        response = await API.put(updateEndpoint, taskPayload, {
           headers: {
-            "Content-Type": "multipart/form-data",
+            "Content-Type": "application/json"
           },
         });
+        
+        // Nếu có file, upload riêng và theo dõi tiến trình
+        if (files.length > 0) {
+          try {
+            console.log("[Task Debug] Uploading files for existing task");
+            await uploadTaskFiles(task._id, formData.project, formData.sprint);
+            enqueueSnackbar("Tệp đính kèm đã được tải lên thành công", { variant: "success" });
+          } catch (fileError) {
+            console.error("[Task Debug] Error uploading attachments:", fileError);
+            enqueueSnackbar("Có lỗi khi tải lên tệp đính kèm", { variant: "error" });
+          }
+        }
+        
+        await ActivityService.logTaskUpdated(formData.title);
+      } else {
+        // Tạo task mới
+        let endpoint;
+        if (formData.sprint) {
+          endpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks`;
+        } else {
+          endpoint = `/projects/${formData.project}/tasks`;
+        }
+        
+        console.log(`[DEBUG] Creating task with endpoint: ${endpoint}`);
+        
+        response = await API.post(
+          endpoint, 
+          taskPayload, 
+          {
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+        
+        console.log("[Task Debug] Task created successfully:", response.data);
+        console.log("[Task Debug] Full response structure:", JSON.stringify(response));
+
+        // CHỈNH SỬA: Trích xuất ID task đúng cách từ phản hồi API
+        // Phân tích cấu trúc phản hồi chi tiết, đảm bảo chắc chắn lấy được ID
+        let newTaskId = null;
+        let extractedTask = null;
+
+        if (response?.data?.success === true && response?.data?.data) {
+          // Cấu trúc phản hồi API chuẩn: {success: true, message: "...", data: {...}}
+          extractedTask = response.data.data;
+          newTaskId = extractedTask._id;
+          console.log("[Task Debug] Extracted task from standard API response:", extractedTask);
+        } else if (response?.data?._id) {
+          // Cấu trúc phản hồi trực tiếp: task object
+          extractedTask = response.data;
+          newTaskId = response.data._id;
+          console.log("[Task Debug] Response data contains task directly:", extractedTask);
+        } else {
+          // Tìm kiếm đệ quy trong đối tượng phản hồi
+          console.log("[Task Debug] Using recursive search for task ID");
+          const findTaskId = (obj, depth = 0) => {
+            if (!obj || typeof obj !== 'object' || depth > 5) return null;
+            
+            // Kiểm tra nếu đối tượng hiện tại có _id và các trường cơ bản của task
+            if (obj._id && (obj.title || obj.description)) {
+              console.log("[Task Debug] Found potential task object:", obj);
+              return obj;
+            }
+            
+            // Duyệt qua tất cả các thuộc tính
+            for (const key in obj) {
+              if (typeof obj[key] === 'object') {
+                const result = findTaskId(obj[key], depth + 1);
+                if (result) return result;
+              }
+            }
+            
+            return null;
+          };
+          
+          extractedTask = findTaskId(response.data);
+          if (extractedTask) {
+            newTaskId = extractedTask._id;
+            console.log("[Task Debug] Found task by deep search:", extractedTask);
+          }
+        }
+
+        if (!newTaskId) {
+          console.error("[Task Debug] Could not extract task ID from response:", response.data);
+          throw new Error("Không thể lấy ID task từ phản hồi API. Task có thể chưa được tạo thành công.");
+        } else {
+          console.log("[Task Debug] Successfully extracted task ID:", newTaskId);
+          // Cập nhật trong phần tìm kiếm task để sử dụng đúng extractedTask
+          if (extractedTask) {
+            console.log("[Task Debug] Using extracted task for further processing");
+            response.data = extractedTask; // Đảm bảo response.data chứa task đúng
+          }
+        }
+
+        // Kiểm tra nếu có file và task ID
+        if (files.length > 0) {
+          if (newTaskId) {
+            console.log("[Task Debug] Will start file upload for task ID:", newTaskId);
+            
+            try {
+              const fileFormData = new FormData();
+              files.forEach(file => {
+                fileFormData.append("attachments", file);
+                console.log("[Task Debug] Added file to upload:", file.name);
+              });
+              
+              // Tạo endpoint tải lên tệp đính kèm
+              let attachmentEndpoint;
+              if (formData.sprint) {
+                attachmentEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${newTaskId}/attachments`;
+              } else {
+                attachmentEndpoint = `/projects/${formData.project}/tasks/${newTaskId}/attachments`;
+              }
+              
+              console.log("[Task Debug] Uploading files to endpoint:", attachmentEndpoint);
+              
+              // Log toàn bộ FormData trước khi gửi
+              console.log("[Task Debug] FormData entries:");
+              for (let pair of fileFormData.entries()) {
+                console.log(pair[0], pair[1] instanceof File ? 
+                  `File: ${pair[1].name}, size: ${pair[1].size}, type: ${pair[1].type}` : pair[1]);
+              }
+              
+              // Thực hiện request tải lên tệp đính kèm
+              const uploadResponse = await API.post(
+                attachmentEndpoint,
+                fileFormData,
+                {
+                  headers: {
+                    "Content-Type": "multipart/form-data"
+                  },
+                  onUploadProgress: (progressEvent) => {
+                    const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    console.log(`[Task Debug] Upload progress: ${progress}%`);
+                  }
+                }
+              );
+              
+              console.log("[Task Debug] File upload response:", uploadResponse.data);
+              
+              if (uploadResponse.data.success) {
+                enqueueSnackbar("Tệp đính kèm đã được tải lên thành công", { variant: "success" });
+              } else {
+                console.error("[Task Debug] Upload failed:", uploadResponse.data.message);
+                enqueueSnackbar("Có lỗi khi tải lên tệp đính kèm", { variant: "error" });
+              }
+            } catch (fileError) {
+              console.error("[Task Debug] Error uploading attachments:", fileError);
+              console.error("[Task Debug] Error details:", fileError.response?.data || fileError.message);
+              enqueueSnackbar("Có lỗi khi tải lên tệp đính kèm: " + (fileError.response?.data?.message || fileError.message), { variant: "error" });
+            }
+          } else {
+            console.warn("[Task Debug] Cannot upload files - no task ID returned:", response.data);
+            enqueueSnackbar("Không thể tải lên tệp đính kèm do không có ID task", { variant: "warning" });
+          }
+        }
+        
         await ActivityService.logTaskCreated(formData.title, project?.name);
 
         // Nếu có yêu cầu đồng bộ lịch
-        if (formData.syncWithCalendar) {
-          await API.post(`/tasks/${response.data._id}/sync-calendar`, {
+        if (formData.syncWithCalendar && newTaskId) {
+          let syncEndpoint;
+          if (formData.sprint) {
+            syncEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${newTaskId}/sync-calendar`;
+          } else {
+            syncEndpoint = `/projects/${formData.project}/tasks/${newTaskId}/sync-calendar`;
+          }
+          
+          console.log("[Task Debug] Syncing calendar with endpoint:", syncEndpoint);
+          
+          await API.post(syncEndpoint, {
             calendarType: formData.calendarType,
           });
         }
       }
-      onSave(response.data);
-      navigate(`/projects/${project?._id}`);
+      
+      // Gọi callback onSave với dữ liệu task
+      // CHỈNH SỬA: Xử lý dữ liệu trả về từ API một cách đúng đắn
+      console.log("[Task Debug] Response structure before extracting data:", response);
+      let taskData;
+      if (response.data && response.data.success && response.data.data) {
+        taskData = response.data.data;
+        console.log("[Task Debug] Extracted task data from response.data.data:", taskData);
+      } else if (response.data) {
+        taskData = response.data;
+        console.log("[Task Debug] Using response.data as task data:", taskData);
+      } else {
+        console.error("[Task Debug] Invalid response format, cannot extract task data");
+        throw new Error("Không thể trích xuất dữ liệu task từ phản hồi API");
+      }
+      
+      if (!taskData._id) {
+        console.error("[Task Debug] Task data does not contain _id:", taskData);
+        enqueueSnackbar("Task không có ID hợp lệ, vui lòng thử lại", { variant: "error" });
+        return; // Ngăn chặn việc gọi onSave với dữ liệu không hợp lệ
+      }
+      
+      // Sau khi xác nhận có ID hợp lệ, mới gọi onSave
+      console.log("[Task Debug] Calling onSave with valid task data:", taskData);
+      enqueueSnackbar("Task đã được lưu thành công", { variant: "success" });
+      onSave(taskData);
+      
     } catch (error) {
-      console.error("Error saving task:", error);
-      setErrors({ submit: error.response?.data?.message || "Có lỗi xảy ra" });
+      console.error("[Task Debug] Error saving task:", error);
+      // Hiển thị lỗi chi tiết từ server nếu có
+      if (error.response?.data?.errors && Array.isArray(error.response.data.errors)) {
+        console.error("[Task Debug] Validation errors:", error.response.data.errors);
+        setErrors({ 
+          submit: `Lỗi: ${error.response.data.message}. ${error.response.data.errors.join(", ")}` 
+        });
+      } else {
+        setErrors({ submit: error.response?.data?.message || "Có lỗi xảy ra" });
+      }
     } finally {
       setLoading(false);
     }
@@ -487,7 +803,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           variant: "success",
           autoHideDuration: 5000,
         });
-        navigate(`/projects/${project?._id}`);
+        // Remove navigation from here - let parent component handle it
+        // navigate(`/projects/${project?._id}`);
       } catch (error) {
         console.error("Error deleting task:", error);
         enqueueSnackbar(
@@ -501,14 +818,32 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   };
 
   const handleComplete = async () => {
+    // Kiểm tra nếu task không tồn tại hoặc không có ID
+    if (!task || !task._id) {
+      console.error("[Task Debug] Cannot complete task: No task ID found");
+      enqueueSnackbar("Không thể hoàn thành task: ID task không xác định", { variant: "error" });
+      return;
+    }
+    
     setLoading(true);
     try {
-      await API.put(`/tasks/${task._id}`, {
+      // Tạo endpoint đúng cho việc cập nhật trạng thái task
+      let updateEndpoint;
+      if (task.sprint) {
+        updateEndpoint = `/projects/${task.project}/sprints/${task.sprint}/tasks/${task._id}`;
+      } else {
+        updateEndpoint = `/projects/${task.project}/tasks/${task._id}`;
+      }
+      
+      console.log("[Task Debug] Completing task with endpoint:", updateEndpoint);
+      
+      await API.put(updateEndpoint, {
         ...formData,
         status: "done",
       });
       await ActivityService.logTaskCompleted(task.title);
-      navigate(`/projects/${project?._id}`);
+      // Remove navigation from here - let parent component handle it
+      // navigate(`/projects/${project?._id}`);
     } catch (error) {
       console.error("Error completing task:", error);
     } finally {
@@ -576,7 +911,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
               {task?._id ? "Chỉnh sửa công việc" : "Tạo công việc mới"}
             </Typography>
 
-            <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+            <Box component="form" onSubmit={(e) => e.preventDefault()} sx={{ mt: 3 }}>
               <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <TextField
@@ -795,7 +1130,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                     component="label"
                     variant="outlined"
                     startIcon={<CloudUploadIcon />}
-                    sx={{ mb: 2 }}
+                    sx={{ mb: 2, mr: 2 }}
                   >
                     Tải lên tệp
                     <VisuallyHiddenInput
@@ -804,6 +1139,21 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                       onChange={handleFileChange}
                     />
                   </Button>
+                  
+                  {fileErrors.length > 0 && (
+                    <Typography color="error" variant="caption" sx={{ display: 'block', mb: 1 }}>
+                      Có {fileErrors.length} lỗi khi chọn file. Vui lòng kiểm tra lại.
+                    </Typography>
+                  )}
+
+                  {isUploading && (
+                    <Box sx={{ width: '100%', mb: 2 }}>
+                      <LinearProgress variant="determinate" value={uploadProgress} />
+                      <Typography variant="caption" sx={{ mt: 1 }}>
+                        Đang tải lên: {uploadProgress}%
+                      </Typography>
+                    </Box>
+                  )}
 
                   <Box sx={{ mt: 2 }}>
                     {files.map((file, index) => (
@@ -816,15 +1166,26 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                           mb: 1,
                           border: "1px solid #e0e0e0",
                           borderRadius: 1,
+                          backgroundColor: 'background.paper',
+                          '&:hover': {
+                            backgroundColor: 'action.hover',
+                          },
                         }}
                       >
                         <AttachFileIcon sx={{ mr: 1 }} />
                         <Typography variant="body2" sx={{ flexGrow: 1 }}>
                           {file.name} ({(file.size / 1024).toFixed(2)} KB)
                         </Typography>
+                        <Chip 
+                          size="small" 
+                          label={file.type.split('/')[1] || 'file'} 
+                          variant="outlined" 
+                          sx={{ mr: 1 }} 
+                        />
                         <IconButton
                           size="small"
                           onClick={() => handleRemoveFile(index)}
+                          color="error"
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -929,7 +1290,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                           Hoàn thành
                         </Button>
                       )}
-                      <Button type="submit" variant="contained" disabled={loading}>
+                      <Button 
+                        type="button" 
+                        variant="contained" 
+                        disabled={loading}
+                        onClick={handleSave}
+                      >
                         {loading ? (
                           <CircularProgress size={24} />
                         ) : task?._id ? (
