@@ -94,128 +94,26 @@ const TaskAuditLog = ({ taskId, projectId, sprintId, task }) => {
   const effectiveProjectId = projectId || (task && task.project);
   const effectiveSprintId = sprintId || (task && task.sprint);
 
-  // Thêm log debug các thông tin đầu vào
   useEffect(() => {
-    console.log('[TaskAuditLog] Component initialized with params:', {
-      taskId: effectiveTaskId, 
-      projectId: effectiveProjectId, 
-      sprintId: effectiveSprintId,
-      directTaskId: taskId,
-      taskObject: task ? `Task ${task._id} in project ${task.project}` : 'No task object'
-    });
-  }, []);
-  
-  useEffect(() => {
-    console.log('[TaskAuditLog] Dependencies changed, fetching logs:', {
-      taskId: effectiveTaskId, 
-      projectId: effectiveProjectId, 
-      sprintId: effectiveSprintId
-    });
     fetchAuditLogs();
-  }, [effectiveTaskId, effectiveProjectId, effectiveSprintId, task]);
-
-  // Khi thay đổi task, reset trạng thái expanded
-  useEffect(() => {
-    setExpandedLogs({});
-    setMaxLogs(30);
-  }, [effectiveTaskId]);
+  }, [effectiveTaskId, effectiveProjectId, effectiveSprintId]);
 
   const fetchAuditLogs = async () => {
-    // Kiểm tra đầy đủ và chi tiết từng tham số
-    if (!effectiveTaskId) {
-      console.error('[TaskAuditLog] Missing taskId parameter');
-      setError("Thiếu thông tin task ID");
-      setLoading(false);
-      return;
-    }
-    
-    if (!effectiveProjectId) {
-      console.error('[TaskAuditLog] Missing projectId parameter');
-      setError("Thiếu thông tin project ID");
-      setLoading(false);
-      return;
-    }
-    
-    if (!effectiveSprintId) {
-      console.error('[TaskAuditLog] Missing sprintId parameter');
-      setError("Thiếu thông tin sprint ID");
+    if (!effectiveTaskId || !effectiveProjectId || !effectiveSprintId) {
+      setError("Thiếu thông tin cần thiết để lấy lịch sử");
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError(null);
-    setLogs([]);
     
     try {
-      console.log(`[TaskAuditLog] Fetching audit logs with params: projectId=${effectiveProjectId}, sprintId=${effectiveSprintId}, taskId=${effectiveTaskId}`);
-      const response = await getTaskHistory(effectiveProjectId, effectiveSprintId, effectiveTaskId);
-      
-      console.log('[TaskAuditLog] API response:', response);
-      
-      if (response && response.success) {
-        let historyData = [];
-        
-        if (Array.isArray(response.data)) {
-          historyData = response.data;
-          console.log('[TaskAuditLog] Found array data directly in response.data, length:', historyData.length);
-        } else if (response.data && Array.isArray(response.data.history)) {
-          historyData = response.data.history;
-          console.log('[TaskAuditLog] Found array data in response.data.history, length:', historyData.length);
-        } else {
-          console.warn('[TaskAuditLog] No valid history array found in response, data structure:', response.data);
-        }
-        
-        // Debug logs cho attachment events
-        const attachmentLogs = historyData.filter(log => log.action === 'attachment');
-        if (attachmentLogs.length > 0) {
-          console.log('[DEBUG] Attachment logs found:', attachmentLogs.length);
-          console.log('[DEBUG] First attachment log details:', attachmentLogs[0].details);
-        }
-        
-        // Xử lý và format dữ liệu logs
-        const processedLogs = historyData.map(log => {
-          const processedLog = { 
-            ...log,
-            timestamp: new Date(log.timestamp || log.createdAt).toLocaleString('vi-VN'),
-            details: log.details || {},
-            changes: log.changes || {},
-            user: log.user || { name: 'Unknown User' }
-          };
-          
-          // Format các trường đặc biệt
-          if (processedLog.details.field === 'status') {
-            processedLog.details.oldValue = getStatusLabel(processedLog.details.oldValue);
-            processedLog.details.newValue = getStatusLabel(processedLog.details.newValue);
-          }
-          
-          if (processedLog.details.field === 'priority') {
-            processedLog.details.oldValue = getPriorityLabel(processedLog.details.oldValue);
-            processedLog.details.newValue = getPriorityLabel(processedLog.details.newValue);
-          }
-          
-          return processedLog;
-        });
-        
-        // Sắp xếp theo thời gian giảm dần
-        processedLogs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        
-        console.log('[TaskAuditLog] Processed logs, count:', processedLogs.length);
-        setLogs(processedLogs);
-      } else {
-        console.warn('[TaskAuditLog] No success flag in response or empty data');
-        if (response && response.message) {
-          setError(response.message);
-        } else {
-          setError("Không có dữ liệu lịch sử");
-        }
-        setLogs([]);
-      }
+      const history = await getTaskHistory(effectiveProjectId, effectiveSprintId, effectiveTaskId);
+      setLogs(history);
     } catch (error) {
-      console.error('[TaskAuditLog] Error fetching audit logs:', error);
-      const errorMsg = error.response?.data?.message || error.message || "Không thể tải lịch sử thay đổi";
-      setError(errorMsg);
-      setLogs([]);
+      console.error('Error fetching audit logs:', error);
+      setError(error.message || "Không thể tải lịch sử thay đổi");
     } finally {
       setLoading(false);
     }

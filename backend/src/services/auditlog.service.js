@@ -174,6 +174,60 @@ const auditLogService = {
       console.error('[AuditLog Service] Error getting user activity:', error);
       throw error;
     }
+  },
+
+  /**
+   * Lấy lịch sử của một đối tượng với pagination
+   * @param {string} entityId - ID của đối tượng
+   * @param {string} entityType - Loại đối tượng
+   * @param {Object} filter - Điều kiện lọc
+   * @param {Object} options - Tùy chọn pagination
+   * @param {number} options.page - Trang hiện tại
+   * @param {number} options.limit - Số bản ghi mỗi trang
+   * @param {Object} options.sort - Điều kiện sắp xếp
+   * @returns {Promise<Object>} - Kết quả với pagination
+   */
+  async getEntityLogsWithPagination(entityId, entityType, filter = {}, options = {}) {
+    try {
+      const { page = 1, limit = 30, sort = { createdAt: -1 } } = options;
+      
+      // Đảm bảo filter có entityId và entityType
+      const query = {
+        ...filter,
+        entityId,
+        entityType
+      };
+
+      // Đếm tổng số bản ghi
+      const total = await AuditLog.countDocuments(query);
+
+      // Tính toán pagination
+      const totalPages = Math.ceil(total / limit);
+      const skip = (page - 1) * limit;
+
+      // Lấy dữ liệu
+      const logs = await AuditLog.find(query)
+        .populate('user', 'name email avatar')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      return {
+        logs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      };
+    } catch (error) {
+      console.error('[AuditLog Service] Error getting paginated logs:', error);
+      throw error;
+    }
   }
 };
 

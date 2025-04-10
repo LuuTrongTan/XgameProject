@@ -31,17 +31,18 @@ import {
   Select,
   FormControl,
   InputLabel,
+  CardActions,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AssignmentIcon from "@mui/icons-material/Assignment";
-import SearchIcon from "@mui/icons-material/Search";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import PersonIcon from "@mui/icons-material/Person";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import TaskIcon from "@mui/icons-material/Task";
 import { getSprints, deleteSprint, getProjectById } from "../../api/sprintApi";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import { useSnackbar } from "notistack";
@@ -138,15 +139,14 @@ const SprintList = () => {
   const { canCreateSprint, canEditSprint, canDeleteSprint, canViewSprint } =
     usePermissions();
     
-  // Thêm state cho tìm kiếm và lọc
-  const [searchTerm, setSearchTerm] = useState("");
+  // Chỉ giữ lại bộ lọc trạng thái
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     fetchData();
   }, [projectId, refresh]);
   
-  // Effect để lọc sprint theo search và filter
+  // Effect để lọc sprint theo filter
   useEffect(() => {
     if (!sprints) return;
     
@@ -157,17 +157,8 @@ const SprintList = () => {
       result = result.filter(sprint => sprint.status === statusFilter);
     }
     
-    // Lọc theo từ khóa tìm kiếm
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      result = result.filter(sprint => 
-        sprint.name.toLowerCase().includes(searchLower) || 
-        (sprint.description && sprint.description.toLowerCase().includes(searchLower))
-      );
-    }
-    
     setFilteredSprints(result);
-  }, [sprints, searchTerm, statusFilter]);
+  }, [sprints, statusFilter]);
 
   const fetchData = async () => {
     try {
@@ -291,12 +282,13 @@ const SprintList = () => {
     navigate(`/projects/${projectId}/sprints/${sprintId}`);
   };
 
-  const handleBackClick = () => {
-    navigate(`/projects/${projectId}`);
+  const handleTasksClick = (event, sprintId) => {
+    event.stopPropagation();
+    navigate(`/projects/${projectId}/tasks?sprint=${sprintId}`);
   };
 
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
+  const handleBackClick = () => {
+    navigate(`/projects/${projectId}`);
   };
   
   const handleStatusFilterChange = (event) => {
@@ -423,21 +415,6 @@ const SprintList = () => {
             </Button>
           </Box>
         </Box>
-        
-        <TextField
-          placeholder="Tìm sprint theo tên..."
-          value={searchTerm}
-          onChange={handleSearchChange}
-          size="small"
-          sx={{ width: 250 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon color="action" />
-              </InputAdornment>
-            ),
-          }}
-        />
       </Box>
 
       {error && (
@@ -450,10 +427,10 @@ const SprintList = () => {
         <Card sx={{ minWidth: 275, mb: 2 }}>
           <CardContent>
             <Box sx={{ textAlign: 'center', py: 4 }}>
-              {searchTerm || statusFilter !== 'all' ? (
+              {statusFilter !== 'all' ? (
                 <>
                   <Typography variant="h6" gutterBottom>
-                    Không tìm thấy sprint nào phù hợp với điều kiện tìm kiếm
+                    Không tìm thấy sprint nào phù hợp với bộ lọc
                   </Typography>
                 </>
               ) : (
@@ -620,6 +597,18 @@ const SprintList = () => {
                       </Grid>
                     </CardContent>
                   </CardActionArea>
+                  <CardActions sx={{ justifyContent: 'center', p: 2, pt: 0 }}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      color="primary"
+                      startIcon={<TaskIcon />}
+                      onClick={(e) => handleTasksClick(e, sprint._id)}
+                      sx={{ width: '100%' }}
+                    >
+                      XEM CÔNG VIỆC
+                    </Button>
+                  </CardActions>
                 </Card>
               </Grid>
             );

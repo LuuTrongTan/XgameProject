@@ -21,10 +21,8 @@ import {
   Dashboard as DashboardIcon,
   Task as TaskIcon,
   Assignment as ProjectIcon,
-  Assessment as ReportIcon,
-  Settings as SettingsIcon,
-  ExpandMore,
-  Star as StarIcon,
+  Notifications as NotificationIcon,
+  History as HistoryIcon,
   CalendarMonth as CalendarIcon,
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -118,43 +116,43 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
 
           <Divider sx={{ my: 1, bgcolor: "rgba(255, 255, 255, 0.12)" }} />
 
-          {/* Menu Reports */}
+          {/* Menu Notifications */}
           <ListItem disablePadding>
             <ListItemButton
               onClick={() => {
-                navigate("/reports");
+                navigate("/notifications");
                 if (isMobile) onDrawerToggle();
               }}
-              selected={isActive("/reports")}
+              selected={isActive("/notifications")}
               sx={{
                 borderRadius: 1,
                 mx: 1,
               }}
             >
               <ListItemIcon>
-                <ReportIcon />
+                <NotificationIcon />
               </ListItemIcon>
-              <ListItemText primary="Báo cáo" />
+              <ListItemText primary="Thông báo" />
             </ListItemButton>
           </ListItem>
 
-          {/* Menu Settings */}
+          {/* Menu History */}
           <ListItem disablePadding>
             <ListItemButton
               onClick={() => {
-                navigate("/settings");
+                navigate("/history");
                 if (isMobile) onDrawerToggle();
               }}
-              selected={isActive("/settings")}
+              selected={isActive("/history")}
               sx={{
                 borderRadius: 1,
                 mx: 1,
               }}
             >
               <ListItemIcon>
-                <SettingsIcon />
+                <HistoryIcon />
               </ListItemIcon>
-              <ListItemText primary="Cài đặt" />
+              <ListItemText primary="Lịch sử" />
             </ListItemButton>
           </ListItem>
         </List>

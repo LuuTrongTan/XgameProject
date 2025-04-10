@@ -508,9 +508,14 @@ export const getTaskHistory = async (projectId, sprintId, taskId) => {
     const response = await API.get(
       `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}/history`
     );
-    return response.data;
+
+    if (!response.data.success) {
+      throw new Error(response.data.message || "Failed to get task history");
+    }
+
+    return response.data.data;
   } catch (error) {
-    console.error("Error fetching task history:", error);
+    console.error("Error getting task history:", error);
     throw error;
   }
 };

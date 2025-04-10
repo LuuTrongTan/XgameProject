@@ -33,6 +33,7 @@ import userRoutes from "./routes/user.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import activityRoutes from "./routes/activity.routes.js";
 import connectDB from "./config/database.js";
+import taskHistoryRoutes from "./routes/taskHistoryRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 5002;
@@ -157,6 +158,7 @@ app.use("/api", sprintRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/activities", activityRoutes);
+app.use('/api', taskHistoryRoutes);
 
 // API test file để kiểm tra nội dung file và quyền truy cập
 app.get('/api/test-file/:filename', (req, res) => {

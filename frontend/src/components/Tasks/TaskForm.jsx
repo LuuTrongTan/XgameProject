@@ -172,25 +172,17 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     }
   }, [task, project, projectId, sprintId]);
 
-  // Log values for debugging
-  useEffect(() => {
-    console.log('[DEBUG] Task Form Sprint ID:', formData.sprint);
-    console.log('[DEBUG] Task Form Project ID:', formData.project);
-  }, [formData.sprint, formData.project]);
-
   // Thêm hàm để theo dõi tất cả các HTTP requests
   useEffect(() => {
     // Theo dõi tất cả network requests trong browser
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
-      console.log('[NETWORK DEBUG] Fetch request:', args[0]);
       return originalFetch(...args);
     };
     
     // Theo dõi Axios requests
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(...args) {
-      console.log('[NETWORK DEBUG] XHR request:', args[1]);
       return originalOpen.apply(this, args);
     };
     
@@ -228,12 +220,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       if (!formData.sprint) {
         console.log(`[DEBUG] No sprint ID, fetching project members: /projects/${formData.project}/members`);
         response = await API.get(`/projects/${formData.project}/members`);
-        console.log('[DEBUG] Project Members API Response:', response.data);
       } else {
         // Gọi API Sprint Members 
         console.log(`[DEBUG] Fetching sprint members: /projects/${formData.project}/sprints/${formData.sprint}/members`);
         response = await API.get(`/projects/${formData.project}/sprints/${formData.sprint}/members`);
-        console.log('[DEBUG] Sprint Members API Response:', response.data);
       }
       
       if (!response.data || !response.data.data) {
@@ -263,7 +253,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       setUsers(processedMembers);
       
     } catch (error) {
-      console.error('[ERROR] Error fetching members:', error.response || error);
+      console.error('[ERROR] Error fetching members:', error);
       
       // Dùng dữ liệu giả để kiểm tra UI
       console.log('[FALLBACK] Using test data for debugging');
@@ -351,7 +341,6 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   };
 
   const handleStartDateChange = (date) => {
-    console.log('[DEBUG] handleStartDateChange - new date:', date);
     if (date) {
       setFormData((prev) => ({
         ...prev,
@@ -361,7 +350,6 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   };
 
   const handleDateChange = (date) => {
-    console.log('[DEBUG] handleDateChange - new date:', date);
     if (date) {
       setFormData((prev) => ({
         ...prev,
@@ -461,12 +449,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           onUploadProgress: (progressEvent) => {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setUploadProgress(progress);
-            console.log(`Upload progress: ${progress}%`);
           }
         }
       );
       
-      console.log("[DEBUG] File upload response:", response.data);
       return response.data;
     } catch (error) {
       console.error("Error uploading files:", error);
@@ -606,12 +592,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           // Cấu trúc phản hồi API chuẩn: {success: true, message: "...", data: {...}}
           extractedTask = response.data.data;
           newTaskId = extractedTask._id;
-          console.log("[Task Debug] Extracted task from standard API response:", extractedTask);
         } else if (response?.data?._id) {
           // Cấu trúc phản hồi trực tiếp: task object
           extractedTask = response.data;
           newTaskId = response.data._id;
-          console.log("[Task Debug] Response data contains task directly:", extractedTask);
         } else {
           // Tìm kiếm đệ quy trong đối tượng phản hồi
           console.log("[Task Debug] Using recursive search for task ID");
@@ -620,7 +604,6 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
             
             // Kiểm tra nếu đối tượng hiện tại có _id và các trường cơ bản của task
             if (obj._id && (obj.title || obj.description)) {
-              console.log("[Task Debug] Found potential task object:", obj);
               return obj;
             }
             
@@ -638,7 +621,6 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           extractedTask = findTaskId(response.data);
           if (extractedTask) {
             newTaskId = extractedTask._id;
-            console.log("[Task Debug] Found task by deep search:", extractedTask);
           }
         }
 
@@ -742,10 +724,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       let taskData;
       if (response.data && response.data.success && response.data.data) {
         taskData = response.data.data;
-        console.log("[Task Debug] Extracted task data from response.data.data:", taskData);
       } else if (response.data) {
         taskData = response.data;
-        console.log("[Task Debug] Using response.data as task data:", taskData);
       } else {
         console.error("[Task Debug] Invalid response format, cannot extract task data");
         throw new Error("Không thể trích xuất dữ liệu task từ phản hồi API");

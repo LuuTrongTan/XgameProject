@@ -165,20 +165,28 @@ export const logTaskUpdate = logAction(
       // Sử dụng oldValues từ response nếu có, ngược lại dùng req.task
       const oldValue = oldValues[key] !== undefined ? oldValues[key] : 
                       (req.task ? req.task[key] : undefined);
+      const newValue = req.body[key];
       
-      updates[key] = {
-        oldValue: oldValue,
-        newValue: req.body[key]
-      };
+      // Chỉ lưu những thay đổi thực sự
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        updates[key] = {
+          oldValue: oldValue,
+          newValue: newValue
+        };
+      }
     });
     
     console.log('[Audit Log] Task update details generated:', updates);
     
-    return {
-      ...updates,
-      updatedBy: req.user.name,
-      updatedAt: new Date().toISOString()
-    };
+    // Chỉ trả về nếu có thay đổi
+    if (Object.keys(updates).length > 0) {
+      return {
+        ...updates,
+        updatedBy: req.user.name,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return null;
   },
   (req, res) => {
     const changes = {};
@@ -189,14 +197,19 @@ export const logTaskUpdate = logAction(
       // Sử dụng oldValues từ response nếu có, ngược lại dùng req.task
       const oldValue = oldValues[key] !== undefined ? oldValues[key] : 
                       (req.task ? req.task[key] : undefined);
+      const newValue = req.body[key];
       
-      changes[key] = {
-        oldValue: oldValue,
-        newValue: req.body[key]
-      };
+      // Chỉ lưu những thay đổi thực sự
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes[key] = {
+          oldValue: oldValue,
+          newValue: newValue
+        };
+      }
     });
     
-    return changes;
+    // Chỉ trả về nếu có thay đổi
+    return Object.keys(changes).length > 0 ? changes : null;
   }
 );
 
