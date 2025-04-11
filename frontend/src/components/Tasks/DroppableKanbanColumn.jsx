@@ -48,28 +48,6 @@ const DroppableKanbanColumn = ({
   // Thêm handler để ngăn chặn wheel event
   const columnRef = React.useRef(null);
   
-  React.useEffect(() => {
-    const column = columnRef.current;
-    
-    // Hàm xử lý sự kiện wheel
-    const handleWheel = (event) => {
-      // Ngăn chặn cuộn bằng wheel chuột
-      event.preventDefault();
-    };
-    
-    // Thêm event listener
-    if (column) {
-      column.addEventListener('wheel', handleWheel, { passive: false });
-    }
-    
-    // Cleanup khi component unmount
-    return () => {
-      if (column) {
-        column.removeEventListener('wheel', handleWheel);
-      }
-    };
-  }, []);
-  
   // Thiết lập các style dựa trên status
   let backgroundColor = "rgba(25, 118, 210, 0.1)";
   let textColor = "rgb(25, 118, 210)";
@@ -124,8 +102,8 @@ const DroppableKanbanColumn = ({
       className={`kanban-column ${status}-column ${isOver ? 'drag-over' : ''}`}
       sx={{
         minHeight: "250px",
-        maxHeight: "calc(100vh - 200px)", // Giới hạn chiều cao để có thanh cuộn
-        height: "auto",
+        maxHeight: "calc(100vh - 200px)",
+        height: "calc(100vh - 200px)",
         backgroundColor: isOver ? hoverBgColor : "#f8f9fc",
         borderRadius: "20px",
         boxShadow: isOver ? "0 16px 32px rgba(0,0,0,0.15)" : "0 8px 24px rgba(0,0,0,0.08)",
@@ -138,18 +116,9 @@ const DroppableKanbanColumn = ({
           boxShadow: "0 12px 32px rgba(0,0,0,0.15)",
           border: `1px solid ${hoverBorderColor}`,
         },
-        // Cho phép cuộn nhưng ẩn thanh cuộn
-        overflowY: "scroll",
-        // Ẩn thanh cuộn
-        scrollbarWidth: "none",
-        msOverflowStyle: "none",
-        "&::-webkit-scrollbar": {
-          width: 0,
-          height: 0,
-          display: "none",
-        },
-        // Tắt touch action để tránh cuộn trên thiết bị cảm ứng
-        touchAction: "none",
+        overflowY: "auto",
+        display: 'flex', 
+        flexDirection: 'column',
       }}
       onClick={() => {
         console.log(`[CLICK] Column ${status} clicked - id: ${status}`);
@@ -158,10 +127,12 @@ const DroppableKanbanColumn = ({
       <CardContent 
         sx={{ 
           p: 3,
-          pr: 0.5, // Giảm thêm padding bên phải để thanh cuộn gần hơn nữa
-          height: "100%",
+          pr: 1,
+          height: "auto",
           display: "flex",
-          flexDirection: "column"
+          flexDirection: "column",
+          flex: 1,
+          overflow: "visible",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 3 }}>
@@ -230,8 +201,9 @@ const DroppableKanbanColumn = ({
             flexGrow: 1,
             display: "flex",
             flexDirection: "column",
-            paddingBottom: "80px", // Giữ lại vùng đệm để dễ thả task vào cuối
-            paddingRight: "6px", // Giảm padding để thanh cuộn gần hơn nữa
+            paddingBottom: "150px",
+            paddingRight: "5px",
+            overflow: "visible",
           }}
           data-status={status}
         >

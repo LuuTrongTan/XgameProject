@@ -45,10 +45,47 @@ const UpcomingTasks = ({ projectId, sprintId }) => {
         setTasks([]);
         return;
       }
+
+      // Log tất cả các task có dueDate
+      console.log("All tasks with dueDate:", taskData.filter(task => task.dueDate).map(task => ({
+        id: task._id,
+        title: task.title,
+        dueDate: task.dueDate,
+        date: new Date(task.dueDate).toLocaleString()
+      })));
       
-      // Lọc các task có dueDate trong tương lai và sắp xếp theo ngày
+      const now = new Date();
+      const twelveHoursFromNow = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 giờ tới
+      
+      console.log("Current time:", now.toLocaleString());
+      console.log("12 hours from now:", twelveHoursFromNow.toLocaleString());
+      
+      // Lọc các task có dueDate trong khoảng thời gian phù hợp và sắp xếp theo ngày
       const upcomingTasks = taskData
-        .filter((task) => task.dueDate && new Date(task.dueDate) > new Date())
+        .filter((task) => {
+          if (!task.dueDate) return false;
+          
+          const dueDate = new Date(task.dueDate);
+          
+          // Hiển thị cả những task quá hạn chưa hoàn thành và task sắp đến hạn trong 12h tới
+          const isOverdue = dueDate <= now && task.status !== "done" && task.status !== "completed";
+          const isDueSoon = dueDate > now && dueDate <= twelveHoursFromNow;
+          
+          const result = isOverdue || isDueSoon;
+          
+          // Debug log
+          if (dueDate <= twelveHoursFromNow) {
+            console.log(`Task "${task.title}" (${task._id}):`, {
+              dueDate: dueDate.toLocaleString(),
+              status: task.status,
+              isOverdue,
+              isDueSoon,
+              included: result
+            });
+          }
+          
+          return result;
+        })
         .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
         .slice(0, 5); // Chỉ lấy 5 task gần nhất
       
@@ -73,7 +110,7 @@ const UpcomingTasks = ({ projectId, sprintId }) => {
     return (
       <Box p={2}>
         <Typography variant="body2" color="text.secondary">
-          Không có công việc sắp tới
+          Không có công việc sắp đến hạn trong 12 giờ tới hoặc quá hạn chưa hoàn thành
         </Typography>
       </Box>
     );
@@ -109,7 +146,7 @@ const UpcomingTasks = ({ projectId, sprintId }) => {
                   <Typography variant="caption" color="text.secondary">
                     Hạn hoàn thành:
                   </Typography>
-                  <DateTimeDisplay date={task.dueDate} format="dd/MM/yyyy" />
+                  <DateTimeDisplay date={task.dueDate} format="dd/MM/yyyy HH:mm" />
                 </Box>
               </Box>
             }

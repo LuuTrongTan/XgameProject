@@ -10,6 +10,7 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import mongoose from "mongoose";
 
 // Lấy __dirname từ ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -87,6 +88,49 @@ app.get("/", (req, res) => {
   res.json({ message: "API đang hoạt động" });
 });
 
+app.get("/api/health-check", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    message: "Server is running", 
+    timestamp: new Date().toISOString() 
+  });
+});
+
+// Debug endpoint for system status
+app.get("/api/system-check", async (req, res) => {
+  try {
+    // Kiểm tra database connection
+    const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+    
+    // Lấy thông tin hệ thống
+    const systemInfo = {
+      nodeVersion: process.version,
+      platform: process.platform,
+      memory: process.memoryUsage(),
+      uptime: process.uptime(),
+      env: process.env.NODE_ENV,
+      mongodb: {
+        status: dbStatus,
+        host: mongoose.connection.host,
+        name: mongoose.connection.name,
+      },
+      timestamp: new Date().toISOString()
+    };
+    
+    res.json({
+      success: true,
+      message: "System check completed",
+      data: systemInfo
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "System check failed",
+      error: error.message
+    });
+  }
+});
+
 // ✅ Tạo HTTP server từ Express
 const server = http.createServer(app);
 
@@ -108,12 +152,50 @@ const io = new Server(server, {
 
 global.io = io;
 
+// Quản lý kết nối WebSocket
 io.on("connection", (socket) => {
   console.log(`🔗 [Socket] User connected: ${socket.id}`);
 
+  // Tham gia phòng cá nhân của người dùng
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`✅ [Socket] User ${userId} joined their private room`);
+  });
+
+  // Tham gia phòng theo project
+  socket.on("join_project", (projectId) => {
+    socket.join(`project:${projectId}`);
+    console.log(`✅ [Socket] Socket ${socket.id} joined project room: ${projectId}`);
+  });
+
+  // Tham gia phòng theo sprint
+  socket.on("join_sprint", (sprintId) => {
+    socket.join(`sprint:${sprintId}`);
+    console.log(`✅ [Socket] Socket ${socket.id} joined sprint room: ${sprintId}`);
+  });
+
+  // Tham gia phòng theo task
+  socket.on("join_task", (taskId) => {
+    socket.join(`task:${taskId}`);
+    console.log(`✅ [Socket] Socket ${socket.id} joined task room: ${taskId}`);
+  });
+
+  // Rời phòng project
+  socket.on("leave_project", (projectId) => {
+    socket.leave(`project:${projectId}`);
+    console.log(`❌ [Socket] Socket ${socket.id} left project room: ${projectId}`);
+  });
+
+  // Rời phòng sprint
+  socket.on("leave_sprint", (sprintId) => {
+    socket.leave(`sprint:${sprintId}`);
+    console.log(`❌ [Socket] Socket ${socket.id} left sprint room: ${sprintId}`);
+  });
+
+  // Rời phòng task
+  socket.on("leave_task", (taskId) => {
+    socket.leave(`task:${taskId}`);
+    console.log(`❌ [Socket] Socket ${socket.id} left task room: ${taskId}`);
   });
 
   socket.on("disconnect", () => {

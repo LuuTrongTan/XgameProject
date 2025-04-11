@@ -4,6 +4,7 @@ import {
   getAdminDashboard,
   getUserDashboard,
   getManagerDashboard,
+  getDashboardData,
 } from "../controllers/dashboard.controller.js";
 
 const router = express.Router();
@@ -98,5 +99,21 @@ router.get("/user", getUserDashboard);
  *         description: Không có quyền truy cập
  */
 router.get("/manager", getManagerDashboard);
+
+/**
+ * @swagger
+ * /dashboard/data:
+ *   get:
+ *     summary: Lấy dữ liệu tổng quan cho dashboard
+ *     tags: [Dashboard]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dữ liệu dashboard
+ *       401:
+ *         description: Không có quyền truy cập
+ */
+router.get("/data", getDashboardData);
 
 export default router;

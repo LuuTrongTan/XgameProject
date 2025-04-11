@@ -178,12 +178,15 @@ const KanbanView = ({
       <Grid container spacing={3} sx={{ 
         zIndex: 0, 
         minHeight: "calc(100vh - 200px)",
+        maxHeight: "calc(100vh - 100px)",
         alignItems: "flex-start", // Đảm bảo các cột bắt đầu từ trên cùng
         justifyContent: "center", // Căn giữa các cột
         px: 2, // Thêm padding ngang để cân đối
+        overflow: "hidden", // Ẩn thanh cuộn của container chính
+        mb: 0, // Không cần margin bottom
       }} className={isDragActive ? 'dragging-active' : ''}>
         {/* COLUMN: TODO */}
-        <Grid item xs={12} md={4} aria-label="Todo column">
+        <Grid item xs={12} md={4} aria-label="Todo column" sx={{ height: "100%" }}>
           <DroppableKanbanColumn
             id="todo"
             title="Chưa bắt đầu"
@@ -201,7 +204,7 @@ const KanbanView = ({
         </Grid>
 
         {/* COLUMN: IN PROGRESS */}
-        <Grid item xs={12} md={4} aria-label="In Progress column">
+        <Grid item xs={12} md={4} aria-label="In Progress column" sx={{ height: "100%" }}>
           <DroppableKanbanColumn
             id="inProgress"
             title="Đang thực hiện"
@@ -219,7 +222,7 @@ const KanbanView = ({
         </Grid>
 
         {/* COLUMN: DONE */}
-        <Grid item xs={12} md={4} aria-label="Done column">
+        <Grid item xs={12} md={4} aria-label="Done column" sx={{ height: "100%" }}>
           <DroppableKanbanColumn
             id="done"
             title="Hoàn thành"

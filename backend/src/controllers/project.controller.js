@@ -271,6 +271,26 @@ export const createProject = async (req, res) => {
       .populate("owner", "name email avatar")
       .populate("members.user", "name email avatar");
 
+    // Gửi sự kiện WebSocket để cập nhật real-time
+    global.io.emit("project_created", {
+      project: populatedProject,
+      creator: {
+        id: req.user.id,
+        name: req.user.name
+      }
+    });
+
+    // Thông báo cho tất cả các thành viên dự án
+    for (const member of project.members) {
+      global.io.to(member.user.toString()).emit("project_invitation", {
+        project: populatedProject,
+        inviter: {
+          id: req.user.id,
+          name: req.user.name
+        }
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: "Tạo dự án thành công",
@@ -352,7 +372,6 @@ export const updateProject = async (req, res) => {
     // Validate dữ liệu
     const errors = validateProjectData(projectData);
     console.log("Validation errors:", errors);
-
     if (errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -361,79 +380,61 @@ export const updateProject = async (req, res) => {
       });
     }
 
-    // Cập nhật thông tin dự án
-    const updatedFields = [
-      "name",
-      "description",
-      "status",
-      "startDate",
-      "dueDate",
-      "members",
-    ];
+    // Lưu trạng thái cũ để so sánh
+    const oldProject = { ...project.toObject() };
 
-    console.log("Current project:", {
-      name: project.name,
-      description: project.description,
-      status: project.status,
-      startDate: project.startDate,
-      dueDate: project.dueDate,
-      members: project.members,
-    });
-
-    updatedFields.forEach((field) => {
-      if (projectData[field] !== undefined) {
-        if (field === "members") {
-          // Xử lý đặc biệt cho trường members
-          project.members = projectData.members.map((member) => ({
-            user: member.user,
-            role: member.role || ROLES.MEMBER,
-            joinedAt: member.joinedAt || new Date(),
-          }));
-        } else {
-          project[field] = projectData[field];
-        }
+    // Cập nhật dự án
+    Object.keys(projectData).forEach((key) => {
+      if (projectData[key] !== undefined) {
+        project[key] = projectData[key];
       }
     });
 
-    // Nếu dự án hoàn thành, cập nhật completedAt
-    if (projectData.status === "Hoàn thành" && !project.completedAt) {
-      project.completedAt = new Date();
-    }
-
-    console.log("Project before save:", project);
     await project.save();
-    console.log("Project after save:", project);
 
-    const populatedProject = await Project.findById(project._id)
+    // Populate dữ liệu sau khi cập nhật
+    const updatedProject = await Project.findById(project._id)
       .populate("owner", "name email avatar")
       .populate("members.user", "name email avatar");
 
-    // Gửi thông báo cập nhật
-    global.io.emit("project_updated", {
-      project: populatedProject,
+    // Gửi sự kiện WebSocket để cập nhật real-time
+    global.io.to(`project:${project._id}`).emit("project_updated", {
+      project: updatedProject,
       updater: {
         id: req.user.id,
-        name: req.user.name,
+        name: req.user.name
       },
+      changes: {
+        before: oldProject,
+        after: updatedProject.toObject()
+      }
+    });
+
+    // Gửi thông báo cho tất cả thành viên
+    project.members.forEach(member => {
+      global.io.to(member.user.toString()).emit("project_changed", {
+        project: {
+          id: project._id,
+          name: project.name
+        },
+        updater: {
+          id: req.user.id,
+          name: req.user.name
+        },
+        changes: Object.keys(projectData)
+      });
     });
 
     res.json({
       success: true,
       message: "Cập nhật dự án thành công",
-      data: populatedProject,
+      data: updatedProject,
     });
   } catch (error) {
-    console.error("Lỗi khi cập nhật dự án:", error);
-    console.error("Error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-      body: req.body,
-      headers: req.headers,
-    });
+    console.error("Error updating project:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi cập nhật dự án",
+      message: "Có lỗi xảy ra khi cập nhật dự án",
       error: error.message,
     });
   }

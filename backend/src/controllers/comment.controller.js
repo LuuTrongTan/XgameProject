@@ -171,6 +171,53 @@ export const addTaskComment = async (req, res) => {
         populate: { path: "user", select: "name email avatar" },
       });
 
+    // Gửi thông báo real-time qua socket
+    // 1. Emit to task room
+    global.io.to(`task:${taskId}`).emit("new_comment", {
+      comment: populatedComment,
+      taskId: taskId,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        avatar: req.user.avatar
+      }
+    });
+
+    // 2. Emit to project room
+    global.io.to(`project:${projectId}`).emit("task_comment_added", {
+      taskId: taskId,
+      comment: populatedComment,
+      user: {
+        id: req.user.id,
+        name: req.user.name
+      }
+    });
+
+    // 3. Emit to sprint room
+    global.io.to(`sprint:${sprintId}`).emit("task_updated", {
+      taskId: taskId,
+      type: "comment_added",
+      data: {
+        comment: populatedComment
+      }
+    });
+
+    // 4. Emit to mentioned users
+    if (mentions && mentions.length > 0) {
+      mentions.forEach(mentionId => {
+        global.io.to(mentionId.toString()).emit("mentioned_in_comment", {
+          taskId: taskId,
+          projectId: projectId,
+          sprintId: sprintId,
+          comment: populatedComment,
+          mentioner: {
+            id: req.user.id,
+            name: req.user.name
+          }
+        });
+      });
+    }
+
     // Gửi thông báo cho những người liên quan
     const fullTask = await Task.findById(taskId).populate('assignees');
     if (fullTask) {

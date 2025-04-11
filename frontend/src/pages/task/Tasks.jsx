@@ -19,6 +19,7 @@ import {
 import { useSnackbar } from "notistack";
 import { useAuth } from "../../contexts/AuthContext";
 import { usePermissions } from "../../hooks/usePermissions";
+import { createGlobalStyle } from 'styled-components';
 
 // API imports
 import {
@@ -41,6 +42,17 @@ import BackButton from "../../components/common/BackButton";
 import { StatusFilter, PriorityFilter } from "../../components/Tasks/TaskFilters";
 import { useDragAndDrop } from "../../components/Tasks/DragAndDropHooks";
 import TaskDetailView from "../../components/Tasks/TaskDetailView";
+
+// Replace the style jsx global tag with createGlobalStyle
+const TasksGlobalStyle = createGlobalStyle`
+  /* Ẩn thanh cuộn cho trang task khi ở chế độ kanban */
+  body.tasks-page-active.kanban-mode {
+    overflow: hidden;
+  }
+  body.tasks-page-active:not(.kanban-mode) {
+    overflow: auto;
+  }
+`;
 
 const Tasks = () => {
   const { projectId, sprintId: urlSprintId } = useParams();
@@ -87,6 +99,25 @@ const Tasks = () => {
   const [taskAttachments, setTaskAttachments] = useState([]);
   const [taskHistory, setTaskHistory] = useState([]);
   const [commentLoading, setCommentLoading] = useState(false);
+  
+  // Thêm useEffect để đánh dấu body element
+  useEffect(() => {
+    // Thêm class khi component mount
+    document.body.classList.add('tasks-page-active');
+    
+    // Thêm hoặc xóa class kanban-mode dựa trên viewMode
+    if (viewMode === "kanban") {
+      document.body.classList.add('kanban-mode');
+    } else {
+      document.body.classList.remove('kanban-mode');
+    }
+    
+    // Xóa class khi component unmount
+    return () => {
+      document.body.classList.remove('tasks-page-active');
+      document.body.classList.remove('kanban-mode');
+    };
+  }, [viewMode]); // Thêm viewMode vào dependencies
   
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -622,7 +653,18 @@ const Tasks = () => {
   }
 
   return (
-    <Box p={3}>
+    <Box 
+      sx={{ 
+        p: 3, 
+        minHeight: "calc(100vh - 80px)",
+        maxHeight: viewMode === "kanban" ? "100vh" : "auto", // Cho phép scroll khi ở chế độ danh sách
+        overflow: viewMode === "kanban" ? "hidden" : "auto", // Chỉ ẩn scroll khi ở chế độ kanban
+        height: viewMode === "kanban" ? "calc(100vh - 80px)" : "auto", // Chiều cao tự động khi ở chế độ danh sách
+      }}
+      className={viewMode === "kanban" ? "tasks-page tasks-page-kanban" : "tasks-page tasks-page-list"}
+    >
+      <TasksGlobalStyle />
+
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
         <Box sx={{ display: "flex", alignItems: "center" }}>
           <BackButton label="QUAY LẠI" variant="text" sx={{ mb: 0 }} />
@@ -719,39 +761,6 @@ const Tasks = () => {
               <ViewListIcon sx={{ mr: 1, fontSize: '1.2rem' }} /> Danh sách
             </ToggleButton>
           </ToggleButtonGroup>
-          
-          {/* Chú thích về thanh cuộn */}
-          {viewMode === "kanban" && (
-            <Typography 
-              variant="caption" 
-              color="error.main"
-              sx={{ 
-                ml: 2,
-                display: 'flex',
-                alignItems: 'center',
-                backgroundColor: 'rgba(211, 47, 47, 0.08)',
-                px: 1.5,
-                py: 0.75,
-                borderRadius: '12px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                border: '1px dashed rgba(211, 47, 47, 0.5)',
-              }}
-            >
-              <Box 
-                component="span" 
-                sx={{ 
-                  display: 'inline-block',
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  backgroundColor: 'error.main',
-                  mr: 1
-                }} 
-              />
-              Thanh cuộn cột chỉ có thể kéo, không thể cuộn
-            </Typography>
-          )}
         </Box>
 
         {/* Bộ lọc */}

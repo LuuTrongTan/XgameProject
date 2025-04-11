@@ -18,6 +18,7 @@ import Layout from "./components/common/Layout";
 import Calendar from "./pages/Calendar";
 import SprintList from "./pages/sprint/SprintList";
 import SprintDetail from "./pages/sprint/SprintDetail";
+import NotificationsPage from "./pages/notifications/NotificationsPage";
 
 const LoadingSpinner = () => (
   <Box
@@ -53,6 +54,7 @@ const App = () => {
         },
         { path: "task-debug", element: <TaskDebug /> },
         { path: "profile", element: <Profile /> },
+        { path: "notifications", element: <NotificationsPage /> },
         { path: "*", element: <NotFound /> },
       ],
     },

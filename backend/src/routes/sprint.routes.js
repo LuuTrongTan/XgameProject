@@ -325,11 +325,11 @@ router.get("/projects/:projectId/sprints/:sprintId/members", protect, setProject
  *       200:
  *         description: Thành viên đã được thêm vào sprint
  */
-router.post("/projects/:projectId/sprints/:sprintId/members", protect, setProjectRole, debugUserInfo, checkPermission(PERMISSIONS.ADD_SPRINT_MEMBER), addMemberToSprint);
+router.post("/projects/:projectId/sprints/:sprintId/members", protect, setProjectRole, debugUserInfo, checkPermission(PERMISSIONS.UPDATE_SPRINT), addMemberToSprint);
 
 /**
  * @swagger
- * /api/projects/{projectId}/sprints/{sprintId}/members/{memberId}:
+ * /api/projects/{projectId}/sprints/{sprintId}/members:
  *   delete:
  *     summary: Xóa thành viên khỏi sprint
  *     tags: [Sprints]
@@ -346,16 +346,28 @@ router.post("/projects/:projectId/sprints/:sprintId/members", protect, setProjec
  *         required: true
  *         schema:
  *           type: string
- *       - in: path
- *         name: memberId
- *         required: true
- *         schema:
- *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Thành viên đã được xóa khỏi sprint
  */
-router.delete("/projects/:projectId/sprints/:sprintId/members/:memberId", protect, setProjectRole, debugUserInfo, checkPermission(PERMISSIONS.REMOVE_SPRINT_MEMBER), removeMemberFromSprint);
+router.post(
+  "/projects/:projectId/sprints/:sprintId/members/remove",
+  protect,
+  setProjectRole,
+  checkPermission(PERMISSIONS.UPDATE_SPRINT),
+  removeMemberFromSprint
+);
 
 /**
  * @swagger
@@ -385,6 +397,91 @@ router.get(
   protect,
   setProjectRole,
   getAvailableUsersForSprint
+);
+
+// Tasks in Sprint
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks:
+ *   post:
+ *     summary: Thêm task vào sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - taskId
+ *             properties:
+ *               taskId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Task đã được thêm vào sprint
+ */
+router.post(
+  "/projects/:projectId/sprints/:sprintId/tasks",
+  protect,
+  setProjectRole,
+  checkPermission(PERMISSIONS.UPDATE_SPRINT),
+  addTaskToSprint
+);
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/sprints/{sprintId}/tasks:
+ *   delete:
+ *     summary: Gỡ task khỏi sprint
+ *     tags: [Sprints]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - taskId
+ *             properties:
+ *               taskId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Task đã được gỡ khỏi sprint
+ */
+router.post(
+  "/projects/:projectId/sprints/:sprintId/tasks/remove",
+  protect,
+  setProjectRole,
+  checkPermission(PERMISSIONS.UPDATE_SPRINT),
+  removeTaskFromSprint
 );
 
 export default router;

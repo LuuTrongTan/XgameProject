@@ -78,8 +78,7 @@ export const createTask = async (projectId, sprintId, taskData) => {
       throw new Error("Missing sprintId");
     }
 
-    // Kiểm tra và chuẩn hóa dữ liệu task - Sử dụng các trường từ frontend
-    // Sử dụng tên trường mà frontend đang gửi
+    // Kiểm tra và chuẩn hóa dữ liệu task
     const validatedData = {
       title: taskData.title || "Untitled Task",
       description: taskData.description || "",
@@ -88,6 +87,7 @@ export const createTask = async (projectId, sprintId, taskData) => {
       startDate: taskData.startDate || new Date().toISOString(),
       dueDate: taskData.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       estimatedTime: taskData.estimatedTime || 0,
+      actualTime: taskData.actualTime || 0,
       assignees: taskData.assignees || [],
       tags: taskData.tags || [],
     };
@@ -196,19 +196,28 @@ export const updateTask = async (projectId, sprintId, taskId, taskData) => {
     
     // Đơn giản hóa payload để đảm bảo tránh lỗi dữ liệu không hợp lệ
     // Chỉ bao gồm các trường bắt buộc và trường cần cập nhật
-    const payload = {
-      title: taskData.title || taskData.name || "Untitled Task", // Đảm bảo có trường title
-      description: taskData.description || "", // Đảm bảo có trường description
-    };
+    const updatedFields = [
+      "title",
+      "description",
+      "status",
+      "priority",
+      "assignees",
+      "startDate",
+      "dueDate",
+      "estimatedTime", 
+      "actualTime",
+      "tags",
+      "customFields",
+      "milestone",
+      "watchers",
+    ];
     
-    // Chỉ thêm các trường khác nếu chúng được định nghĩa trong taskData
-    if (taskData.status !== undefined) payload.status = taskData.status;
-    if (taskData.priority !== undefined) payload.priority = taskData.priority;
-    if (taskData.dueDate !== undefined) payload.dueDate = taskData.dueDate;
-    if (taskData.startDate !== undefined) payload.startDate = taskData.startDate;
-    if (taskData.estimatedTime !== undefined) payload.estimatedTime = taskData.estimatedTime;
-    if (taskData.assignees !== undefined) payload.assignees = taskData.assignees;
-    if (taskData.tags !== undefined) payload.tags = taskData.tags;
+    const payload = {};
+    updatedFields.forEach(field => {
+      if (taskData[field] !== undefined) {
+        payload[field] = taskData[field];
+      }
+    });
     
     console.log("Simplified payload for update:", payload);
     

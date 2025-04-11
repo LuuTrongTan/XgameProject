@@ -2,6 +2,8 @@ import Task from "../models/task.model.js";
 import Project from "../models/project.model.js";
 import Timelog from "../models/timelog.model.js";
 import User from "../models/user.model.js";
+import Sprint from "../models/sprint.model.js";
+import Activity from "../models/activity.model.js";
 
 // 📌 1. Lấy tổng quan cho admin
 export const getAdminDashboard = async (req, res) => {
@@ -368,6 +370,223 @@ export const getManagerDashboard = async (req, res) => {
       success: false,
       message: "Lỗi khi lấy manager dashboard",
       error: error.message,
+    });
+  }
+};
+
+// 📌 4. Lấy dữ liệu tổng quan cho dashboard
+export const getDashboardData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Kiểm tra roles trước khi truy cập để tránh lỗi
+    const userRole = req.user.roles && Array.isArray(req.user.roles) && req.user.roles.length > 0 
+      ? req.user.roles[0] 
+      : 'user'; // Giá trị mặc định nếu không có roles
+
+    // Thống kê dự án
+    const projectStats = {
+      total: await Project.countDocuments({
+        $or: [{ owner: userId }, { "members.user": userId }]
+      }),
+      active: await Project.countDocuments({
+        $or: [{ owner: userId }, { "members.user": userId }],
+        status: "Đang hoạt động"
+      }),
+      completed: await Project.countDocuments({
+        $or: [{ owner: userId }, { "members.user": userId }],
+        status: "Hoàn thành"
+      }),
+      closed: await Project.countDocuments({
+        $or: [{ owner: userId }, { "members.user": userId }],
+        status: "Đóng"
+      }),
+      archived: await Project.countDocuments({
+        $or: [{ owner: userId }, { "members.user": userId }],
+        isArchived: true
+      })
+    };
+
+    // Thống kê công việc
+    const taskStats = {
+      total: await Task.countDocuments({ assignees: userId }),
+      completed: await Task.countDocuments({
+        assignees: userId,
+        status: "done"
+      }),
+      inProgress: await Task.countDocuments({
+        assignees: userId,
+        status: "inProgress"
+      }),
+      pending: await Task.countDocuments({
+        assignees: userId,
+        status: "todo"
+      }),
+      highPriority: await Task.countDocuments({
+        assignees: userId,
+        priority: { $in: ["high", "urgent"] }
+      }),
+      overdue: await Task.countDocuments({
+        assignees: userId,
+        status: { $ne: "done" },
+        dueDate: { $lt: new Date() }
+      })
+    };
+
+    // Thống kê Sprint
+    const sprintStats = {
+      total: await Sprint.countDocuments({
+        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') }
+      }),
+      active: await Sprint.countDocuments({
+        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        status: "active"
+      }),
+      planning: await Sprint.countDocuments({
+        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        status: "planning"
+      }),
+      completed: await Sprint.countDocuments({
+        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        status: "completed"
+      })
+    };
+
+    // Dữ liệu cho biểu đồ thời gian làm việc
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    
+    // Truy vấn timelogs một cách an toàn
+    let timeChartData = [];
+    try {
+      // Sử dụng startTime thay vì date để phù hợp với model
+      timeChartData = await Timelog.aggregate([
+        {
+          $match: {
+            user: userId,
+            startTime: { $gte: startOfWeek, $lte: today }
+          }
+        },
+        {
+          $group: {
+            _id: { $dayOfWeek: "$startTime" },
+            totalHours: { $sum: "$duration" }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+    } catch (timelogError) {
+      console.error("Error fetching timelogs:", timelogError);
+      timeChartData = []; // Đảm bảo mảng trống nếu lỗi
+    }
+
+    // Format dữ liệu cho biểu đồ
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const formattedTimeData = days.map((day, index) => {
+      const dayData = timeChartData.find(d => d._id === index + 1);
+      return {
+        day,
+        hours: dayData ? dayData.totalHours : 0
+      };
+    });
+
+    // Lấy dự án active
+    let activeProject = null;
+    try {
+      activeProject = await Project.findOne({
+        $or: [{ owner: userId }, { "members.user": userId }],
+        status: "Đang hoạt động"
+      });
+    } catch (projectError) {
+      console.error("Error fetching active project:", projectError);
+    }
+
+    let activeSprint = null;
+    let projectId = null;
+    let sprintId = null;
+
+    if (activeProject) {
+      projectId = activeProject._id;
+      
+      try {
+        // Lấy sprint active từ collection Sprint riêng biệt
+        activeSprint = await Sprint.findOne({
+          project: projectId,
+          status: "active"
+        });
+        
+        // Nếu không có sprint active, lấy sprint gần nhất
+        if (!activeSprint) {
+          activeSprint = await Sprint.findOne({
+            project: projectId
+          }).sort({ startDate: -1 });
+        }
+        
+        if (activeSprint) {
+          sprintId = activeSprint._id;
+        }
+      } catch (sprintError) {
+        console.error("Error fetching active sprint:", sprintError);
+      }
+    }
+
+    // Lấy tiến độ của các dự án
+    const projectsProgress = await Project.find({
+      $or: [{ owner: userId }, { "members.user": userId }],
+      isArchived: false
+    })
+    .select("name status progress")
+    .sort("-updatedAt")
+    .limit(5);
+
+    // Lấy các hoạt động gần đây
+    const recentActivities = await Activity.find({
+      $or: [
+        { project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') } },
+        { user: userId }
+      ]
+    })
+    .populate("user", "name avatar")
+    .populate("project", "name")
+    .sort("-createdAt")
+    .limit(10);
+
+    // Lấy các công việc được giao cho user
+    const assignedTasks = await Task.find({ 
+      assignees: userId,
+      status: { $ne: "done" } 
+    })
+    .select("title status priority dueDate project")
+    .populate("project", "name")
+    .sort("dueDate")
+    .limit(8);
+
+    res.json({
+      success: true,
+      data: {
+        projectStats,
+        taskStats,
+        sprintStats,
+        timeChartData: formattedTimeData,
+        projectsProgress,
+        recentActivities,
+        assignedTasks,
+        activeProject: activeProject ? {
+          id: projectId,
+          name: activeProject.name
+        } : null,
+        activeSprint: activeSprint ? {
+          id: sprintId,
+          name: activeSprint.name
+        } : null
+      }
+    });
+  } catch (error) {
+    console.error('Error in getDashboardData:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy dữ liệu dashboard',
+      error: error.message
     });
   }
 };

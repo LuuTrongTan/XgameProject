@@ -93,8 +93,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     startDate: new Date(), // Today
     dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 days
     assignees: [],
-    estimatedHours: 0,
-    actualHours: 0, // Thêm trường thời gian đã làm
+    estimatedTime: 0,
+    actualTime: 0,
     project: projectId || project?._id,
     sprint: sprintId || project?.currentSprint?._id,
     tags: [],
@@ -112,7 +112,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [timeDialogOpen, setTimeDialogOpen] = useState(false);
-  const [tempActualHours, setTempActualHours] = useState(0);
+  const [tempActualTime, setTempActualTime] = useState(0);
 
   const { canDeleteTask } = usePermissions();
 
@@ -130,8 +130,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           ? new Date(task.dueDate)
           : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         assignees: task.assignees?.map((a) => a._id) || [],
-        estimatedHours: task.estimatedHours || 0,
-        actualHours: task.actualHours || 0, // Lấy giá trị đã có hoặc mặc định là 0
+        estimatedTime: task.estimatedTime || 0,
+        actualTime: task.actualTime || 0,
         project: task.project || projectId || project?._id,
         sprint: task.sprint || sprintId || project?.currentSprint?._id,
         tags: task.tags || [],
@@ -161,10 +161,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         startDate: new Date(), // Today
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         assignees: [],
-        estimatedHours: 0,
-        actualHours: 0, // Mặc định là 0
-        project: projectIdValue, // Đảm bảo có project ID
-        sprint: sprintId || project?.currentSprint?._id, // Sprint có thể null
+        estimatedTime: 0,
+        actualTime: 0,
+        project: projectIdValue,
+        sprint: sprintId || project?.currentSprint?._id,
         tags: [],
         syncWithCalendar: false,
         calendarType: "google",
@@ -307,7 +307,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     // Nếu trường thay đổi là status và giá trị mới là "done"
     if (name === "status" && value === "done" && formData.status !== "done") {
       // Mở dialog nhập thời gian khi chuyển sang trạng thái hoàn thành
-      setTempActualHours(formData.actualHours);
+      setTempActualTime(formData.actualTime);
       setTimeDialogOpen(true);
     }
     
@@ -359,9 +359,26 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   };
 
   const handleTagsChange = (event, newValue) => {
+    // Make sure we filter out any empty strings
+    const cleanedTags = newValue.filter(tag => tag && tag.trim() !== '');
+    
+    // Kiểm tra xem có tag mới nào được thêm vào không
+    const newTags = cleanedTags.filter(tag => !formData.tags.includes(tag));
+    if (newTags.length > 0) {
+      // Hiển thị thông báo khi thêm tag mới
+      console.log("Đã thêm tag mới:", newTags);
+      enqueueSnackbar(`Đã thêm tag: ${newTags.join(', ')}`, { 
+        variant: 'success',
+        autoHideDuration: 2000
+      });
+    }
+    
+    // Log để debug
+    console.log("handleTagsChange được gọi:", cleanedTags);
+    
     setFormData((prev) => ({
       ...prev,
-      tags: newValue,
+      tags: cleanedTags,
     }));
   };
 
@@ -471,8 +488,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     if (!formData.description.trim()) {
       newErrors.description = "Mô tả không được để trống";
     }
-    if (formData.estimatedHours < 0) {
-      newErrors.estimatedHours = "Thời gian ước tính không hợp lệ";
+    if (formData.estimatedTime < 0) {
+      newErrors.estimatedTime = "Thời gian ước tính không hợp lệ";
     }
     if (!formData.project) {
       newErrors.project = "Công việc phải thuộc về một dự án";
@@ -490,6 +507,23 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
+    
+    // Lấy giá trị từ trường input tag nếu đang được focus
+    const tagInput = document.querySelector('input[id^="tags-"]');
+    if (tagInput && tagInput.value.trim()) {
+      const newTagValue = tagInput.value.trim();
+      if (!formData.tags.includes(newTagValue)) {
+        console.log("Thêm tag từ input khi lưu:", newTagValue);
+        // Thêm tag mới vào formData trước khi lưu
+        setFormData(prev => ({
+          ...prev,
+          tags: [...prev.tags, newTagValue]
+        }));
+        // Chúng ta cần đảm bảo tag mới được thêm vào trước khi gọi API
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+    
     setErrors({});
 
     // Validate form data
@@ -500,6 +534,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     if (!formData.description || formData.description.trim().length < 10) {
       validationErrors.description = 'Mô tả phải có ít nhất 10 ký tự';
     }
+    if (formData.estimatedTime < 0) {
+      validationErrors.estimatedTime = "Thời gian ước tính không hợp lệ";
+    }
+    if (!formData.project) {
+      validationErrors.project = "Công việc phải thuộc về một dự án";
+    }
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
@@ -508,6 +548,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     try {
       setLoading(true);
       console.log("[Task Debug] Saving task with form data:", formData);
+      console.log("[Task Debug] Tags to save:", formData.tags);
       console.log("[Task Debug] Files to upload:", files.length > 0 ? files.map(f => f.name) : "No files");
       
       // Chuẩn bị payload cho task
@@ -519,9 +560,9 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         startDate: formData.startDate,
         dueDate: formData.dueDate,
         assignees: formData.assignees,
-        estimatedHours: formData.estimatedHours,
-        actualHours: formData.actualHours,
-        tags: formData.tags
+        estimatedTime: formData.estimatedTime,
+        actualTime: formData.actualTime,
+        tags: formData.tags.filter(tag => tag && tag.trim() !== '') // Đảm bảo lọc bỏ tag rỗng
       };
       
       let response;
@@ -864,7 +905,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   const saveActualTime = () => {
     setFormData(prev => ({
       ...prev,
-      actualHours: tempActualHours
+      actualTime: tempActualTime
     }));
     setTimeDialogOpen(false);
   };
@@ -950,7 +991,6 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                     >
                       <MenuItem value="todo">Chưa bắt đầu</MenuItem>
                       <MenuItem value="inProgress">Đang thực hiện</MenuItem>
-                      <MenuItem value="review">Đang kiểm tra</MenuItem>
                       <MenuItem value="done">Hoàn thành</MenuItem>
                     </Select>
                   </FormControl>
@@ -999,10 +1039,46 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                   <Autocomplete
                     multiple
                     freeSolo
+                    selectOnFocus
+                    clearOnBlur
+                    handleHomeEndKeys
                     id="tags"
-                    options={availableTags}
+                    options={availableTags.filter(tag => !formData.tags.includes(tag))}
                     value={formData.tags}
                     onChange={handleTagsChange}
+                    onBlur={(e) => {
+                      // Khi người dùng rời khỏi ô input, kiểm tra xem có giá trị nào đang được nhập không
+                      const inputValue = e.target.value?.trim();
+                      if (inputValue && !formData.tags.includes(inputValue)) {
+                        // Thêm tag mới khi blur nếu có giá trị đang nhập
+                        console.log("Thêm tag mới khi blur:", inputValue);
+                        setFormData((prev) => ({
+                          ...prev,
+                          tags: [...prev.tags, inputValue]
+                        }));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.target.value?.trim() !== '') {
+                        // Prevent default to avoid form submission
+                        e.preventDefault();
+                        
+                        // Get the input value
+                        const newValue = e.target.value.trim();
+                        
+                        // Only add if not already in the list
+                        if (!formData.tags.includes(newValue)) {
+                          console.log("Thêm tag mới khi nhấn Enter:", newValue);
+                          setFormData((prev) => ({
+                            ...prev,
+                            tags: [...prev.tags, newValue]
+                          }));
+                          
+                          // Clear the input field after adding
+                          e.target.value = '';
+                        }
+                      }
+                    }}
                     renderTags={(value, getTagProps) =>
                       value.map((option, index) => (
                         <Chip
@@ -1013,7 +1089,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                       ))
                     }
                     renderInput={(params) => (
-                      <TextField {...params} label="Tags" placeholder="Thêm tag" />
+                      <TextField 
+                        {...params} 
+                        label="Tags" 
+                        placeholder="Nhập tag mới và nhấn Enter" 
+                        helperText="Nhập tag mới từ bàn phím và nhấn Enter (hoặc Tab) để thêm"
+                      />
                     )}
                   />
                 </Grid>
@@ -1065,12 +1146,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                   <TextField
                     fullWidth
                     type="number"
-                    name="estimatedHours"
+                    name="estimatedTime"
                     label="Thời gian ước tính (giờ)"
-                    value={formData.estimatedHours}
+                    value={formData.estimatedTime}
                     onChange={handleChange}
-                    error={!!errors.estimatedHours}
-                    helperText={errors.estimatedHours || "Thời gian dự kiến để hoàn thành"}
+                    error={!!errors.estimatedTime}
+                    helperText={errors.estimatedTime || "Thời gian dự kiến để hoàn thành"}
                     InputProps={{ 
                       inputProps: { min: 0 },
                       startAdornment: <ScheduleIcon color="info" sx={{ mr: 1, opacity: 0.7 }} />,
@@ -1083,12 +1164,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                   <TextField
                     fullWidth
                     type="number"
-                    name="actualHours"
+                    name="actualTime"
                     label="Thời gian đã làm (giờ)"
-                    value={formData.actualHours}
+                    value={formData.actualTime}
                     onChange={handleChange}
-                    error={!!errors.actualHours}
-                    helperText={errors.actualHours || "Số giờ đã làm thực tế"}
+                    error={!!errors.actualTime}
+                    helperText={errors.actualTime || "Số giờ đã làm thực tế"}
                     disabled={formData.status !== "done"}
                     InputProps={{ 
                       inputProps: { min: 0, step: 0.5 },
@@ -1305,8 +1386,8 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
             fullWidth
             type="number"
             label="Thời gian đã làm (giờ)"
-            value={tempActualHours}
-            onChange={(e) => setTempActualHours(Number(e.target.value))}
+            value={tempActualTime}
+            onChange={(e) => setTempActualTime(Number(e.target.value))}
             InputProps={{ 
               inputProps: { min: 0, step: 0.5 },
               startAdornment: <ScheduleIcon color="success" sx={{ mr: 1, opacity: 0.7 }} />,

@@ -405,6 +405,45 @@ export const createTask = async (req, res) => {
     console.log(`New task created with position ${newPosition} in column ${task.status}`);
     console.log(`Task ${task._id} added to sprint ${sprintId}, sprint now has ${sprint.tasks.length} tasks`);
 
+    // Populate task data
+    const populatedTask = await Task.findById(task._id)
+      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar")
+      .populate("project", "name")
+      .populate("sprint", "name");
+
+    // Gửi thông báo real-time qua socket
+    // 1. Emit to project room
+    global.io.to(`project:${projectId}`).emit("task_created", {
+      task: populatedTask,
+      creator: {
+        id: req.user.id,
+        name: req.user.name
+      }
+    });
+
+    // 2. Emit to sprint room
+    global.io.to(`sprint:${sprintId}`).emit("sprint_task_added", {
+      task: populatedTask,
+      creator: {
+        id: req.user.id,
+        name: req.user.name
+      }
+    });
+
+    // 3. Emit to assigned users
+    if (task.assignees && task.assignees.length > 0) {
+      task.assignees.forEach(assigneeId => {
+        global.io.to(assigneeId.toString()).emit("task_assigned", {
+          task: populatedTask,
+          assigner: {
+            id: req.user.id,
+            name: req.user.name
+          }
+        });
+      });
+    }
+
     res.json({
       success: true,
       message: "Tạo công việc thành công",
@@ -504,6 +543,7 @@ export const updateTask = async (req, res) => {
       startDate: task.startDate,
       dueDate: task.dueDate,
       estimatedTime: task.estimatedTime,
+      actualTime: task.actualTime,
       assignees: [...task.assignees],
       tags: [...task.tags]
     };
@@ -520,6 +560,7 @@ export const updateTask = async (req, res) => {
       "startDate",
       "dueDate",
       "estimatedTime",
+      "actualTime",
       "tags",
       "customFields",
       "milestone",

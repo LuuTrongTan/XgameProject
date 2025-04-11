@@ -198,35 +198,63 @@ export const addAttachment = async (req, res) => {
         }
         console.log(`Đã ghi log cho ${uploadResults.length} tệp đính kèm`);
       } catch (logError) {
-        console.error("Error logging attachment activity:", logError);
-        // Không ảnh hưởng đến việc trả về kết quả nếu ghi log thất bại
+        console.error("Lỗi khi ghi log:", logError);
+      }
+      
+      // Lấy thông tin người dùng tải lên
+      const user = await User.findById(userId).select('name email avatar');
+      
+      // Gửi thông báo real-time qua socket
+      // 1. Emit to task room
+      global.io.to(`task:${taskId}`).emit("attachments_added", {
+        taskId,
+        attachments: uploadResults,
+        uploader: {
+          id: userId,
+          name: user ? user.name : "Unknown",
+          avatar: user ? user.avatar : null
+        }
+      });
+      
+      // 2. Emit to project room
+      global.io.to(`project:${projectId}`).emit("task_attachments_updated", {
+        taskId,
+        projectId,
+        sprintId: sprintId || task.sprint,
+        action: "added",
+        count: uploadResults.length,
+        uploader: {
+          id: userId,
+          name: user ? user.name : "Unknown"
+        }
+      });
+      
+      // 3. Emit to sprint room
+      if (sprintId || task.sprint) {
+        global.io.to(`sprint:${sprintId || task.sprint}`).emit("task_updated", {
+          taskId,
+          type: "attachments_added",
+          data: {
+            count: uploadResults.length
+          }
+        });
       }
     }
-    
-    // Trả về kết quả
-    return res.status(200).json({
+
+    res.status(201).json({
       success: true,
-      message: uploadResults.length > 0 
-        ? `Đã tải lên ${uploadResults.length} tệp đính kèm thành công` 
-        : "Không có tệp nào được tải lên thành công",
+      message: `Đã tải lên ${uploadResults.length} tệp đính kèm thành công`,
       data: {
         attachments: uploadResults,
-        failedUploads: failedUploads,
-        task: {
-          _id: task._id,
-          title: task.title,
-          attachmentsCount: task.attachments.length
-        }
+        failed: failedUploads
       }
     });
-    
   } catch (error) {
-    console.error("Error adding attachment:", error);
-    console.error("Error stack:", error.stack);
-    return res.status(500).json({
+    console.error("Lỗi khi tải tệp đính kèm:", error);
+    res.status(500).json({
       success: false,
-      message: "Lỗi server khi tải lên tệp đính kèm", 
-      error: error.message
+      message: "Lỗi khi tải tệp đính kèm",
+      error: error.message,
     });
   }
 };

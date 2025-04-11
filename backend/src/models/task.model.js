@@ -209,12 +209,16 @@ TaskSchema.pre("save", async function (next) {
       this.completedAt = new Date();
     }
 
-    if (this.isModified("status") || this.isNew) {
+    if ((this.isNew || (this.isModified("status") && !this.isModified("actualTime")))) {
       const timelogs = await this.model("Timelog").find({ task: this._id });
-      this.actualTime = timelogs.reduce(
+      const timelogsTotal = timelogs.reduce(
         (total, log) => total + (log.duration || 0),
         0
       );
+      
+      if (this.isNew || !this.isModified("actualTime")) {
+        this.actualTime = timelogsTotal;
+      }
     }
 
     if (this.subtasks && this.subtasks.length > 0) {

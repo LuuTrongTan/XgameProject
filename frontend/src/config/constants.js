@@ -55,7 +55,6 @@ export const getStatusLabel = (status) => {
 export const TASK_STATUS = {
   TODO: "todo",
   IN_PROGRESS: "inProgress",
-  REVIEW: "review",
   DONE: "done"
 };
 
@@ -66,8 +65,6 @@ export const getTaskStatusColor = (status) => {
       return { bg: "rgba(66, 165, 245, 0.08)", color: "rgba(25, 118, 210, 0.7)" };
     case TASK_STATUS.IN_PROGRESS:
       return { bg: "rgba(255, 152, 0, 0.08)", color: "rgba(245, 124, 0, 0.7)" };
-    case TASK_STATUS.REVIEW:
-      return { bg: "rgba(171, 71, 188, 0.08)", color: "rgba(123, 31, 162, 0.7)" };
     case TASK_STATUS.DONE:
       return { bg: "rgba(76, 175, 80, 0.08)", color: "rgba(46, 125, 50, 0.7)" };
     default:
@@ -82,8 +79,6 @@ export const getTaskStatusLabel = (status) => {
       return "Chưa bắt đầu";
     case TASK_STATUS.IN_PROGRESS:
       return "Đang thực hiện";
-    case TASK_STATUS.REVIEW:
-      return "Đang kiểm tra";
     case TASK_STATUS.DONE:
       return "Hoàn thành";
     default:

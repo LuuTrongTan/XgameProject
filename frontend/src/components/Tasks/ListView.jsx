@@ -55,8 +55,27 @@ const ListView = ({
   };
 
   return (
-    <TableContainer component={Paper} sx={{ borderRadius: "15px", boxShadow: "0 5px 15px rgba(0,0,0,0.08)" }}>
-      <Table>
+    <TableContainer 
+      component={Paper} 
+      sx={{ 
+        borderRadius: "15px", 
+        boxShadow: "0 5px 15px rgba(0,0,0,0.08)",
+        maxHeight: "calc(100vh - 200px)",
+        overflow: "auto",
+        "&::-webkit-scrollbar": {
+          width: "10px",
+          backgroundColor: "rgba(0,0,0,0.03)",
+        },
+        "&::-webkit-scrollbar-thumb": {
+          backgroundColor: "rgba(0,0,0,0.15)",
+          borderRadius: "8px",
+          "&:hover": {
+            backgroundColor: "rgba(0,0,0,0.25)",
+          }
+        }
+      }}
+    >
+      <Table stickyHeader>
         <TableHead>
           <TableRow>
             <TableCell sx={{ fontWeight: 600 }}>Tên công việc</TableCell>

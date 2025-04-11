@@ -328,7 +328,7 @@ const Projects = () => {
             startIcon={showArchived ? <UnarchiveIcon /> : <ArchiveIcon />}
             onClick={() => setShowArchived(!showArchived)}
           >
-            {showArchived ? "Khôi phục dự án" : "Dự án lưu trữ"}
+            {showArchived ? "Dự án hoạt động" : "Dự án lưu trữ"}
           </Button>
           <Button
             variant="contained"

@@ -44,7 +44,7 @@ import TaskInteractions from './TaskInteractions';
 const TaskDetailView = ({ 
   open, 
   onClose, 
-  task, 
+  task: initialTask, 
   project,
   sprint: initialSprint,
   onEdit,
@@ -55,6 +55,7 @@ const TaskDetailView = ({
   const [sprintDetails, setSprintDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
+  const [task, setTask] = useState(initialTask);
   const { enqueueSnackbar } = useSnackbar();
   const { user: currentUser } = useAuth();
   
@@ -73,6 +74,35 @@ const TaskDetailView = ({
     hasTaskSprintName: task.sprint?.name ? true : false
   });
 
+  const fetchTaskDetails = useCallback(async () => {
+    if (open && task?._id && project?._id) {
+      try {
+        setLoading(true);
+        console.log(`[DEBUG] Fetching fresh task details for task: ${task._id}`);
+        
+        const sprintId = task.sprint?._id || initialSprint?._id;
+        if (!sprintId) {
+          console.error('No sprint ID available for task details fetch');
+          return;
+        }
+        
+        const response = await api.get(`/projects/${project._id}/sprints/${sprintId}/tasks/${task._id}`);
+        
+        if (response.data && response.data.success) {
+          console.log('[DEBUG] Fresh task details loaded:', response.data.data);
+          setTask(response.data.data);
+        } else {
+          console.error('Failed to fetch fresh task details:', response);
+        }
+      } catch (error) {
+        console.error('Error fetching task details:', error);
+        enqueueSnackbar('Không thể tải thông tin mới nhất của công việc', { variant: 'error' });
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [open, task?._id, project?._id, initialSprint?._id, enqueueSnackbar]);
+
   const fetchSprintDetails = useCallback(async () => {
     if (initialSprint?._id) {
       try {
@@ -89,8 +119,12 @@ const TaskDetailView = ({
   }, [initialSprint?._id, project?._id]);
 
   useEffect(() => {
-    fetchSprintDetails();
-  }, [fetchSprintDetails]);
+    if (open) {
+      setTask(initialTask); // Reset to initial task first
+      fetchTaskDetails(); // Then fetch fresh data
+      fetchSprintDetails();
+    }
+  }, [open, initialTask, fetchTaskDetails, fetchSprintDetails]);
 
   const handleEdit = () => {
     console.log('[DEBUG] TaskDetailView handleEdit button clicked, calling onEdit with task:', task._id);
@@ -334,7 +368,7 @@ const TaskDetailView = ({
                             Thời gian dự kiến
                           </Typography>
                           <Typography variant="body2" fontWeight={500} color="text.primary">
-                            {task.estimatedHours || 0} giờ
+                            {task.estimatedTime || 0} giờ
                           </Typography>
                         </Box>
                       </Box>
@@ -350,16 +384,16 @@ const TaskDetailView = ({
                             display: 'flex', 
                             alignItems: 'center' 
                           }}>
-                            {task.actualHours || 0} giờ
-                            {task.estimatedHours > 0 && (
+                            {task.actualTime || 0} giờ
+                            {task.estimatedTime > 0 && (
                               <Chip 
                                 size="small" 
-                                label={`${Math.round((task.actualHours || 0) / task.estimatedHours * 100)}%`}
+                                label={`${Math.round((task.actualTime || 0) / task.estimatedTime * 100)}%`}
                                 sx={{ 
                                   ml: 1, 
                                   height: 20, 
                                   fontSize: '0.7rem',
-                                  bgcolor: task.actualHours > task.estimatedHours ? 'error.light' : 'success.light',
+                                  bgcolor: task.actualTime > task.estimatedTime ? 'error.light' : 'success.light',
                                   color: 'white',
                                   fontWeight: 'bold'
                                 }} 

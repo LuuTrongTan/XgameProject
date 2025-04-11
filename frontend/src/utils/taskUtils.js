@@ -14,12 +14,11 @@ export const priorityColors = {
 export const statusTranslations = {
   todo: 'Chưa bắt đầu',
   inProgress: 'Đang thực hiện',
-  review: 'Đang kiểm tra',
   done: 'Hoàn thành'
 };
 
 // Tên các trạng thái công việc
-export const VALID_STATUSES = ['todo', 'inProgress', 'review', 'done'];
+export const VALID_STATUSES = ['todo', 'inProgress', 'done'];
 
 // Lấy màu dựa trên trạng thái
 export const getStatusColor = (status) => {
@@ -28,8 +27,6 @@ export const getStatusColor = (status) => {
       return { bg: 'rgba(25, 118, 210, 0.1)', color: '#1976d2' };
     case 'inProgress':
       return { bg: 'rgba(255, 152, 0, 0.1)', color: '#ff9800' };
-    case 'review':
-      return { bg: 'rgba(156, 39, 176, 0.1)', color: '#9c27b0' };
     case 'done':
       return { bg: 'rgba(46, 125, 50, 0.1)', color: '#2e7d32' };
     default:

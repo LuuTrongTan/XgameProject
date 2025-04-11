@@ -11,6 +11,7 @@ export const WebSocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [lastError, setLastError] = useState(null);
+  const [joinedRooms, setJoinedRooms] = useState(new Set());
 
   useEffect(() => {
     // Lấy URL từ biến môi trường hoặc mặc định
@@ -33,6 +34,15 @@ export const WebSocketProvider = ({ children }) => {
       console.log('Socket connected successfully:', socketInstance.id);
       setIsConnected(true);
       setLastError(null);
+      
+      // Tự động tham gia lại các phòng đã tham gia trước đó
+      joinedRooms.forEach(room => {
+        console.log(`Rejoining room: ${room}`);
+        socketInstance.emit(room.startsWith('project:') ? 'join_project' : 
+                          room.startsWith('sprint:') ? 'join_sprint' : 
+                          room.startsWith('task:') ? 'join_task' : 'join',
+                          room.split(':')[1]);
+      });
     });
 
     // Xử lý sự kiện mất kết nối
@@ -72,12 +82,101 @@ export const WebSocketProvider = ({ children }) => {
     };
   }, []);
 
+  // Hàm tham gia phòng cá nhân (theo userId)
+  const joinUserRoom = (userId) => {
+    if (!socket || !userId) return;
+    
+    console.log(`Joining user room: ${userId}`);
+    socket.emit('join', userId);
+    setJoinedRooms(prev => new Set(prev).add(userId));
+  };
+
+  // Hàm tham gia phòng project
+  const joinProjectRoom = (projectId) => {
+    if (!socket || !projectId) return;
+    
+    const roomId = `project:${projectId}`;
+    console.log(`Joining project room: ${projectId}`);
+    socket.emit('join_project', projectId);
+    setJoinedRooms(prev => new Set(prev).add(roomId));
+  };
+
+  // Hàm tham gia phòng sprint
+  const joinSprintRoom = (sprintId) => {
+    if (!socket || !sprintId) return;
+    
+    const roomId = `sprint:${sprintId}`;
+    console.log(`Joining sprint room: ${sprintId}`);
+    socket.emit('join_sprint', sprintId);
+    setJoinedRooms(prev => new Set(prev).add(roomId));
+  };
+
+  // Hàm tham gia phòng task
+  const joinTaskRoom = (taskId) => {
+    if (!socket || !taskId) return;
+    
+    const roomId = `task:${taskId}`;
+    console.log(`Joining task room: ${taskId}`);
+    socket.emit('join_task', taskId);
+    setJoinedRooms(prev => new Set(prev).add(roomId));
+  };
+
+  // Hàm rời khỏi phòng project
+  const leaveProjectRoom = (projectId) => {
+    if (!socket || !projectId) return;
+    
+    const roomId = `project:${projectId}`;
+    console.log(`Leaving project room: ${projectId}`);
+    socket.emit('leave_project', projectId);
+    setJoinedRooms(prev => {
+      const newRooms = new Set(prev);
+      newRooms.delete(roomId);
+      return newRooms;
+    });
+  };
+
+  // Hàm rời khỏi phòng sprint
+  const leaveSprintRoom = (sprintId) => {
+    if (!socket || !sprintId) return;
+    
+    const roomId = `sprint:${sprintId}`;
+    console.log(`Leaving sprint room: ${sprintId}`);
+    socket.emit('leave_sprint', sprintId);
+    setJoinedRooms(prev => {
+      const newRooms = new Set(prev);
+      newRooms.delete(roomId);
+      return newRooms;
+    });
+  };
+
+  // Hàm rời khỏi phòng task
+  const leaveTaskRoom = (taskId) => {
+    if (!socket || !taskId) return;
+    
+    const roomId = `task:${taskId}`;
+    console.log(`Leaving task room: ${taskId}`);
+    socket.emit('leave_task', taskId);
+    setJoinedRooms(prev => {
+      const newRooms = new Set(prev);
+      newRooms.delete(roomId);
+      return newRooms;
+    });
+  };
+
   // Giá trị cung cấp bởi context
   const value = {
     socket,
     isConnected,
     reconnectAttempt,
-    lastError
+    lastError,
+    joinedRooms: Array.from(joinedRooms),
+    joinUserRoom,
+    joinProjectRoom,
+    joinSprintRoom,
+    joinTaskRoom,
+    leaveProjectRoom,
+    leaveSprintRoom,
+    leaveTaskRoom
   };
 
   return (

@@ -65,6 +65,7 @@ import {
   deleteTaskAttachment,
   getTaskHistory,
 } from "../../api/taskApi";
+import api from "../../api/api";
 import UserAvatar from "../common/UserAvatar";
 import DateTimeDisplay from "../common/DateTimeDisplay";
 import { 
@@ -75,7 +76,6 @@ import {
 } from "../../config/constants";
 import { useNavigate } from "react-router-dom";
 import { getSprintById } from "../../api/sprintApi";
-import api from "../../api/api";
 import { useSnackbar } from "notistack";
 import CommentForm from "../comments/CommentForm";
 import CommentItem from "../comments/CommentItem";
@@ -227,6 +227,23 @@ const StatusChip = styled(Chip, {
   }
 }));
 
+// Thêm styled component cho chip hiển thị số lượng (attachments, comments)
+const CountChip = styled(Chip)(({ theme, icon, colorBg, colorText }) => ({
+  height: "20px", 
+  fontSize: "0.65rem",
+  fontWeight: 500,
+  borderRadius: "12px",
+  backgroundColor: colorBg || "rgba(0, 0, 0, 0.04)",
+  color: colorText || theme.palette.text.secondary,
+  '& .MuiChip-icon': {
+    fontSize: '0.8rem',
+    color: 'inherit',
+  },
+  '& .MuiChip-label': {
+    padding: '0 4px',
+  }
+}));
+
 // Main component
 const TaskCard = ({
   task,
@@ -250,6 +267,8 @@ const TaskCard = ({
   const [history, setHistory] = useState([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
   const fileInputRef = useRef();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
@@ -452,6 +471,62 @@ const TaskCard = ({
     // Chỉ tải tệp đính kèm và lịch sử, để TaskInteractions quản lý comments
     fetchAttachments();
     fetchHistory();
+    fetchCommentsCount();
+  };
+
+  // Thêm hàm mới để lấy số lượng bình luận
+  const fetchCommentsCount = async () => {
+    try {
+      // Chỉ lấy số lượng bình luận, không tải toàn bộ nội dung bình luận
+      const taskProjectId = enhancedTask.projectId || enhancedTask.project?._id || project?._id;
+      const taskSprintId = enhancedTask.sprintId || enhancedTask.sprint?._id;
+      
+      if (!taskProjectId || !taskSprintId || !enhancedTask._id) {
+        console.error("Missing required IDs for fetchCommentsCount");
+        return;
+      }
+      
+      setLoadingComments(true);
+      
+      try {
+        // Gọi API để lấy số lượng bình luận
+        const response = await api.get(
+          `/projects/${taskProjectId}/sprints/${taskSprintId}/tasks/${enhancedTask._id}/comments/count`
+        );
+        
+        // Cập nhật task với số lượng bình luận
+        if (response.data && typeof response.data.count === 'number') {
+          task.commentsCount = response.data.count;
+        } else if (response.data && Array.isArray(response.data)) {
+          // Nếu API trả về mảng bình luận thay vì count
+          task.commentsCount = response.data.length;
+        } else {
+          task.commentsCount = 0;
+        }
+      } catch (error) {
+        console.error("Error fetching comments count:", error);
+        // Fallback: sử dụng LocalStorage nếu có
+        const savedComments = localStorage.getItem(`task_comments_${enhancedTask._id}`);
+        if (savedComments) {
+          try {
+            const parsedComments = JSON.parse(savedComments);
+            if (Array.isArray(parsedComments)) {
+              task.commentsCount = parsedComments.length;
+            }
+          } catch (e) {
+            console.error("Error parsing saved comments:", e);
+            task.commentsCount = 0;
+          }
+        } else {
+          task.commentsCount = 0;
+        }
+      }
+    } catch (e) {
+      console.error("Error in fetchCommentsCount:", e);
+      task.commentsCount = 0;
+    } finally {
+      setLoadingComments(false);
+    }
   };
 
   const fetchAttachments = async () => {
@@ -675,30 +750,58 @@ const TaskCard = ({
             </Tooltip>
           )}
 
-          {/* Estimated time */}
-          {task.estimatedTime && (
-            <Tooltip title="Thời gian ước tính">
-              <Box display="flex" alignItems="center" sx={{ 
-                backgroundColor: "rgba(0,0,0,0.03)", 
-                borderRadius: "10px", 
-                padding: "2px 6px",
-                fontSize: "0.65rem",
-                height: "20px"
-              }}>
-                <AccessTimeIcon 
-                  fontSize="small" 
-                  sx={{ 
-                    fontSize: "0.75rem", 
-                    mr: 0.3, 
-                    color: "text.secondary" 
-                  }} 
-                />
-                <Typography variant="caption" sx={{ fontSize: "0.65rem" }}>
-                  {task.estimatedTime}h
-                </Typography>
-              </Box>
-            </Tooltip>
-          )}
+          {/* Thời gian - hiển thị cả 2 loại cạnh nhau */}
+          <Box display="flex" alignItems="center" gap={0.5}>
+            {/* Thời gian dự kiến */}
+            {task.estimatedTime > 0 && (
+              <Tooltip title="Thời gian dự kiến">
+                <Box display="flex" alignItems="center" sx={{ 
+                  backgroundColor: "rgba(25, 118, 210, 0.08)", 
+                  borderRadius: "10px", 
+                  padding: "2px 6px",
+                  fontSize: "0.65rem",
+                  height: "20px"
+                }}>
+                  <AccessTimeIcon 
+                    fontSize="small" 
+                    sx={{ 
+                      fontSize: "0.75rem", 
+                      mr: 0.3, 
+                      color: "primary.main" 
+                    }} 
+                  />
+                  <Typography variant="caption" sx={{ fontSize: "0.65rem", color: "primary.dark" }}>
+                    {task.estimatedTime}h
+                  </Typography>
+                </Box>
+              </Tooltip>
+            )}
+
+            {/* Thời gian thực tế */}
+            {task.actualTime > 0 && (
+              <Tooltip title="Thời gian thực tế đã làm">
+                <Box display="flex" alignItems="center" sx={{ 
+                  backgroundColor: "rgba(76,175,80,0.08)", 
+                  borderRadius: "10px", 
+                  padding: "2px 6px",
+                  fontSize: "0.65rem",
+                  height: "20px"
+                }}>
+                  <AccessTimeIcon 
+                    fontSize="small" 
+                    sx={{ 
+                      fontSize: "0.75rem", 
+                      mr: 0.3, 
+                      color: "success.main" 
+                    }} 
+                  />
+                  <Typography variant="caption" sx={{ fontSize: "0.65rem", color: "success.dark" }}>
+                    {task.actualTime}h
+                  </Typography>
+                </Box>
+              </Tooltip>
+            )}
+          </Box>
 
           {/* Tags */}
           {Array.isArray(task.tags) && task.tags.length > 0 && (
@@ -739,23 +842,29 @@ const TaskCard = ({
           </TaskTitle>
           
           <Box display="flex" alignItems="center" gap={1}>
+            {/* Hiển thị chip tệp đính kèm */}
             {attachments.length > 0 && (
               <Tooltip title={`${attachments.length} tệp đính kèm`}>
-                <Box 
-                  display="flex" 
-                  alignItems="center"
-                  sx={{ 
-                    opacity: 0.7,
-                    backgroundColor: "rgba(76, 175, 80, 0.08)", 
-                    borderRadius: "12px",
-                    padding: "2px 6px",
-                  }}
-                >
-                  <AttachFileIcon sx={{ fontSize: '0.8rem', mr: 0.3 }} />
-                  <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
-                    {attachments.length}
-                  </Typography>
-                </Box>
+                <CountChip
+                  icon={<AttachFileIcon />}
+                  colorBg="rgba(76, 175, 80, 0.08)"
+                  colorText="rgba(46, 125, 50, 0.85)"
+                  label={attachments.length}
+                  size="small"
+                />
+              </Tooltip>
+            )}
+            
+            {/* Hiển thị chip số lượng bình luận */}
+            {task.commentsCount > 0 && (
+              <Tooltip title={`${task.commentsCount} bình luận`}>
+                <CountChip
+                  icon={<CommentIcon />}
+                  colorBg="rgba(33, 150, 243, 0.08)"
+                  colorText="rgba(25, 118, 210, 0.85)"
+                  label={task.commentsCount}
+                  size="small"
+                />
               </Tooltip>
             )}
 

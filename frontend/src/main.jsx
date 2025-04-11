@@ -4,6 +4,7 @@ import App from "./App";
 import "./styles/index.css";
 import "./styles/dragDrop.css";
 import { AuthProvider } from './contexts/AuthContext';
+import { SocketProvider } from './contexts/SocketContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { SnackbarProvider } from 'notistack';
@@ -35,7 +36,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <SnackbarProvider maxSnack={3}>
             <AuthProvider>
               <WebSocketProvider>
-                <App />
+                <SocketProvider>
+                  <App />
+                </SocketProvider>
               </WebSocketProvider>
             </AuthProvider>
           </SnackbarProvider>
