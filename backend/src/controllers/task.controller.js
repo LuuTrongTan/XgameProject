@@ -62,45 +62,64 @@ const validateTaskData = (data) => {
 
 // Kiểm tra quyền truy cập task
 const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
-  const task = await Task.findById(taskId)
-    .populate({
-      path: "project",
-      populate: { path: "members" },
-    })
-    .populate("sprint", "name startDate endDate")
-    .populate("assignees", "name email avatar")
-    .populate("createdBy", "name email avatar")
-    .populate("parent", "title status")
-    .populate("subtasks", "title status progress")
-    .populate("milestone", "name dueDate")
-    .populate("watchers", "name email avatar")
-    .populate({
-      path: "dependencies.task",
-      select: "title status",
-    })
-    .populate({
-      path: "comments",
-      populate: { path: "author", select: "name email avatar" },
-    });
+  try {
+    // Trước tiên, tìm task và populate các trường an toàn
+    const task = await Task.findById(taskId)
+      .populate({
+        path: "project",
+        populate: { path: "members" },
+      })
+      .populate("sprint", "name startDate endDate")
+      .populate("assignees", "name email avatar")
+      .populate("createdBy", "name email avatar")
+      .populate("parent", "title status")
+      .populate("subtasks", "title status progress")
+      .populate("milestone", "name dueDate")
+      .populate("watchers", "name email avatar")
+      .populate({
+        path: "dependencies.task",
+        select: "title status",
+      });
 
-  if (!task) return { error: "Công việc không tồn tại" };
+    if (!task) return { error: "Công việc không tồn tại" };
 
-  const project = task.project;
-  if (!project) return { error: "Dự án không tồn tại" };
+    // Populate comments riêng với strictPopulate: false để tránh lỗi khi author không tồn tại
+    try {
+      await task.populate({
+        path: "comments",
+        populate: { 
+          path: "author", 
+          select: "name email avatar",
+          strictPopulate: false 
+        }
+      });
+    } catch (commentError) {
+      console.error("Lỗi khi populate comments:", commentError);
+      // Vẫn tiếp tục xử lý mà không throw error
+      // Gán comments là một mảng rỗng nếu có lỗi
+      task.comments = [];
+    }
 
-  // Kiểm tra quyền trong dự án
-  if (project.owner.toString() === userId.toString()) return { task };
+    const project = task.project;
+    if (!project) return { error: "Dự án không tồn tại" };
 
-  const member = project.members.find(
-    (m) => m.user.toString() === userId.toString()
-  );
-  if (!member) return { error: "Bạn không phải thành viên của dự án" };
+    // Kiểm tra quyền trong dự án
+    if (project.owner && project.owner.toString() === userId.toString()) return { task };
 
-  if (requiredRoles.length > 0 && !requiredRoles.includes(member.role)) {
-    return { error: "Bạn không có quyền thực hiện hành động này" };
+    const member = project.members?.find(
+      (m) => m.user && m.user.toString() === userId.toString()
+    );
+    if (!member) return { error: "Bạn không phải thành viên của dự án" };
+
+    if (requiredRoles.length > 0 && !requiredRoles.includes(member.role)) {
+      return { error: "Bạn không có quyền thực hiện hành động này" };
+    }
+
+    return { task };
+  } catch (error) {
+    console.error("Lỗi trong checkTaskPermission:", error);
+    return { error: "Lỗi khi kiểm tra quyền: " + error.message };
   }
-
-  return { task };
 };
 
 // Lấy danh sách công việc
@@ -301,6 +320,40 @@ export const getTaskById = async (req, res) => {
         ])
       )[0]?.total || 0,
     };
+
+    // Lấy comments riêng và xử lý theo cách an toàn hơn
+    let comments = [];
+    try {
+      // Lấy comments riêng với populate author có strictPopulate: false
+      const commentsResult = await Comment.find({ task: task._id })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: 'author',
+          select: 'name email avatar',
+          strictPopulate: false
+        });
+      
+      // Chuyển đổi kết quả thành các object và thêm author mặc định cho comment nếu author không tìm thấy
+      comments = commentsResult.map(comment => {
+        const commentObj = comment.toObject();
+        if (!commentObj.author) {
+          commentObj.author = {
+            _id: 'deleted',
+            name: 'Người dùng đã xóa',
+            email: '',
+            avatar: ''
+          };
+        }
+        return commentObj;
+      });
+      
+      // Gán comments đã xử lý cho task
+      task.comments = comments;
+    } catch (commentError) {
+      console.error("Lỗi khi lấy comments cho task:", commentError);
+      // Không throw error, chỉ log và để comments là mảng rỗng
+      task.comments = [];
+    }
 
     console.log("=== END DEBUG getTaskById ===");
     
@@ -1238,13 +1291,33 @@ export const deleteTask = async (req, res) => {
     const { taskId } = req.params;
 
     // Kiểm tra task tồn tại
-    const task = await Task.findById(taskId);
+    const task = await Task.findById(taskId)
+      .populate("assignees", "name email avatar") // Populate assignees để gửi thông báo
+      .populate("watchers", "name email avatar") // Populate watchers để gửi thông báo
+      .populate("createdBy", "name email avatar") // Populate createdBy để gửi thông báo
+      .populate("project", "name"); // Populate project để thêm context vào thông báo
+    
     if (!task) {
       return res.status(404).json({
         success: false,
         message: "Công việc không tồn tại",
       });
     }
+
+    // Lưu thông tin cần thiết để gửi thông báo sau khi xóa
+    const taskInfo = {
+      _id: task._id,
+      title: task.title,
+      project: task.project,
+      assignees: task.assignees || [],
+      watchers: task.watchers || [],
+      createdBy: task.createdBy,
+      deletedBy: {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email
+      }
+    };
 
     // Kiểm tra quyền truy cập
     const { error, task: taskDetail } = await checkTaskPermission(
@@ -1253,8 +1326,8 @@ export const deleteTask = async (req, res) => {
       [ROLES.ADMIN, ROLES.PROJECT_MANAGER]
     );
 
-    const isTaskCreator = task.createdBy.toString() === req.user._id.toString();
-    const isUnassigned = task.assignees.length === 0;
+    const isTaskCreator = task.createdBy && task.createdBy.toString() === req.user._id.toString();
+    const isUnassigned = !task.assignees || task.assignees.length === 0;
 
     if (error && !(isTaskCreator && isUnassigned)) {
       return res.status(403).json({
@@ -1273,11 +1346,59 @@ export const deleteTask = async (req, res) => {
       }
     }
 
-    // Xóa các dữ liệu liên quan
-    await Comment.deleteMany({ task: taskId });
-    await Timelog.deleteMany({ task: taskId });
+    // ----- XÓA DỮ LIỆU LIÊN QUAN -----
 
-    // Xóa tất cả file đính kèm
+    // 1. Xóa comments
+    try {
+      // Lấy tất cả comments của task này để xóa attachments của chúng
+      const comments = await Comment.find({ task: taskId });
+      console.log(`Found ${comments.length} comments to delete for task ${taskId}`);
+      
+      // Xóa các file đính kèm trong comments
+      for (const comment of comments) {
+        // Xóa file đính kèm của comment
+        for (const attachment of comment.attachments || []) {
+          if (attachment.path) {
+            try {
+              const fullPath = path.join(process.cwd(), attachment.path);
+              if (fs.existsSync(fullPath)) {
+                fs.unlinkSync(fullPath);
+                console.log(`Deleted comment attachment file: ${fullPath}`);
+              }
+            } catch (fileErr) {
+              console.error(`Error deleting comment attachment file: ${fileErr.message}`);
+            }
+          }
+        }
+        
+        // Xóa notifications liên quan đến comment này
+        try {
+          if (mongoose.models.Notification) {
+            await mongoose.models.Notification.deleteMany({ comment: comment._id });
+          }
+        } catch (notifyErr) {
+          console.error(`Error deleting notifications for comment: ${notifyErr.message}`);
+        }
+      }
+      
+      // Xóa tất cả comments
+      await Comment.deleteMany({ task: taskId });
+      console.log(`Deleted all comments for task ${taskId}`);
+    } catch (commentError) {
+      console.error(`Error deleting comments: ${commentError.message}`);
+      // Tiếp tục xử lý dù có lỗi khi xóa comments
+    }
+    
+    // 2. Xóa timelogs
+    try {
+      await Timelog.deleteMany({ task: taskId });
+      console.log(`Deleted timelogs for task ${taskId}`);
+    } catch (timelogError) {
+      console.error(`Error deleting timelogs: ${timelogError.message}`);
+    }
+
+    // 3. Xóa tất cả file đính kèm của task
+    const uploadIds = [];
     for (const attachment of task.attachments || []) {
       if (attachment.path) {
         // Xóa file từ hệ thống
@@ -1292,14 +1413,122 @@ export const deleteTask = async (req, res) => {
         }
       }
 
-      // Xóa upload record nếu có
+      // Lưu uploadId để xóa sau
       if (attachment.uploadId) {
-        await Upload.findByIdAndDelete(attachment.uploadId);
+        uploadIds.push(attachment.uploadId);
       }
     }
+    
+    // Xóa các bản ghi trong Upload model
+    if (uploadIds.length > 0) {
+      try {
+        await Upload.deleteMany({ _id: { $in: uploadIds } });
+        console.log(`Deleted ${uploadIds.length} upload records`);
+      } catch (uploadError) {
+        console.error(`Error deleting upload records: ${uploadError.message}`);
+      }
+    }
+    
+    // 4. Xóa các uploads được liên kết với task này
+    try {
+      await Upload.deleteMany({ task: taskId });
+      console.log(`Deleted all uploads linked to task ${taskId}`);
+    } catch (uploadError) {
+      console.error(`Error deleting task uploads: ${uploadError.message}`);
+    }
+    
+    // 5. Xóa notifications liên quan đến task
+    try {
+      if (mongoose.models.Notification) {
+        await mongoose.models.Notification.deleteMany({ task: taskId });
+        console.log(`Deleted all notifications for task ${taskId}`);
+      }
+    } catch (notifyError) {
+      console.error(`Error deleting notifications: ${notifyError.message}`);
+    }
+    
+    // 6. Xóa audit logs liên quan đến task
+    try {
+      if (mongoose.models.AuditLog) {
+        await mongoose.models.AuditLog.deleteMany({ 
+          entityType: "Task", 
+          entityId: taskId 
+        });
+        console.log(`Deleted audit logs for task ${taskId}`);
+      }
+    } catch (auditError) {
+      console.error(`Error deleting audit logs: ${auditError.message}`);
+    }
+    
+    // 7. Xóa activity records liên quan đến task
+    try {
+      if (mongoose.models.Activity) {
+        await mongoose.models.Activity.deleteMany({ task: taskId });
+        console.log(`Deleted activity records for task ${taskId}`);
+      }
+    } catch (activityError) {
+      console.error(`Error deleting activity records: ${activityError.message}`);
+    }
 
-    // Xóa task
+    // 8. Xóa task
     await Task.findByIdAndDelete(taskId);
+    console.log(`Task ${taskId} has been deleted successfully`);
+
+    // Tạo danh sách người dùng cần gửi thông báo (loại bỏ trùng lặp)
+    const recipientIds = new Set();
+    
+    // Thêm người tạo task
+    if (taskInfo.createdBy) {
+      recipientIds.add(taskInfo.createdBy._id?.toString() || taskInfo.createdBy.toString());
+    }
+    
+    // Thêm người được phân công
+    taskInfo.assignees.forEach(assignee => {
+      const assigneeId = assignee._id?.toString() || assignee.toString();
+      if (assigneeId) recipientIds.add(assigneeId);
+    });
+    
+    // Thêm người theo dõi
+    taskInfo.watchers.forEach(watcher => {
+      const watcherId = watcher._id?.toString() || watcher.toString();
+      if (watcherId) recipientIds.add(watcherId);
+    });
+    
+    // Chuyển Set thành Array
+    const uniqueRecipientIds = Array.from(recipientIds);
+    
+    // Thông báo qua socket.io
+    if (global.io) {
+      // Tạo thông báo chung
+      const notification = {
+        type: 'task_deleted',
+        task: {
+          id: taskInfo._id,
+          title: taskInfo.title,
+          project: taskInfo.project ? {
+            id: taskInfo.project._id || taskInfo.project,
+            name: taskInfo.project.name || 'Dự án'
+          } : null
+        },
+        deletedBy: taskInfo.deletedBy,
+        timestamp: new Date()
+      };
+      
+      // Gửi thông báo đến tất cả người dùng liên quan
+      uniqueRecipientIds.forEach(userId => {
+        // Đảm bảo không gửi thông báo cho người xóa task
+        if (userId !== req.user._id.toString()) {
+          global.io.to(userId).emit('notification', notification);
+          console.log(`Sent task_deleted notification to user ${userId}`);
+        }
+      });
+      
+      // Gửi thông báo đến room của project
+      if (taskInfo.project && taskInfo.project._id) {
+        global.io.to(`project:${taskInfo.project._id}`).emit('task_deleted', notification);
+        console.log(`Sent task_deleted notification to project room: project:${taskInfo.project._id}`);
+      }
+    }
 
     res.json({
       success: true,

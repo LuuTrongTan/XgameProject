@@ -51,6 +51,7 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
   const [replyingTo, setReplyingTo] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [taskExists, setTaskExists] = useState(true);
   
   // Ref để track xem comments đã fetch chưa
   const commentsLoadedRef = useRef(false);
@@ -109,22 +110,14 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     const taskId = task?._id;
     const taskSprintId = sprint?._id || task?.sprint || task?.sprintId;
     const taskProjectId = project?._id || task?.project || task?.projectId;
-
-    // Không fetch lại nếu đang loading hoặc thiếu thông tin cần thiết
-    if (!taskId || !taskProjectId || loadingComments) return;
     
-    // Nếu đã load comments và có comments, không cần fetch lại
-    if (commentsLoadedRef.current && comments.length > 0) {
-      console.log(`TaskInteractions [${instanceIdRef.current}] comments already loaded, skipping fetch`);
+    if (!taskId || !taskProjectId) {
+      console.log(`TaskInteractions [${instanceIdRef.current}] Missing required IDs for fetching comments`);
       return;
     }
     
     setLoadingComments(true);
-    commentsLoadedRef.current = false;  // Reset loaded flag when fetching
-    
     try {
-      console.log(`TaskInteractions [${instanceIdRef.current}] fetching comments for task ${taskId} using projectId=${taskProjectId}, sprintId=${taskSprintId}`);
-      
       // Thay đổi endpoint để đảm bảo sử dụng đúng sprint ID
       let endpoint = `/projects/${taskProjectId}/`;
       if (taskSprintId) {
@@ -162,6 +155,40 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
     } catch (error) {
       console.error(`TaskInteractions [${instanceIdRef.current}] error fetching comments:`, error);
       setComments([]);
+      
+      // Kiểm tra nếu lỗi 404 (task không tồn tại hoặc đã bị xóa)
+      if (error.response && error.response.status === 404) {
+        // Không hiển thị lỗi liên tục nếu task đã bị xóa
+        if (!commentsLoadedRef.current) {
+          // Chỉ hiển thị thông báo một lần
+          commentsLoadedRef.current = true;
+          
+          // Nếu task không tồn tại, ngừng cố gắng tải thêm dữ liệu
+          if (commentRefreshInterval.current) {
+            clearInterval(commentRefreshInterval.current);
+            commentRefreshInterval.current = null;
+          }
+          
+          if (attachmentRefreshInterval.current) {
+            clearInterval(attachmentRefreshInterval.current);
+            attachmentRefreshInterval.current = null;
+          }
+          
+          if (historyRefreshInterval.current) {
+            clearInterval(historyRefreshInterval.current);
+            historyRefreshInterval.current = null;
+          }
+          
+          // Đặt state để hiển thị thông báo thân thiện
+          setTaskExists(false);
+          
+          // Thông báo lên UI
+          toast.error("Task này đã bị xóa hoặc không tồn tại.", {
+            duration: 5000,
+            position: "top-center"
+          });
+        }
+      }
     } finally {
       setLoadingComments(false);
     }
@@ -632,160 +659,130 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
 
   return (
     <Box>
-      <Tabs
-        value={activeTab}
-        onChange={handleTabChange}
-        sx={{
-          borderBottom: 1,
-          borderColor: 'divider',
-          mb: 3,
-          '& .MuiTab-root': {
-            textTransform: 'none',
-            fontWeight: 500,
-            minHeight: '48px',
-            fontSize: '0.95rem',
-            '&.Mui-selected': {
-              color: 'primary.main',
-              fontWeight: 600
-            }
-          },
-          '& .MuiTabs-indicator': {
-            height: 3,
-            borderRadius: '3px 3px 0 0'
-          }
-        }}
-      >
-        <Tab icon={<CommentIcon sx={{ mr: 1 }} />} label="Bình luận" iconPosition="start" />
-        <Tab icon={<AttachFileIcon sx={{ mr: 1 }} />} label="Tệp đính kèm" iconPosition="start" />
-        <Tab icon={<HistoryIcon sx={{ mr: 1 }} />} label="Lịch sử" iconPosition="start" />
-      </Tabs>
-
-      {/* Comments Tab */}
-      {activeTab === 0 && (
-        <Box>
-          {/* Comment Form */}
-          <Box mb={3}>
-            {replyingTo && (
-              <Box 
-                sx={{ 
-                  mb: 2,
-                  p: 1.5,
-                  borderRadius: '8px',
-                  backgroundColor: 'action.hover',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1
-                }}
-              >
-                <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                  Đang trả lời bình luận của {replyingTo.user?.name || 'Người dùng'}
-                </Typography>
-                <IconButton 
-                  size="small" 
-                  onClick={() => setReplyingTo(null)}
-                  sx={{ color: 'text.secondary' }}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </Box>
-            )}
-            <CommentForm
-              id="comment-form"
-              projectId={project?._id}
-              sprintId={sprint?._id}
-              taskId={task._id}
-              onSubmit={handleAddComment}
-              userRole={user?.role}
-              userId={user?._id}
-              placeholder={replyingTo ? `Trả lời ${replyingTo.user?.name || 'Người dùng'}...` : "Thêm bình luận..."}
-            />
-          </Box>
-
-          {/* Comments List */}
-          {loadingComments ? (
-            <Box display="flex" justifyContent="center" p={3}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : comments.length > 0 ? (
-            <Stack spacing={2}>
-              {(() => {
-                // Chỉ hiển thị mỗi comment một lần bằng cách sử dụng Set để theo dõi comment ID
-                const commentIds = new Set();
-                return comments
-                  .filter(comment => {
-                    // Nếu comment ID đã tồn tại trong set, loại bỏ (trả về false)
-                    // Nếu chưa, thêm vào set và giữ lại (trả về true)
-                    if (!comment._id || commentIds.has(comment._id)) {
-                      return false;
-                    }
-                    commentIds.add(comment._id);
-                    return true;
-                  })
-                  .map((comment) => (
-                    <CommentItem 
-                      key={comment._id} 
-                      comment={comment}
-                      projectId={project?._id}
-                      sprintId={sprint?._id}
-                      taskId={task._id}
-                      currentUserId={user?._id}
-                      onReply={handleReply}
-                    />
-                  ));
-              })()}
-            </Stack>
-          ) : (
-            <Box 
-              display="flex" 
-              flexDirection="column" 
-              alignItems="center" 
-              justifyContent="center" 
-              p={4}
-              sx={{ 
-                backgroundColor: 'background.paper',
-                borderRadius: '12px',
-                border: '1px dashed',
-                borderColor: 'divider'
-              }}
-            >
-              <CommentIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
-              <Typography variant="body1" color="text.secondary" align="center">
-                Chưa có bình luận nào
-              </Typography>
-            </Box>
-          )}
+      {!taskExists ? (
+        <Box 
+          sx={{ 
+            p: 3, 
+            borderRadius: 2, 
+            bgcolor: 'error.light', 
+            color: 'error.contrastText',
+            textAlign: 'center',
+            mb: 2
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Công việc không tồn tại hoặc đã bị xóa
+          </Typography>
+          <Typography variant="body2">
+            Công việc này có thể đã bị xóa bởi người quản lý dự án hoặc người tạo nó.
+          </Typography>
         </Box>
-      )}
+      ) : (
+        <>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            sx={{
+              borderBottom: 1,
+              borderColor: 'divider',
+              mb: 3,
+              '& .MuiTab-root': {
+                textTransform: 'none',
+                fontWeight: 500,
+                minHeight: '48px',
+                fontSize: '0.95rem',
+                '&.Mui-selected': {
+                  color: 'primary.main',
+                  fontWeight: 600
+                }
+              },
+              '& .MuiTabs-indicator': {
+                height: 3,
+                borderRadius: '3px 3px 0 0'
+              }
+            }}
+          >
+            <Tab icon={<CommentIcon sx={{ mr: 1 }} />} label="Bình luận" iconPosition="start" />
+            <Tab icon={<AttachFileIcon sx={{ mr: 1 }} />} label="Tệp đính kèm" iconPosition="start" />
+            <Tab icon={<HistoryIcon sx={{ mr: 1 }} />} label="Lịch sử" iconPosition="start" />
+          </Tabs>
 
-      {/* Attachments Tab */}
-      {activeTab === 1 && (
-        <Box>
-          {loadingAttachments ? (
-            <Box display="flex" justifyContent="center" my={2}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : (
-            <Stack spacing={3}>
-              {canUploadFile() && (
-                <FileUploader
-                  onUpload={handleFileUpload}
-                  isLoading={uploading}
-                  error={uploadError}
-                  accept="*/*"
-                  multiple={false}
+          {/* Comments Tab */}
+          {activeTab === 0 && (
+            <Box>
+              {/* Comment Form */}
+              <Box mb={3}>
+                {replyingTo && (
+                  <Box 
+                    sx={{ 
+                      mb: 2,
+                      p: 1.5,
+                      borderRadius: '8px',
+                      backgroundColor: 'action.hover',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                      Đang trả lời bình luận của {replyingTo.user?.name || 'Người dùng'}
+                    </Typography>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => setReplyingTo(null)}
+                      sx={{ color: 'text.secondary' }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                )}
+                <CommentForm
+                  id="comment-form"
+                  projectId={project?._id}
+                  sprintId={sprint?._id}
+                  taskId={task._id}
+                  onSubmit={handleAddComment}
+                  userRole={user?.role}
+                  userId={user?._id}
+                  placeholder={replyingTo ? `Trả lời ${replyingTo.user?.name || 'Người dùng'}...` : "Thêm bình luận..."}
                 />
-              )}
-              {Array.isArray(attachments) && attachments.length > 0 ? (
-                <AttachmentsList
-                  attachments={attachments.filter(att => att !== null && att !== undefined)}
-                  onDelete={handleDeleteAttachment}
-                  canEdit={true}
-                  currentUser={user}
-                  taskAssignees={task?.assignees || []}
-                  projectRole={isAdminOrManager() ? 'admin' : 'member'}
-                />
+              </Box>
+
+              {/* Comments List */}
+              {loadingComments ? (
+                <Box display="flex" justifyContent="center" p={3}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : comments.length > 0 ? (
+                <Stack spacing={2}>
+                  {(() => {
+                    // Chỉ hiển thị mỗi comment một lần bằng cách sử dụng Set để theo dõi comment ID
+                    const commentIds = new Set();
+                    return comments
+                      .filter(comment => {
+                        // Nếu comment ID đã tồn tại trong set, loại bỏ (trả về false)
+                        // Nếu chưa, thêm vào set và giữ lại (trả về true)
+                        if (!comment._id || commentIds.has(comment._id)) {
+                          return false;
+                        }
+                        commentIds.add(comment._id);
+                        return true;
+                      })
+                      .map((comment) => (
+                        <CommentItem 
+                          key={comment._id} 
+                          comment={comment}
+                          projectId={project?._id}
+                          sprintId={sprint?._id}
+                          taskId={task._id}
+                          currentUserId={user?._id}
+                          onReply={handleReply}
+                        />
+                      ));
+                  })()}
+                </Stack>
               ) : (
                 <Box 
                   display="flex" 
@@ -800,38 +797,90 @@ const TaskInteractions = ({ task, project, sprint, onUpdate }) => {
                     borderColor: 'divider'
                   }}
                 >
-                  <AttachFileIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
+                  <CommentIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
                   <Typography variant="body1" color="text.secondary" align="center">
-                    Chưa có tệp đính kèm nào
+                    Chưa có bình luận nào
                   </Typography>
-                  {!canUploadFile() && (
-                    <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-                      Bạn không có quyền tải lên tệp đính kèm
-                    </Typography>
-                  )}
                 </Box>
               )}
-            </Stack>
-          )}
-        </Box>
-      )}
-
-      {/* History Tab */}
-      {activeTab === 2 && (
-        <Box>
-          {loadingHistory ? (
-            <Box display="flex" justifyContent="center" my={2}>
-              <CircularProgress size={24} />
             </Box>
-          ) : (
-            <TaskAuditLog
-              taskId={task._id}
-              projectId={project._id}
-              sprintId={sprint._id}
-              task={task}
-            />
           )}
-        </Box>
+
+          {/* Attachments Tab */}
+          {activeTab === 1 && (
+            <Box>
+              {loadingAttachments ? (
+                <Box display="flex" justifyContent="center" my={2}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : (
+                <Stack spacing={3}>
+                  {canUploadFile() && (
+                    <FileUploader
+                      onUpload={handleFileUpload}
+                      isLoading={uploading}
+                      error={uploadError}
+                      accept="*/*"
+                      multiple={false}
+                    />
+                  )}
+                  {Array.isArray(attachments) && attachments.length > 0 ? (
+                    <AttachmentsList
+                      attachments={attachments.filter(att => att !== null && att !== undefined)}
+                      onDelete={handleDeleteAttachment}
+                      canEdit={true}
+                      currentUser={user}
+                      taskAssignees={task?.assignees || []}
+                      projectRole={isAdminOrManager() ? 'admin' : 'member'}
+                    />
+                  ) : (
+                    <Box 
+                      display="flex" 
+                      flexDirection="column" 
+                      alignItems="center" 
+                      justifyContent="center" 
+                      p={4}
+                      sx={{ 
+                        backgroundColor: 'background.paper',
+                        borderRadius: '12px',
+                        border: '1px dashed',
+                        borderColor: 'divider'
+                      }}
+                    >
+                      <AttachFileIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
+                      <Typography variant="body1" color="text.secondary" align="center">
+                        Chưa có tệp đính kèm nào
+                      </Typography>
+                      {!canUploadFile() && (
+                        <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                          Bạn không có quyền tải lên tệp đính kèm
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Stack>
+              )}
+            </Box>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 2 && (
+            <Box>
+              {loadingHistory ? (
+                <Box display="flex" justifyContent="center" my={2}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : (
+                <TaskAuditLog
+                  taskId={task._id}
+                  projectId={project._id}
+                  sprintId={sprint._id}
+                  task={task}
+                />
+              )}
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );

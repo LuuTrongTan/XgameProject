@@ -50,6 +50,7 @@ import {
   Schedule as ScheduleIcon,
 } from "@mui/icons-material";
 import BackButton from "../common/BackButton";
+import { useWebSocket } from "../../contexts/WebSocketContext";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -85,6 +86,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   const navigate = useNavigate();
   const { user } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
+  const { socket } = useWebSocket();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -815,21 +817,57 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
 
     console.log("- Permission check passed: User can delete this task");
 
-    if (window.confirm("Bạn có chắc chắn muốn xóa công việc này?")) {
+    if (window.confirm("Bạn có chắc chắn muốn xóa công việc này? Hành động này không thể hoàn tác và sẽ xóa tất cả bình luận, tệp đính kèm liên quan.")) {
       setLoading(true);
       try {
-        await API.delete(`/tasks/${task._id}`);
+        // Xác định endpoint đúng cho việc xóa task
+        let deleteEndpoint;
+        if (task.sprint) {
+          deleteEndpoint = `/projects/${task.project}/sprints/${task.sprint}/tasks/${task._id}`;
+        } else {
+          deleteEndpoint = `/tasks/${task._id}`;
+        }
+        
+        console.log(`Deleting task using endpoint: ${deleteEndpoint}`);
+        
+        await API.delete(deleteEndpoint);
         await ActivityService.logTaskDeleted(task.title);
+        
         enqueueSnackbar("Công việc đã được xóa thành công", {
           variant: "success",
-          autoHideDuration: 5000,
+          autoHideDuration: 3000,
         });
-        // Remove navigation from here - let parent component handle it
-        // navigate(`/projects/${project?._id}`);
+        
+        // Đóng form ngay lập tức
+        if (onClose) {
+          onClose();
+        }
+        
+        // Emit socket event để thông báo cho người dùng khác
+        if (socket) {
+          const notification = {
+            type: 'task_deleted',
+            task: {
+              id: task._id,
+              title: task.title
+            },
+            deletedBy: {
+              id: user._id,
+              name: user.name
+            }
+          };
+          
+          // Emit cho các user liên quan
+          socket.emit('notification', notification);
+          
+          console.log("Sent task_deleted notification via socket");
+        }
       } catch (error) {
         console.error("Error deleting task:", error);
+        console.error("Error details:", error.response?.data);
+        
         enqueueSnackbar(
-          error.response?.data?.message || "Không thể xóa công việc",
+          error.response?.data?.message || "Không thể xóa công việc. Vui lòng thử lại.",
           { variant: "error", autoHideDuration: 5000 }
         );
       } finally {
@@ -909,6 +947,45 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
     }));
     setTimeDialogOpen(false);
   };
+
+  // Thêm xử lý socket.io cho sự kiện task_deleted
+  useEffect(() => {
+    // Nếu không có socket hoặc không có task ID, không làm gì cả
+    if (!task?._id || !socket) return;
+    
+    // Hàm xử lý khi nhận được thông báo task đã bị xóa
+    const handleTaskDeleted = (data) => {
+      // Kiểm tra xem task bị xóa có phải là task hiện tại không
+      if (data && data.task && data.task.id === task._id) {
+        // Hiển thị thông báo
+        enqueueSnackbar(`Công việc "${data.task.title}" đã bị xóa bởi ${data.deletedBy?.name || 'người khác'}`, { 
+          variant: 'warning',
+          autoHideDuration: 5000
+        });
+        
+        // Đóng form
+        if (onClose) {
+          setTimeout(() => {
+            onClose();
+          }, 1000);
+        }
+      }
+    };
+    
+    // Đăng ký lắng nghe sự kiện task_deleted
+    socket.on('task_deleted', handleTaskDeleted);
+    socket.on('notification', (notification) => {
+      if (notification.type === 'task_deleted' && notification.task.id === task._id) {
+        handleTaskDeleted(notification);
+      }
+    });
+    
+    // Cleanup khi component unmount
+    return () => {
+      socket.off('task_deleted', handleTaskDeleted);
+      socket.off('notification');
+    };
+  }, [task?._id, socket, enqueueSnackbar, onClose]);
 
   return (
     <>

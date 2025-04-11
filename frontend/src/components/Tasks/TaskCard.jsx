@@ -228,8 +228,11 @@ const StatusChip = styled(Chip, {
 }));
 
 // Thêm styled component cho chip hiển thị số lượng (attachments, comments)
-const CountChip = styled(Chip)(({ theme, icon, colorBg, colorText }) => ({
-  height: "20px", 
+const CountChip = styled(
+  ({ colorBg, colorText, ...rest }) => <Chip {...rest} />
+)(({ theme, colorBg, colorText }) => ({
+  height: "20px",
+  minWidth: '28px',
   fontSize: "0.65rem",
   fontWeight: 500,
   borderRadius: "12px",
@@ -239,10 +242,27 @@ const CountChip = styled(Chip)(({ theme, icon, colorBg, colorText }) => ({
     fontSize: '0.8rem',
     color: 'inherit',
   },
+  '& .MuiSvgIcon-root': {
+    fontSize: '14px',
+    color: 'inherit',
+  },
   '& .MuiChip-label': {
     padding: '0 4px',
   }
 }));
+
+// Thêm đoạn code này trước khi định nghĩa TaskCard component, dùng forwardRef để bao bọc component
+const CountChipWrapper = React.forwardRef(({ colorBg, colorText, icon, label, size, ...props }, ref) => (
+  <div ref={ref} {...props}>
+    <CountChip
+      colorBg={colorBg}
+      colorText={colorText}
+      icon={icon}
+      label={label}
+      size={size}
+    />
+  </div>
+));
 
 // Main component
 const TaskCard = ({
@@ -845,7 +865,7 @@ const TaskCard = ({
             {/* Hiển thị chip tệp đính kèm */}
             {attachments.length > 0 && (
               <Tooltip title={`${attachments.length} tệp đính kèm`}>
-                <CountChip
+                <CountChipWrapper
                   icon={<AttachFileIcon />}
                   colorBg="rgba(76, 175, 80, 0.08)"
                   colorText="rgba(46, 125, 50, 0.85)"
@@ -858,7 +878,7 @@ const TaskCard = ({
             {/* Hiển thị chip số lượng bình luận */}
             {task.commentsCount > 0 && (
               <Tooltip title={`${task.commentsCount} bình luận`}>
-                <CountChip
+                <CountChipWrapper
                   icon={<CommentIcon />}
                   colorBg="rgba(33, 150, 243, 0.08)"
                   colorText="rgba(25, 118, 210, 0.85)"

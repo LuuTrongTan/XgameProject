@@ -211,6 +211,15 @@ const Tasks = () => {
       
       // Nếu cập nhật cả actualHours (khi chuyển sang done), thêm vào API params
       if (newStatus === "done" && taskToUpdate.actualHours !== undefined) {
+        // Debug log
+        console.log("Updating task with time tracking information:", {
+          taskId: taskToUpdate._id,
+          status: newStatus,
+          actualHours: taskToUpdate.actualHours,
+          actualTime: taskToUpdate.actualTime,
+          position: position
+        });
+        
         // Gọi updateTask API thay vì updateTaskStatus để cập nhật cả actualHours
         const updateResponse = await updateTask(
           taskProjectId, 
@@ -218,7 +227,8 @@ const Tasks = () => {
           taskToUpdate._id, 
           { 
             status: newStatus, 
-            actualHours: taskToUpdate.actualHours,
+            actualTime: taskToUpdate.actualHours, // Đổi thành actualTime để khớp với backend API
+            position: position, // Đảm bảo position cũng được cập nhật
             // Đảm bảo các trường quan trọng khác vẫn được giữ nguyên
             title: taskToUpdate.title,
             description: taskToUpdate.description || "",
@@ -226,12 +236,18 @@ const Tasks = () => {
           }
         );
         
+        console.log("Update response:", updateResponse);
+        
         if (!updateResponse.success) {
           console.error("Failed to update task:", updateResponse.message);
           enqueueSnackbar("Không thể cập nhật thông tin công việc: " + updateResponse.message, { variant: "error" });
           fetchTasks(); // Tải lại dữ liệu để khôi phục trạng thái
           return;
         }
+        
+        // Cập nhật thông báo để hiển thị cả thời gian đã nhập
+        enqueueSnackbar(`Đã cập nhật trạng thái và ghi nhận ${taskToUpdate.actualHours} giờ làm việc`, { variant: "success" });
+        return;
       } else {
         // Nếu chỉ cập nhật trạng thái, gọi updateTaskStatus API
         const response = await updateTaskStatus(apiParams);
@@ -311,30 +327,75 @@ const Tasks = () => {
       if (newStatus === "done" && oldStatus !== "done") {
         // Hiển thị dialog nhập thời gian
         return new Promise((resolve) => {
-          // Tạo dialog sử dụng DOM API
-          const dialog = document.createElement('dialog');
-          dialog.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); border: none; background: white; min-width: 300px;';
+          // Tạo dialog sử dụng Material-UI
+          const timeEntryDialog = document.createElement('div');
+          timeEntryDialog.id = 'time-entry-dialog-container';
+          timeEntryDialog.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; background-color: rgba(0,0,0,0.5); z-index: 10000;';
           
-          dialog.innerHTML = `
-            <h3 style="margin-top: 0; color: #1976d2;">Nhập thời gian đã làm</h3>
-            <p style="color: #666;">Vui lòng nhập thời gian bạn đã dành để hoàn thành công việc này.</p>
-            <div style="margin: 20px 0;">
-              <label style="display: block; margin-bottom: 5px; font-weight: 500;">Thời gian đã làm (giờ):</label>
-              <input type="number" id="actualHours" value="${taskToUpdate.actualHours || 0}" min="0" step="0.5" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-              <button id="skipBtn" style="padding: 8px 16px; background: #f5f5f5; border: none; border-radius: 4px; cursor: pointer;">Bỏ qua</button>
-              <button id="saveBtn" style="padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Lưu thời gian</button>
+          timeEntryDialog.innerHTML = `
+            <div style="background: white; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); width: 400px; max-width: 90vw; overflow: hidden;">
+              <div style="padding: 16px 24px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
+                <h2 style="margin: 0; font-size: 1.25rem; font-weight: 500; color: #333;">Nhập thời gian đã làm</h2>
+              </div>
+              <div style="padding: 24px;">
+                <p style="color: #666; margin-top: 0; margin-bottom: 16px;">
+                  Vui lòng nhập thời gian bạn đã dành để hoàn thành công việc "${taskToUpdate.title}".
+                </p>
+                <div style="margin-bottom: 24px;">
+                  <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #333;">Thời gian đã làm (giờ):</label>
+                  <div style="display: flex; align-items: center;">
+                    <span style="display: flex; align-items: center; margin-right: 8px; color: #2e7d32;">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                    </span>
+                    <input 
+                      type="number" 
+                      id="actualHours" 
+                      value="${taskToUpdate.actualHours || 0}" 
+                      min="0" 
+                      step="0.5" 
+                      style="width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; transition: border-color 0.3s ease;"
+                      onfocus="this.style.borderColor='#1976d2';"
+                      onblur="this.style.borderColor='#ccc';"
+                      onkeydown="if(event.key === 'Enter') document.getElementById('saveBtn').click();"
+                    >
+                  </div>
+                </div>
+              </div>
+              <div style="padding: 16px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e0e0e0;">
+                <button 
+                  id="skipBtn" 
+                  style="padding: 8px 16px; background: transparent; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-weight: 500; color: #666; transition: all 0.2s ease;"
+                  onmouseover="this.style.backgroundColor='#f5f5f5';"
+                  onmouseout="this.style.backgroundColor='transparent';"
+                >
+                  Bỏ qua
+                </button>
+                <button 
+                  id="saveBtn" 
+                  style="padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background-color 0.2s ease;"
+                  onmouseover="this.style.backgroundColor='#1565c0';"
+                  onmouseout="this.style.backgroundColor='#1976d2';"
+                >
+                  Lưu thời gian
+                </button>
+              </div>
             </div>
           `;
           
-          document.body.appendChild(dialog);
-          dialog.showModal();
+          document.body.appendChild(timeEntryDialog);
+          
+          // Tự động focus vào input
+          setTimeout(() => {
+            const inputEl = document.getElementById('actualHours');
+            if (inputEl) inputEl.focus();
+          }, 100);
           
           // Xử lý sự kiện nút bỏ qua
-          dialog.querySelector('#skipBtn').addEventListener('click', () => {
-            dialog.close();
-            document.body.removeChild(dialog);
+          timeEntryDialog.querySelector('#skipBtn').addEventListener('click', () => {
+            document.body.removeChild(timeEntryDialog);
             
             // Tiếp tục cập nhật trạng thái mà không thay đổi thời gian
             continueUpdateStatus(taskToUpdate, oldStatus, newStatus, position, taskProjectId, taskSprintId);
@@ -342,14 +403,13 @@ const Tasks = () => {
           });
           
           // Xử lý sự kiện nút lưu
-          dialog.querySelector('#saveBtn').addEventListener('click', () => {
-            const actualHours = parseFloat(dialog.querySelector('#actualHours').value);
-            dialog.close();
-            document.body.removeChild(dialog);
+          timeEntryDialog.querySelector('#saveBtn').addEventListener('click', () => {
+            const actualHours = parseFloat(document.getElementById('actualHours').value);
+            document.body.removeChild(timeEntryDialog);
             
             // Cập nhật cả thời gian và trạng thái
             continueUpdateStatus(
-              {...taskToUpdate, actualHours}, 
+              {...taskToUpdate, actualHours, actualTime: actualHours}, 
               oldStatus, 
               newStatus, 
               position, 
@@ -357,6 +417,15 @@ const Tasks = () => {
               taskSprintId
             );
             resolve();
+          });
+          
+          // Đóng dialog khi click bên ngoài
+          timeEntryDialog.addEventListener('click', (e) => {
+            if (e.target === timeEntryDialog) {
+              document.body.removeChild(timeEntryDialog);
+              continueUpdateStatus(taskToUpdate, oldStatus, newStatus, position, taskProjectId, taskSprintId);
+              resolve();
+            }
           });
         });
       }
@@ -546,6 +615,11 @@ const Tasks = () => {
           inProgress: prevTasks.inProgress.filter((task) => task._id !== taskId),
           done: prevTasks.done.filter((task) => task._id !== taskId),
         }));
+        
+        // Đóng dialog chi tiết công việc và xóa task đã chọn
+        setOpenDetailDialog(false);
+        setOpenEditDialog(false);
+        setSelectedTask(null);
         
         enqueueSnackbar("Xóa công việc thành công", { variant: "success" });
       } else {

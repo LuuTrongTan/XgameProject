@@ -735,6 +735,31 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/watchers", pro
 // Task dependencies and relationships
 router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/dependencies", protect, toggleDependency);
 
+// Direct task operations without sprint context
+/**
+ * @swagger
+ * /api/tasks/{taskId}:
+ *   delete:
+ *     summary: Xóa một công việc trực tiếp bằng ID
+ *     tags: [Tasks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Công việc đã được xóa
+ *       404:
+ *         description: Không tìm thấy công việc
+ *       403:
+ *         description: Không có quyền xóa công việc này
+ */
+router.delete("/tasks/:taskId", protect, logTaskDelete, deleteTask);
+
 // Attachment routes
 router
   .route("/projects/:projectId/sprints/:sprintId/tasks/:taskId/attachments/:attachmentId")
