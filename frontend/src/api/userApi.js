@@ -1,61 +1,71 @@
-import api from "./api";
+import API from "./api";
 
-// Get all users
+// Lấy danh sách người dùng
 export const getAllUsers = async () => {
   try {
-    const response = await api.get("/users");
-    console.log("API response from getAllUsers:", response.data);
-    if (response.data && response.data.success) {
-      return response.data;
-    }
-    return { success: false, message: "Không thể lấy danh sách người dùng" };
-  } catch (error) {
-    console.error("Error in getAllUsers:", error);
-    return { success: false, message: error.response?.data?.message || "Lỗi khi tải danh sách người dùng" };
-  }
-};
-
-// Get user by ID
-export const getUserById = async (id) => {
-  try {
-    const response = await api.get(`/users/${id}`);
+    const response = await API.get("/users");
     return response.data;
   } catch (error) {
-    console.error("Error in getUserById:", error);
+    console.error("Error fetching users:", error);
     return {
       success: false,
-      message: "Không thể lấy thông tin người dùng",
-      error: error.message,
+      message: error.customMessage || "Lỗi khi lấy danh sách người dùng",
     };
   }
 };
 
-// Update user
-export const updateUser = async (id, data) => {
+// Lấy thông tin người dùng theo ID
+export const getUserById = async (userId) => {
   try {
-    const response = await api.put(`/users/${id}`, data);
+    const response = await API.get(`/users/${userId}`);
     return response.data;
   } catch (error) {
-    console.error("Error in updateUser:", error);
+    console.error(`Error fetching user ${userId}:`, error);
     return {
       success: false,
-      message: "Không thể cập nhật thông tin người dùng",
-      error: error.message,
+      message: error.customMessage || "Lỗi khi lấy thông tin người dùng",
     };
   }
 };
 
-// Delete user
-export const deleteUser = async (id) => {
+// Cập nhật thông tin người dùng
+export const updateUser = async (userId, userData) => {
   try {
-    const response = await api.delete(`/users/${id}`);
+    const response = await API.put(`/users/${userId}`, userData);
     return response.data;
   } catch (error) {
-    console.error("Error in deleteUser:", error);
+    console.error(`Error updating user ${userId}:`, error);
     return {
       success: false,
-      message: "Không thể xóa người dùng",
-      error: error.message,
+      message: error.customMessage || "Lỗi khi cập nhật thông tin người dùng",
+    };
+  }
+};
+
+// Xóa người dùng
+export const deleteUser = async (userId) => {
+  try {
+    const response = await API.delete(`/users/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error deleting user ${userId}:`, error);
+    return {
+      success: false,
+      message: error.customMessage || "Lỗi khi xóa người dùng",
+    };
+  }
+};
+
+// Thay đổi vai trò người dùng (Admin only)
+export const changeUserRole = async (userId, role) => {
+  try {
+    const response = await API.put(`/users/${userId}/role`, { role });
+    return response.data;
+  } catch (error) {
+    console.error(`Error changing role for user ${userId}:`, error);
+    return {
+      success: false,
+      message: error.customMessage || "Lỗi khi thay đổi vai trò người dùng",
     };
   }
 };

@@ -5,13 +5,17 @@ import Comment from "../models/comment.model.js";
 import sendEmail from "../utils/sendEmail.js";
 import { ROLES } from "../config/constants.js";
 import crypto from "crypto";
+import { isAdmin } from "../middlewares/auth.middleware.js";
 
 // Validate dữ liệu đầu vào
 const validateProjectData = (data) => {
   const errors = [];
 
-  // Log dữ liệu đầu vào
-  console.log("Validating project data:", data);
+  // Log dữ liệu đầu vào - không log dữ liệu base64 vì quá dài
+  console.log("Validating project data:", {
+    ...data,
+    avatarBase64: data.avatarBase64 ? "[base64 data]" : null,
+  });
 
   // Validate name
   if (!data.name || typeof data.name !== "string") {
@@ -46,6 +50,19 @@ const validateProjectData = (data) => {
       errors.push("Ngày bắt đầu phải trước ngày kết thúc");
     }
   }
+  
+  // Validate avatarBase64 (chỉ kiểm tra nếu có)
+  if (data.avatarBase64 && typeof data.avatarBase64 === 'string') {
+    // Kiểm tra độ dài, ảnh có thể lớn nhưng không vượt quá kích thước tối đa
+    if (data.avatarBase64.length > 10 * 1024 * 1024) { // 10MB in base64
+      errors.push("Kích thước ảnh đại diện quá lớn (tối đa 10MB)");
+    }
+    
+    // Kiểm tra định dạng base64 cho ảnh
+    if (!data.avatarBase64.startsWith('data:image/')) {
+      errors.push("Định dạng ảnh đại diện không hợp lệ");
+    }
+  }
 
   // Log kết quả validation
   console.log("Validation errors:", errors);
@@ -54,10 +71,21 @@ const validateProjectData = (data) => {
 
 // Kiểm tra quyền của người dùng trong dự án
 const checkPermission = (project, userId, requiredRoles = []) => {
+  // Kiểm tra nếu là admin hệ thống (kiểm tra trong dữ liệu người dùng)
+  if (project.adminCheck && project.adminCheck.includes(userId.toString())) {
+    console.log("System admin detected, granting full access");
+    return true;
+  }
+  
+  // Kiểm tra nếu là chủ sở hữu dự án
   if (project.owner.toString() === userId.toString()) return true;
+  
+  // Kiểm tra nếu là thành viên dự án
   const member = project.members.find(
     (m) => m.user.toString() === userId.toString()
   );
+  
+  // Nếu là thành viên, kiểm tra vai trò
   return (
     member &&
     (requiredRoles.length === 0 || requiredRoles.includes(member.role))
@@ -67,11 +95,36 @@ const checkPermission = (project, userId, requiredRoles = []) => {
 // Lấy danh sách tất cả dự án mà user có quyền truy cập
 export const getProjects = async (req, res) => {
   try {
-    const { status, search, isArchived } = req.query;
+    const { status, search, isArchived, role } = req.query;
 
-    let query = {
-      $or: [{ owner: req.user }, { "members.user": req.user }],
-    };
+    let query = {};
+
+    // Nếu có tham số role=manager, chỉ lấy dự án mà user là owner hoặc project manager
+    if (role === 'manager') {
+      if (isAdmin(req.user)) {
+        // Admin xem được tất cả dự án
+      } else {
+        query = {
+          $or: [
+            { owner: req.user.id },
+            { 
+              members: { 
+                $elemMatch: { 
+                  user: req.user.id, 
+                  role: { $in: ["project_manager", "admin"] } 
+                } 
+              } 
+            }
+          ],
+        };
+      }
+    } 
+    // Trường hợp không có tham số role=manager, dùng logic hiện tại
+    else if (!isAdmin(req.user)) {
+      query = {
+        $or: [{ owner: req.user.id }, { "members.user": req.user.id }],
+      };
+    }
 
     // Lọc theo trạng thái
     if (status) query.status = status;
@@ -83,22 +136,33 @@ export const getProjects = async (req, res) => {
 
     // Tìm kiếm theo tên hoặc mô tả
     if (search) {
-      query.$and = [
-        query, // Giữ điều kiện quyền truy cập
-        {
-          $or: [
-            { name: { $regex: search, $options: "i" } },
-            { description: { $regex: search, $options: "i" } },
-          ],
-        },
-      ];
+      const searchQuery = {
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+        ],
+      };
+      
+      // Kết hợp điều kiện tìm kiếm với điều kiện quyền truy cập
+      if (Object.keys(query).length > 0) {
+        query = {
+          $and: [query, searchQuery]
+        };
+      } else {
+        query = searchQuery;
+      }
     }
+
+    console.log("Query projects for user:", req.user.email, "with role:", req.user.role);
+    console.log("Query conditions:", JSON.stringify(query, null, 2));
 
     // Truy vấn dự án
     const projects = await Project.find(query)
       .populate("owner", "name email avatar")
       .populate("members.user", "name email avatar")
       .sort({ createdAt: -1 });
+
+    console.log(`Found ${projects.length} projects for user ${req.user.email}`);
 
     // Thêm thống kê cho mỗi dự án
     const projectsWithStats = await Promise.all(
@@ -151,7 +215,32 @@ export const getProjectById = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền truy cập: chỉ cho phép owner, project-manager hoặc thành viên của dự án
+    // Admin có thể xem tất cả dự án không cần kiểm tra quyền
+    if (isAdmin(req.user)) {
+      // Lấy thống kê dự án
+      const stats = {
+        totalTasks: await Task.countDocuments({ project: project._id }),
+        completedTasks: await Task.countDocuments({
+          project: project._id,
+          status: "done",
+        }),
+        totalMembers: project.members.length,
+        totalDocuments: project.documents.length,
+        recentActivities: await getRecentActivities(project._id),
+      };
+
+      console.log(`Admin ${req.user.email} accessing project ${project._id}`);
+      
+      return res.json({
+        success: true,
+        data: {
+          ...project.toObject(),
+          stats
+        },
+      });
+    }
+    
+    // Kiểm tra quyền truy cập đối với người dùng không phải admin: chỉ cho phép owner, project-manager hoặc thành viên của dự án
     const isMember = project.members.some(
       (member) =>
         member.user._id.toString() === req.user.id &&
@@ -179,7 +268,10 @@ export const getProjectById = async (req, res) => {
 
     res.json({
       success: true,
-      data: project,
+      data: {
+        ...project.toObject(),
+        stats
+      },
     });
   } catch (error) {
     console.error("Lỗi khi lấy chi tiết dự án:", error);
@@ -314,10 +406,6 @@ export const createProject = async (req, res) => {
 // Cập nhật thông tin dự án
 export const updateProject = async (req, res) => {
   try {
-    console.log("Received update request with body:", req.body);
-    console.log("Request headers:", req.headers);
-    console.log("Content-Type:", req.headers["content-type"]);
-
     const project = await Project.findById(req.params.id);
     if (!project) {
       return res.status(404).json({
@@ -326,10 +414,32 @@ export const updateProject = async (req, res) => {
       });
     }
 
-    if (!checkPermission(project, req.user.id, ["Admin", "Project Manager"])) {
+    // Đảm bảo admin luôn có quyền cập nhật
+    if (isAdmin(req.user)) {
+      // Admin có mọi quyền, cập nhật trực tiếp
+      const updatedProject = await Project.findByIdAndUpdate(
+        req.params.id,
+        { $set: req.body },
+        { new: true }
+      )
+        .populate("owner", "name email avatar")
+        .populate("members.user", "name email avatar");
+
+      return res.json({
+        success: true,
+        message: "Cập nhật dự án thành công",
+        data: updatedProject,
+      });
+    }
+
+    // Thêm adminCheck dựa trên role người dùng
+    project.adminCheck = req.user.role === 'admin' ? [req.user.id] : [];
+
+    // Kiểm tra quyền sửa đổi
+    if (!checkPermission(project, req.user.id, ["project_manager"])) {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền chỉnh sửa dự án này",
+        message: "Bạn không có quyền cập nhật dự án này",
       });
     }
 
@@ -347,6 +457,7 @@ export const updateProject = async (req, res) => {
         status: req.body.status || project.status,
         startDate: req.body.startDate || project.startDate,
         dueDate: req.body.dueDate || project.dueDate,
+        avatarBase64: req.body.avatarBase64 || project.avatarBase64,
         members: req.body.members
           ? JSON.parse(req.body.members)
           : project.members,
@@ -360,13 +471,23 @@ export const updateProject = async (req, res) => {
         startDate: req.body.startDate,
         dueDate: req.body.dueDate,
         members: req.body.members,
+        hasAvatar: !!req.body.avatarBase64,
       });
 
       // Log dữ liệu đã xử lý
-      console.log("Processed FormData:", projectData);
+      console.log("Processed FormData:", {
+        ...projectData,
+        avatarBase64: projectData.avatarBase64 ? "[base64 data]" : null,
+      });
     } else {
       // Xử lý dữ liệu JSON
       projectData = req.body;
+      
+      // Log dữ liệu JSON
+      console.log("JSON data received:", {
+        ...req.body,
+        avatarBase64: req.body.avatarBase64 ? "[base64 data]" : null,
+      });
     }
 
     // Validate dữ liệu
@@ -431,10 +552,10 @@ export const updateProject = async (req, res) => {
       data: updatedProject,
     });
   } catch (error) {
-    console.error("Error updating project:", error);
+    console.error("Lỗi khi cập nhật dự án:", error);
     res.status(500).json({
       success: false,
-      message: "Có lỗi xảy ra khi cập nhật dự án",
+      message: "Lỗi khi cập nhật dự án",
       error: error.message,
     });
   }

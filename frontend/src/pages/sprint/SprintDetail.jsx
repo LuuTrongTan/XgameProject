@@ -60,6 +60,7 @@ import {
   getSprints,
   updateSprint,
 } from "../../api/sprintApi";
+import api from "../../api/api";
 import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import TaskSelectionDialog from "../../components/sprints/TaskSelectionDialog";
 import { useSnackbar } from "notistack";
@@ -181,7 +182,31 @@ const calculateTimeProgress = (startDate, endDate) => {
 const calculateTaskProgress = (tasks) => {
   if (!tasks || tasks.length === 0) return 0;
   
-  const completedTasks = tasks.filter(task => task.status === 'done').length;
+  // Kiểm tra xem tasks có phải là mảng ID hay object
+  const isTasksArrayOfIds = typeof tasks[0] === 'string';
+  
+  console.log('Tasks type check:', { 
+    isArrayOfIds: isTasksArrayOfIds, 
+    firstTaskType: typeof tasks[0],
+    firstTask: tasks[0]
+  });
+  
+  if (isTasksArrayOfIds) {
+    // Nếu là mảng ID, không thể tính toán tiến độ
+    console.log('Không thể tính tiến độ: tasks là mảng ID');
+    return 0;
+  }
+  
+  // Đếm số lượng task đã hoàn thành
+  const completedTasks = tasks.filter(task => {
+    // Kiểm tra trạng thái đã hoàn thành (trong model được định nghĩa là "done")
+    return task.status === 'done';
+  }).length;
+  
+  console.log('Tổng số tasks:', tasks.length);
+  console.log('Số tasks đã hoàn thành:', completedTasks);
+  console.log('Trạng thái các task:', tasks.map(t => ({ id: t._id, title: t.title, status: t.status })));
+  
   return Math.round((completedTasks / tasks.length) * 100);
 };
 
@@ -223,8 +248,12 @@ const SprintDetail = () => {
         setLoading(true);
         setError(null);
 
+        console.log("Fetching sprint details for projectId:", projectId, "and sprintId:", sprintId);
+
         // Lấy thông tin project trước
         const projectResponse = await getProjectById(projectId);
+        console.log("Project response:", projectResponse);
+        
         if (!projectResponse.success) {
           throw new Error(
             projectResponse.message || "Không thể tải thông tin dự án"
@@ -233,6 +262,7 @@ const SprintDetail = () => {
 
         // Lưu project data để sử dụng sau này
         const projectData = projectResponse.data;
+        console.log("Project data:", projectData);
         
         // Kiểm tra quyền truy cập dự án
         if (!projectData) {
@@ -240,7 +270,10 @@ const SprintDetail = () => {
         }
 
         // Lấy danh sách sprint để lấy thông tin chính xác về số lượng task
+        console.log("Fetching sprints list");
         const sprintsResponse = await getSprints(projectId);
+        console.log("Sprints response:", sprintsResponse);
+        
         let currentSprintFromList = null;
         
         if (sprintsResponse.success && Array.isArray(sprintsResponse.data)) {
@@ -249,23 +282,33 @@ const SprintDetail = () => {
         }
 
         // Lấy thông tin sprint
+        console.log("Fetching sprint detail with getSprintById");
         const response = await getSprintById(projectId, sprintId);
+        console.log("Sprint detail response:", response);
 
         if (!response.success || !response.data) {
           throw new Error(response.message || "Không thể tải thông tin sprint");
         }
 
         // Gắn thông tin project vào sprint để kiểm tra phân quyền
-        const sprintData = {
+        let sprintData = {
           ...response.data,
           project: projectData, // Đảm bảo sprint có đủ thông tin project
         };
-        
+
+        // Đảm bảo danh sách tasks được định nghĩa
+        if (!sprintData.tasks) {
+          sprintData.tasks = [];
+        }
+
         // Nếu có thông tin từ danh sách sprint, sử dụng số lượng task từ đó
         if (currentSprintFromList && currentSprintFromList.tasks) {
-          sprintData.tasks = currentSprintFromList.tasks;
+          // Nếu từ danh sách có nhiều task hơn, sử dụng danh sách đó
+          if (currentSprintFromList.tasks.length > sprintData.tasks.length) {
+            sprintData.tasks = currentSprintFromList.tasks;
+          }
         }
-        
+
         console.log("Chi tiết sprint sau khi cập nhật:", sprintData);
         
         // Kiểm tra quyền truy cập sử dụng usePermissions hook
@@ -294,13 +337,64 @@ const SprintDetail = () => {
     fetchSprintDetails();
   }, [projectId, sprintId, refresh]);
 
-  // Fetch danh sách thành viên của sprint
   useEffect(() => {
     if (sprint) {
       fetchSprintMembers();
+      
+      // Kiểm tra nếu tasks là mảng ID, fetch thông tin chi tiết
+      if (sprint.tasks && sprint.tasks.length > 0 && typeof sprint.tasks[0] === 'string') {
+        console.log('Tasks là mảng ID, cần fetch thông tin chi tiết');
+        fetchTaskDetails();
+      }
     }
   }, [sprint, refresh]);
-
+  
+  // Thêm hàm fetch thông tin chi tiết của tasks
+  const fetchTaskDetails = async () => {
+    try {
+      console.log('Đang fetch thông tin chi tiết task...');
+      
+      if (!sprint.tasks || sprint.tasks.length === 0) {
+        console.log('Không có task nào để fetch');
+        return;
+      }
+      
+      // Nếu tasks đã là object đầy đủ, không cần fetch lại
+      if (typeof sprint.tasks[0] !== 'string') {
+        console.log('Tasks đã là object đầy đủ, không cần fetch lại');
+        return;
+      }
+      
+      // Fetch thông tin tất cả tasks của sprint
+      const taskIds = sprint.tasks;
+      console.log(`Cần fetch ${taskIds.length} tasks từ database`);
+      
+      // Fetch từng task một sử dụng đường dẫn API đúng
+      const tasksPromises = taskIds.map(taskId => 
+        api.get(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`)
+          .then(res => res.data.data)
+          .catch(err => {
+            console.error(`Error fetching task ${taskId}:`, err);
+            return null;
+          })
+      );
+      
+      const tasksResults = await Promise.all(tasksPromises);
+      const validTasks = tasksResults.filter(t => t !== null);
+      
+      console.log('Fetched task details:', validTasks);
+      
+      // Cập nhật sprint với thông tin task đầy đủ
+      setSprint(prev => ({
+        ...prev,
+        tasks: validTasks
+      }));
+      
+    } catch (error) {
+      console.error('Lỗi khi fetch thông tin chi tiết task:', error);
+    }
+  };
+  
   // Thêm useEffect để tự động cập nhật trạng thái sprint thành "hoàn thành" khi đến hạn
   useEffect(() => {
     const autoUpdateSprintStatus = async () => {
@@ -738,6 +832,11 @@ const SprintDetail = () => {
   // CHỈ tính khi sprint không phải null
   const timeProgress = calculateTimeProgress(sprint.startDate, sprint.endDate);
   const taskProgress = calculateTaskProgress(sprint.tasks);
+  
+  // Debug thông tin task
+  console.log('Sprint tasks:', sprint.tasks);
+  console.log('Task count:', sprint.tasks?.length || 0);
+  console.log('Task progress:', taskProgress);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -827,46 +926,55 @@ const SprintDetail = () => {
                       </Typography>
                     </Box>
                     
-                    <Box key="time-progress-box" sx={{ mb: 2 }}>
-                      <Box key="time-progress-label" sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, alignItems: 'center' }}>
-                        <Typography key="time-progress-text" variant="body2" color="text.secondary">
-                          Tiến độ thời gian
-                        </Typography>
-                        <Typography key="time-progress-value" variant="body2" fontWeight="medium">
-                          {timeProgress}%
-                        </Typography>
-                      </Box>
-                      <LinearProgress
-                        key="time-progress-bar"
-                        variant="determinate" 
-                        value={timeProgress} 
-                        color={timeProgress >= 100 ? "success" : "primary"}
-                        sx={{ height: 8, borderRadius: 4 }}
-                      />
-                      <Typography key="time-progress-date" variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                        {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
+                    <Box
+                      sx={{
+                        bgcolor: "background.paper",
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        p: 2,
+                        boxShadow: 1,
+                        mb: 3,
+                      }}
+                    >
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        Tiến trình Sprint
                       </Typography>
-                    </Box>
-                    
-                    <Box key="task-progress-box" sx={{ mb: 1 }}>
-                      <Box key="task-progress-label" sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, alignItems: 'center' }}>
-                        <Typography key="task-progress-text" variant="body2" color="text.secondary">
-                          Tiến độ công việc
-                        </Typography>
-                        <Typography key="task-progress-value" variant="body2" fontWeight="medium">
-                          {taskProgress}%
+
+                      {/* Hiển thị tiến độ thời gian */}
+                      <Box sx={{ mt: 2 }}>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                          <Typography variant="body2">Tiến độ thời gian</Typography>
+                          <Typography variant="body2">{calculateTimeProgress(sprint.startDate, sprint.endDate)}%</Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={calculateTimeProgress(sprint.startDate, sprint.endDate)}
+                          sx={{ height: 10, borderRadius: 5, mb: 2 }}
+                        />
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {new Date(sprint.startDate).toLocaleDateString()} - {new Date(sprint.endDate).toLocaleDateString()}
                         </Typography>
                       </Box>
-                      <LinearProgress
-                        key="task-progress-bar"
-                        variant="determinate" 
-                        value={taskProgress} 
-                        color="success"
-                        sx={{ height: 8, borderRadius: 4 }}
-                      />
-                      <Box key="task-progress-detail" sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, alignItems: 'center' }}>
-                        <Typography key="task-progress-count" variant="caption" color="text.secondary">
-                          {sprint.tasks ? sprint.tasks.filter(task => task.status === 'done').length : 0}/{sprint.tasks ? sprint.tasks.length : 0} task hoàn thành
+
+                      {/* Hiển thị tiến độ công việc */}
+                      <Box sx={{ mt: 2 }}>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                          <Typography variant="body2">Tiến độ công việc</Typography>
+                          <Typography variant="body2">
+                            {sprint.tasks && sprint.tasks.length > 0 
+                              ? `${sprint.tasks.filter(task => task.status === 'done').length}/${sprint.tasks.length} task hoàn thành` 
+                              : "0/0 task"}
+                          </Typography>
+                        </Box>
+                        <LinearProgress
+                          variant="determinate"
+                          value={calculateTaskProgress(sprint.tasks)}
+                          color={sprint.tasks && sprint.tasks.filter(task => task.status === 'done').length === sprint.tasks.length && sprint.tasks.length > 0 ? "success" : "primary"}
+                          sx={{ height: 10, borderRadius: 5 }}
+                        />
+                        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {calculateTaskProgress(sprint.tasks)}% hoàn thành
                         </Typography>
                       </Box>
                     </Box>

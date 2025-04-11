@@ -1,6 +1,7 @@
 import Project from "../models/project.model.js";
 import Task from "../models/task.model.js";
 import { ROLES, PERMISSIONS } from "../config/constants.js";
+import { isAdmin } from "./auth.middleware.js";
 
 // Map quyền cho từng role
 const rolePermissions = {
@@ -140,8 +141,9 @@ export const checkProjectPermission = async (req, res, next) => {
     const { projectId } = req.params;
     const userId = req.user.id;
 
-    // Admin có tất cả quyền
-    if (req.user.role === ROLES.ADMIN) {
+    // Admin có tất cả quyền và truy cập tất cả dự án dù không phải là thành viên
+    if (isAdmin(req.user)) {
+      console.log("Admin access granted for project:", projectId);
       return next();
     }
 
@@ -190,9 +192,9 @@ export const checkPermission = (permission) => {
       console.log("Project role:", req.projectRole);
       console.log("Required permission:", permission);
 
-      // Admin luôn có tất cả quyền
-      if (req.user.role === ROLES.ADMIN) {
-        console.log("User is ADMIN, access granted");
+      // Admin luôn có tất cả quyền, không quan tâm đến projectRole
+      if (isAdmin(req.user)) {
+        console.log("User is ADMIN, full access granted for permission:", permission);
         return next();
       }
 
@@ -252,7 +254,8 @@ export const checkTaskPermission = async (req, res, next) => {
     const userId = req.user.id;
 
     // Admin có tất cả quyền
-    if (req.user.role === ROLES.ADMIN) {
+    if (isAdmin(req.user)) {
+      console.log("Admin access granted for task:", taskId);
       return next();
     }
 

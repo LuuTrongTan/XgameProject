@@ -4,8 +4,9 @@ import {
   getUserById,
   updateUser,
   deleteUser,
+  changeUserRole
 } from "../controllers/user.controller.js";
-import { checkPermission, protect } from "../middlewares/auth.middleware.js";
+import { checkPermission, protect, admin } from "../middlewares/auth.middleware.js";
 import { PERMISSIONS } from "../constants/permissions.js";
 
 const router = express.Router();
@@ -24,5 +25,8 @@ router.put("/:id", checkPermission(PERMISSIONS.EDIT_USERS), updateUser);
 
 // Delete user - requires DELETE_USERS permission
 router.delete("/:id", checkPermission(PERMISSIONS.DELETE_USERS), deleteUser);
+
+// Change user role - admin only
+router.put("/:userId/role", admin, changeUserRole);
 
 export default router;

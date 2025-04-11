@@ -116,9 +116,15 @@ const canViewSprint = (sprint, userId, projectRole) => {
   console.log("Is Admin?", projectRole === ROLES.ADMIN);
   console.log("Is Project Manager?", projectRole === ROLES.PROJECT_MANAGER);
 
-  // Admin và Project Manager luôn có quyền xem
-  if (projectRole === ROLES.ADMIN || projectRole === ROLES.PROJECT_MANAGER) {
-    console.log("User is Admin or Project Manager - Access granted");
+  // Admin luôn có quyền xem, bất kể projectRole có giá trị gì
+  if (projectRole === ROLES.ADMIN) {
+    console.log("User is Admin - Full access granted");
+    return true;
+  }
+
+  // Project manager có tất cả quyền liên quan đến sprint
+  if (projectRole === ROLES.PROJECT_MANAGER) {
+    console.log("User is Project Manager - Access granted");
     return true;
   }
 
@@ -139,36 +145,44 @@ export const getSprints = async (req, res) => {
     console.log("=== DEBUG getSprints Controller ===");
     console.log("ProjectId:", projectId);
     console.log("UserId:", req.user.id);
+    console.log("User Role:", req.user.role);
+    console.log("Project Role:", req.projectRole);
     
-    // Lấy thông tin project và kiểm tra quyền
-    const project = await Project.findById(projectId);
-    if (!project) {
-      return res.status(404).json({
-        success: false,
-        message: "Dự án không tồn tại",
-      });
-    }
+    // Kiểm tra nếu user là admin
+    const isSystemAdmin = req.user.role === ROLES.ADMIN || req.projectRole === ROLES.ADMIN;
+    
+    // Nếu là admin, có thể truy cập tất cả sprint mà không cần kiểm tra quyền dự án
+    if (!isSystemAdmin) {
+      // Lấy thông tin project và kiểm tra quyền
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Dự án không tồn tại",
+        });
+      }
 
-    // Tìm role của user trong project
-    const member = project.members.find(
-      (m) => m.user.toString() === req.user.id.toString()
-    );
-    const isOwner = project.owner.toString() === req.user.id.toString();
-    const projectRole = member ? member.role : null;
+      // Tìm role của user trong project
+      const member = project.members.find(
+        (m) => m.user.toString() === req.user.id.toString()
+      );
+      const isOwner = project.owner.toString() === req.user.id.toString();
+      const projectRole = member ? member.role : null;
 
-    console.log("Project Role:", projectRole);
-    console.log("Is Owner:", isOwner);
+      console.log("Project Role:", projectRole);
+      console.log("Is Owner:", isOwner);
 
-    // Kiểm tra quyền truy cập
-    const isAdminOrManager =
-      projectRole === ROLES.ADMIN ||
-      projectRole === ROLES.PROJECT_MANAGER ||
-      isOwner;
-    if (!member && !isOwner) {
-      return res.status(403).json({
-        success: false,
-        message: "Bạn không có quyền truy cập dự án này",
-      });
+      // Kiểm tra quyền truy cập
+      const isAdminOrManager =
+        projectRole === ROLES.ADMIN ||
+        projectRole === ROLES.PROJECT_MANAGER ||
+        isOwner;
+      if (!member && !isOwner) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền truy cập dự án này",
+        });
+      }
     }
 
     // Lấy danh sách sprint
@@ -185,7 +199,7 @@ export const getSprints = async (req, res) => {
 
     // Admin, Project Manager và Owner có thể xem tất cả sprint
     // Member chỉ có thể xem những sprint mà họ là thành viên
-    const filteredSprints = isAdminOrManager
+    const filteredSprints = isSystemAdmin || req.projectRole === 'owner' || req.projectRole === ROLES.PROJECT_MANAGER
       ? sprints
       : sprints.filter((sprint) =>
           sprint.members.some(
@@ -240,6 +254,10 @@ export const getSprintById = async (req, res) => {
     console.log("User Role:", req.user.role);
     console.log("ProjectRole từ middleware:", req.projectRole);
 
+    // Kiểm tra nếu user là admin
+    const isSystemAdmin = req.user.role === ROLES.ADMIN || req.projectRole === ROLES.ADMIN;
+
+    // Tìm sprint và populate thông tin cơ bản
     const sprint = await Sprint.findOne({ _id: sprintId, project: projectId })
       .populate("project", "name")
       .populate("createdBy", "name email avatar")
@@ -259,38 +277,44 @@ export const getSprintById = async (req, res) => {
       memberCount: sprint.members?.length || 0,
     });
 
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id);
-    if (error) {
-      console.log("Project Permission Error:", error);
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
+    // Kiểm tra quyền truy cập dự án - bỏ qua nếu là admin
+    if (!isSystemAdmin) {
+      const { error } = await checkProjectPermission(projectId, req.user.id);
+      if (error) {
+        console.log("Project Permission Error:", error);
+        return res.status(403).json({
+          success: false,
+          message: error,
+        });
+      }
     }
 
     console.log("Đã vượt qua kiểm tra quyền dự án");
     console.log("Quyền truy cập hợp lệ, tiếp tục lấy tasks");
 
-    // Nếu người dùng có quyền truy cập dự án, họ có thể xem tất cả sprint của dự án
-    // Lấy danh sách task của sprint
+    // Lấy danh sách task của sprint với đầy đủ thông tin
     const tasks = await Task.find({ sprint: sprint._id })
-      .populate("assignees", "name")
+      .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
+      .populate("parent", "title status")
+      .populate("subtasks", "title status progress")
       .sort({ createdAt: -1 });
 
     console.log("Tasks found:", tasks.length);
+    console.log("Tasks details:", tasks.map(t => ({ id: t._id, title: t.title, status: t.status })));
     console.log("=== END DEBUG getSprintById ===\n");
 
+    // Trả về sprint và tasks đầy đủ
     res.json({
       success: true,
       data: {
         ...sprint.toObject(),
         tasks,
       },
+      message: "Lấy thông tin sprint thành công",
     });
   } catch (error) {
-    console.error("Lỗi khi lấy thông tin sprint:", error);
+    console.error("Error in getSprintById:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi lấy thông tin sprint",
@@ -612,14 +636,19 @@ export const deleteSprint = async (req, res) => {
     // Store sprint name for notification
     const sprintName = sprint.name;
     
+    // Find all tasks in the sprint to get their IDs for audit/logs
+    const tasksInSprint = await Task.find({ sprint: sprintId });
+    const taskIds = tasksInSprint.map(task => task._id);
+    const taskTitles = tasksInSprint.map(task => task.title);
+    
+    console.log(`Sẽ xóa ${tasksInSprint.length} tasks thuộc sprint "${sprintName}"`);
+    
+    // Delete all tasks in the sprint
+    const deleteTasksResult = await Task.deleteMany({ sprint: sprintId });
+    console.log("Kết quả xóa tasks:", deleteTasksResult);
+    
     // Delete the sprint
     await Sprint.deleteOne({ _id: sprintId });
-    
-    // Remove sprint reference from all tasks
-    await Task.updateMany(
-      { sprint: sprintId },
-      { $unset: { sprint: "" } }
-    );
     
     // Prepare members array for notification (all project members and owner)
     const membersToNotify = [
@@ -632,16 +661,24 @@ export const deleteSprint = async (req, res) => {
       await createNotification({
         userId,
         type: "project_milestone",
-        message: `Sprint "${sprintName}" đã bị xóa khỏi dự án ${project.name}`,
+        message: `Sprint "${sprintName}" đã bị xóa khỏi dự án ${project.name}. ${tasksInSprint.length} công việc đã bị xóa.`,
         link: `/projects/${projectId}`,
         projectId,
         senderId: req.user.id,
       });
     }
 
+    // Log sprint and task deletion for audit
+    console.log(`Sprint "${sprintName}" (${sprintId}) và ${tasksInSprint.length} tasks đã bị xóa bởi user ${req.user.id}`);
+
     res.json({
       success: true,
-      message: "Xóa sprint thành công",
+      message: `Xóa sprint thành công, đã xóa ${tasksInSprint.length} công việc liên quan`,
+      deletedTasks: {
+        count: tasksInSprint.length,
+        ids: taskIds,
+        titles: taskTitles
+      }
     });
   } catch (error) {
     console.error("Error in deleteSprint:", error);
@@ -815,14 +852,25 @@ export const removeTaskFromSprint = async (req, res) => {
 export const getSprintMembers = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
-
-    // Kiểm tra quyền truy cập dự án
-    const { error } = await checkProjectPermission(projectId, req.user.id);
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
+    console.log("=== DEBUG getSprintMembers ===");
+    console.log("ProjectId:", projectId);
+    console.log("SprintId:", sprintId);
+    console.log("UserId:", req.user.id);
+    console.log("User Role:", req.user.role);
+    
+    // Kiểm tra nếu user là admin hệ thống
+    const isSystemAdmin = req.user.role === ROLES.ADMIN;
+    
+    // Bỏ qua kiểm tra quyền dự án nếu là admin
+    if (!isSystemAdmin) {
+      // Kiểm tra quyền truy cập dự án
+      const { error } = await checkProjectPermission(projectId, req.user.id);
+      if (error) {
+        return res.status(403).json({
+          success: false,
+          message: error,
+        });
+      }
     }
 
     // Kiểm tra xem sprint có tồn tại không
@@ -839,6 +887,9 @@ export const getSprintMembers = async (req, res) => {
       "members.user",
       "name email avatar"
     );
+    
+    console.log("Sprint Members found:", sprintWithMembers.members?.length || 0);
+    console.log("=== END DEBUG getSprintMembers ===");
 
     res.json({
       success: true,
@@ -860,6 +911,15 @@ export const addMemberToSprint = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
     const { userId, role } = req.body;
+    console.log("=== DEBUG addMemberToSprint ===");
+    console.log("ProjectId:", projectId);
+    console.log("SprintId:", sprintId);
+    console.log("UserId to add:", userId);
+    console.log("User making request:", req.user.id);
+    console.log("User Role:", req.user.role);
+    
+    // Kiểm tra nếu user là admin hệ thống
+    const isSystemAdmin = req.user.role === ROLES.ADMIN;
 
     // Check if user exists
     const user = await User.findById(userId);
@@ -879,17 +939,20 @@ export const addMemberToSprint = async (req, res) => {
       });
     }
 
-    // Check if user is a member of the project
-    const isProjectMember = project.members.some(
-      (member) => member.user.toString() === userId
-    );
-    const isProjectOwner = project.owner.toString() === userId;
+    // Nếu không phải admin, kiểm tra thành viên dự án
+    if (!isSystemAdmin) {
+      // Check if user is a member of the project
+      const isProjectMember = project.members.some(
+        (member) => member.user.toString() === userId
+      );
+      const isProjectOwner = project.owner.toString() === userId;
 
-    if (!isProjectMember && !isProjectOwner) {
-      return res.status(400).json({
-        success: false,
-        message: "Người dùng không phải là thành viên của dự án",
-      });
+      if (!isProjectMember && !isProjectOwner) {
+        return res.status(400).json({
+          success: false,
+          message: "Người dùng không phải là thành viên của dự án",
+        });
+      }
     }
 
     // Check if sprint exists
@@ -916,34 +979,39 @@ export const addMemberToSprint = async (req, res) => {
     sprint.members.push({
       user: userId,
       role: role || "member", // Default role is 'member'
+      addedAt: new Date(),
+      addedBy: req.user.id
     });
 
     await sprint.save();
     
-    // Get existing sprint members for notification
+    // Get updated sprint members for notification
     const sprintWithMembers = await Sprint.findById(sprintId)
       .populate("members.user", "_id name");
-      
-    // Prepare list of members for notification (excluding the newly added member)
-    const existingMembers = sprintWithMembers.members
-      .filter(member => member.user._id.toString() !== userId)
-      .map(member => member.user._id);
     
-    // Notify the added member
+    console.log("Member added successfully, total members:", sprintWithMembers.members.length);
+    console.log("=== END DEBUG addMemberToSprint ===");
+    
+    // Tìm tất cả thành viên khác của sprint để thông báo
+    const otherMembers = sprintWithMembers.members
+      .filter(m => m.user._id.toString() !== userId)
+      .map(m => m.user._id);
+    
+    // Tạo thông báo cho người được thêm vào
     await createNotification({
       userId,
-      type: "project_role",
+      type: "sprint_added",
       message: `Bạn đã được thêm vào sprint "${sprint.name}" trong dự án ${project.name}`,
       link: `/projects/${projectId}/sprints/${sprintId}`,
       projectId,
       senderId: req.user.id,
     });
     
-    // Notify existing members
-    for (const memberId of existingMembers) {
+    // Tạo thông báo cho các thành viên khác
+    for (const memberId of otherMembers) {
       await createNotification({
         userId: memberId,
-        type: "project_milestone",
+        type: "sprint_member_added",
         message: `${user.name} đã được thêm vào sprint "${sprint.name}"`,
         link: `/projects/${projectId}/sprints/${sprintId}`,
         projectId,
@@ -954,9 +1022,12 @@ export const addMemberToSprint = async (req, res) => {
     res.json({
       success: true,
       message: "Thêm thành viên vào sprint thành công",
+      data: {
+        members: sprintWithMembers.members,
+      },
     });
   } catch (error) {
-    console.error("Error in addMemberToSprint:", error);
+    console.error("Lỗi khi thêm thành viên vào sprint:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi thêm thành viên vào sprint",
@@ -970,6 +1041,15 @@ export const removeMemberFromSprint = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
     const { userId } = req.body;
+    console.log("=== DEBUG removeMemberFromSprint ===");
+    console.log("ProjectId:", projectId);
+    console.log("SprintId:", sprintId);
+    console.log("UserId to remove:", userId);
+    console.log("User making request:", req.user.id);
+    console.log("User Role:", req.user.role);
+    
+    // Kiểm tra nếu user là admin hệ thống
+    const isSystemAdmin = req.user.role === ROLES.ADMIN;
 
     // Check if user exists
     const user = await User.findById(userId);
@@ -1006,7 +1086,7 @@ export const removeMemberFromSprint = async (req, res) => {
 
     // Get project details
     const project = await Project.findById(projectId);
-    const projectName = project.name;
+    const projectName = project ? project.name : 'Dự án';
     
     // Get all sprint members before removing the user
     const otherSprintMembers = sprint.members
@@ -1019,34 +1099,43 @@ export const removeMemberFromSprint = async (req, res) => {
     );
     await sprint.save();
     
+    console.log("Member removed successfully, remaining members:", sprint.members.length);
+    console.log("=== END DEBUG removeMemberFromSprint ===");
+    
     // Notify the removed member
     await createNotification({
       userId,
-      type: "project_removed",
+      type: "sprint_removed",
       message: `Bạn đã bị xóa khỏi sprint "${sprintName}" trong dự án ${projectName}`,
       link: `/projects/${projectId}`,
       projectId,
       senderId: req.user.id,
     });
     
-    // Notify other sprint members
+    // Notify other members
     for (const memberId of otherSprintMembers) {
       await createNotification({
         userId: memberId,
-        type: "project_milestone",
+        type: "sprint_member_removed",
         message: `${userName} đã bị xóa khỏi sprint "${sprintName}"`,
         link: `/projects/${projectId}/sprints/${sprintId}`,
         projectId,
-        senderId: req.user.id,
+        senderId: req.user.id
       });
     }
 
     res.json({
       success: true,
       message: "Xóa thành viên khỏi sprint thành công",
+      data: {
+        removedUser: {
+          _id: userId,
+          name: userName
+        }
+      }
     });
   } catch (error) {
-    console.error("Error in removeMemberFromSprint:", error);
+    console.error("Lỗi khi xóa thành viên khỏi sprint:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi khi xóa thành viên khỏi sprint",
@@ -1059,17 +1148,40 @@ export const removeMemberFromSprint = async (req, res) => {
 export const getAvailableUsersForSprint = async (req, res) => {
   try {
     const { projectId, sprintId } = req.params;
-
-    // Kiểm tra quyền truy cập dự án
-    const { project, error } = await checkProjectPermission(
-      projectId,
-      req.user.id
-    );
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
+    console.log("=== DEBUG getAvailableUsersForSprint ===");
+    console.log("ProjectId:", projectId);
+    console.log("SprintId:", sprintId);
+    console.log("UserId:", req.user.id);
+    console.log("User Role:", req.user.role);
+    
+    // Kiểm tra nếu user là admin hệ thống
+    const isSystemAdmin = req.user.role === ROLES.ADMIN;
+    let project;
+    
+    // Bỏ qua kiểm tra quyền dự án nếu là admin
+    if (isSystemAdmin) {
+      project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message: "Dự án không tồn tại",
+        });
+      }
+    } else {
+      // Kiểm tra quyền truy cập dự án cho người dùng không phải admin
+      const projectInfo = await checkProjectPermission(
+        projectId,
+        req.user.id
+      );
+      
+      if (projectInfo.error) {
+        return res.status(403).json({
+          success: false,
+          message: projectInfo.error,
+        });
+      }
+      
+      project = projectInfo.project;
     }
 
     // Kiểm tra xem sprint có tồn tại không
@@ -1103,6 +1215,9 @@ export const getAvailableUsersForSprint = async (req, res) => {
           };
         })
     );
+    
+    console.log("Available users found:", availableUsers.length);
+    console.log("=== END DEBUG getAvailableUsersForSprint ===");
 
     res.json({
       success: true,
@@ -1128,62 +1243,84 @@ export const getUserSprints = async (req, res) => {
     const userId = req.user.id;
     console.log("=== DEBUG getUserSprints Controller ===");
     console.log("UserId:", userId);
-
-    // Tìm tất cả sprint mà người dùng là thành viên
-    const memberSprints = await Sprint.find({
-      "members.user": userId
-    })
-    .populate("project", "name description avatar avatarBase64")
-    .populate("createdBy", "name email avatar")
-    .sort({ startDate: 1 });
-
-    console.log("Found Member Sprints:", memberSprints.length);
-
-    // Tìm tất cả dự án mà người dùng tham gia với vai trò owner, admin hoặc project manager
-    const userProjects = await Project.find({
-      $or: [
-        { owner: userId },
-        { "members.user": userId, "members.role": { $in: [ROLES.ADMIN, ROLES.PROJECT_MANAGER] } }
-      ]
-    }).select("_id");
-
-    console.log("Found User Projects:", userProjects.length);
-    const projectIds = userProjects.map(p => p._id);
-
-    // Tìm tất cả sprint trong các dự án mà người dùng có quyền admin/manager
-    const managerSprints = await Sprint.find({
-      project: { $in: projectIds },
-      "members.user": { $ne: userId } // Lấy các sprint mà người dùng chưa là thành viên
-    })
-    .populate("project", "name description avatar avatarBase64")
-    .populate("createdBy", "name email avatar")
-    .sort({ startDate: 1 });
-
-    console.log("Found Manager Sprints:", managerSprints.length);
-
-    // Kết hợp 2 danh sách và loại bỏ trùng lặp
+    console.log("User Role:", req.user.role);
+    
+    let allSprints = [];
     const allSprintIds = new Set();
-    const allSprints = [];
-
-    memberSprints.forEach(sprint => {
-      if (!allSprintIds.has(sprint._id.toString())) {
+    
+    // Nếu là admin, lấy tất cả sprint trong hệ thống
+    if (req.user.role === ROLES.ADMIN) {
+      console.log("User is ADMIN, fetching all sprints in system");
+      
+      const adminSprints = await Sprint.find({})
+        .populate("project", "name description avatar avatarBase64")
+        .populate("createdBy", "name email avatar")
+        .sort({ startDate: 1 });
+        
+      console.log("Found Admin Sprints:", adminSprints.length);
+      
+      adminSprints.forEach(sprint => {
         allSprintIds.add(sprint._id.toString());
         allSprints.push({
           ...sprint.toObject(),
-          userRole: "member"
+          userRole: "admin"
         });
-      }
-    });
+      });
+    } 
+    else {
+      // Tìm tất cả sprint mà người dùng là thành viên
+      const memberSprints = await Sprint.find({
+        "members.user": userId
+      })
+      .populate("project", "name description avatar avatarBase64")
+      .populate("createdBy", "name email avatar")
+      .sort({ startDate: 1 });
 
-    managerSprints.forEach(sprint => {
-      if (!allSprintIds.has(sprint._id.toString())) {
-        allSprintIds.add(sprint._id.toString());
-        allSprints.push({
-          ...sprint.toObject(),
-          userRole: "manager"
-        });
-      }
-    });
+      console.log("Found Member Sprints:", memberSprints.length);
+
+      // Tìm tất cả dự án mà người dùng tham gia với vai trò owner, admin hoặc project manager
+      const userProjects = await Project.find({
+        $or: [
+          { owner: userId },
+          { "members.user": userId, "members.role": { $in: [ROLES.ADMIN, ROLES.PROJECT_MANAGER] } }
+        ]
+      }).select("_id");
+
+      console.log("Found User Projects:", userProjects.length);
+      const projectIds = userProjects.map(p => p._id);
+
+      // Tìm tất cả sprint trong các dự án mà người dùng có quyền admin/manager
+      const managerSprints = await Sprint.find({
+        project: { $in: projectIds },
+        "members.user": { $ne: userId } // Lấy các sprint mà người dùng chưa là thành viên
+      })
+      .populate("project", "name description avatar avatarBase64")
+      .populate("createdBy", "name email avatar")
+      .sort({ startDate: 1 });
+
+      console.log("Found Manager Sprints:", managerSprints.length);
+
+      // Kết hợp 2 danh sách và loại bỏ trùng lặp
+      memberSprints.forEach(sprint => {
+        if (!allSprintIds.has(sprint._id.toString())) {
+          allSprintIds.add(sprint._id.toString());
+          allSprints.push({
+            ...sprint.toObject(),
+            userRole: "member"
+          });
+        }
+      });
+
+      managerSprints.forEach(sprint => {
+        if (!allSprintIds.has(sprint._id.toString())) {
+          allSprintIds.add(sprint._id.toString());
+          allSprints.push({
+            ...sprint.toObject(),
+            userRole: "manager"
+          });
+        }
+      });
+    }
 
     // Thêm số lượng task cho mỗi sprint
     const sprintsWithTaskCount = await Promise.all(

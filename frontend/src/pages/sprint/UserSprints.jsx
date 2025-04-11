@@ -249,7 +249,8 @@ const AllSprints = () => {
                               ? (sprint.taskCount?.completed / sprint.taskCount?.total) * 100
                               : 0
                           }
-                          sx={{ height: 6, borderRadius: 3 }}
+                          color={sprint.taskCount?.completed === sprint.taskCount?.total ? "success" : "primary"}
+                          sx={{ height: 5, borderRadius: 5 }}
                         />
                       </Box>
                       

@@ -9,7 +9,8 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon --config nodemon.json src/app.js",
+    "dev": "nodemon --config nodemon.json src/app.js --env-file=.env.development",
+    "dev:prod": "nodemon --config nodemon.json src/app.js --env-file=.env.production",
     "test": "jest",
     "lint": "eslint ."
   },

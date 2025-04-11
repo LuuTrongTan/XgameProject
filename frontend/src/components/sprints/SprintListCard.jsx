@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   Typography,
+  LinearProgress,
 } from "@mui/material";
 import { getSprints } from "../../api/sprintApi";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -155,6 +156,33 @@ const SprintListCard = ({ projectId }) => {
                       Ngày kết thúc:{" "}
                       {new Date(sprint.endDate).toLocaleDateString()}
                     </Typography>
+                  </Box>
+                  
+                  {/* Hiển thị tiến độ sprint */}
+                  <Box mt={2}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Tiến độ sprint
+                    </Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                      <Typography variant="caption" color="text.secondary">
+                        {sprint.taskCount?.completed || 0}/{sprint.taskCount?.total || 0} task
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {sprint.taskCount?.total > 0 
+                          ? Math.round((sprint.taskCount.completed / sprint.taskCount.total) * 100)
+                          : 0}%
+                      </Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={sprint.taskCount?.total > 0 
+                        ? (sprint.taskCount.completed / sprint.taskCount.total) * 100
+                        : 0}
+                      color={sprint.taskCount?.completed === sprint.taskCount?.total && sprint.taskCount?.total > 0 
+                        ? "success" 
+                        : "primary"}
+                      sx={{ height: 6, borderRadius: 3 }}
+                    />
                   </Box>
                 </CardContent>
               </Card>

@@ -8,6 +8,7 @@ import Box from "@mui/material/Box";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Dashboard from "./pages/Dashboard";
+import Reports from "./pages/Reports";
 import Projects from "./pages/projects/Projects";
 import ProjectDetails from "./pages/projects/ProjectDetails";
 import Tasks from "./pages/task/Tasks";
@@ -19,6 +20,10 @@ import Calendar from "./pages/Calendar";
 import SprintList from "./pages/sprint/SprintList";
 import SprintDetail from "./pages/sprint/SprintDetail";
 import NotificationsPage from "./pages/notifications/NotificationsPage";
+
+// Admin pages
+import UserManagement from "./pages/admin/UserManagement";
+import RoleManagement from "./pages/admin/RoleManagement";
 
 const LoadingSpinner = () => (
   <Box
@@ -33,6 +38,25 @@ const LoadingSpinner = () => (
   </Box>
 );
 
+// Protected route component
+const ProtectedRoute = ({ children, requireAdmin = false }) => {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  if (requireAdmin && user.role !== "admin") {
+    return <Navigate to="/dashboard" />;
+  }
+
+  return children;
+};
+
 const App = () => {
   const { user, loading } = useAuth();
 
@@ -43,6 +67,7 @@ const App = () => {
       children: [
         { path: "", element: <Dashboard /> },
         { path: "dashboard", element: <Dashboard /> },
+        { path: "reports", element: <Reports /> },
         { path: "calendar", element: <Calendar /> },
         { path: "projects", element: <Projects /> },
         { path: "projects/:projectId", element: <ProjectDetails /> },
@@ -65,6 +90,29 @@ const App = () => {
     {
       path: "/register",
       element: user ? <Navigate to="/" /> : <Register />,
+    },
+    // Admin routes
+    {
+      path: "/admin",
+      element: (
+        <ProtectedRoute requireAdmin>
+          <Layout />
+        </ProtectedRoute>
+      ),
+      children: [
+        {
+          path: "",
+          element: <Navigate to="users" />,
+        },
+        {
+          path: "users",
+          element: <UserManagement />,
+        },
+        {
+          path: "roles",
+          element: <RoleManagement />,
+        },
+      ],
     },
   ]);
 

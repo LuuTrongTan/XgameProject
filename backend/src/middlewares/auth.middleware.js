@@ -1,5 +1,15 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
+import { ROLES } from "../config/constants.js";
+
+// Helper function to check if a user is an admin
+export const isAdmin = (user) => {
+  return (
+    user.role === ROLES.ADMIN ||
+    user.role === 'admin' ||
+    (user.roles && (user.roles.includes('admin') || user.roles.includes(ROLES.ADMIN)))
+  );
+};
 
 export const protect = async (req, res, next) => {
   try {
@@ -95,8 +105,9 @@ export const admin = (req, res, next) => {
     });
   }
 
-  // Kiểm tra nếu user có vai trò admin hoặc có admin trong roles array
-  if (req.user.role === "admin" || (req.user.roles && req.user.roles.includes("admin"))) {
+  // Kiểm tra kỹ nếu user có vai trò admin sử dụng helper function
+  if (isAdmin(req.user)) {
+    console.log("Admin access granted for protected route");
     return next();
   }
 
@@ -117,7 +128,7 @@ export const checkPermission = (permission) => {
       }
 
       // Admin có tất cả quyền
-      if (req.user.role === "admin") {
+      if (isAdmin(req.user)) {
         return next();
       }
 
@@ -135,7 +146,8 @@ export const checkPermission = (permission) => {
       console.error("Permission check error:", error);
       return res.status(500).json({
         success: false,
-        message: "Lỗi kiểm tra quyền",
+        message: "Lỗi khi kiểm tra quyền",
+        error: error.message,
       });
     }
   };

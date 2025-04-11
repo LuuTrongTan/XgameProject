@@ -3,7 +3,7 @@ import { refreshToken, logout } from "../utils/auth";
 
 // Thiết lập instance của Axios
 const API = axios.create({
-  baseURL: "/api", // Tất cả api call sẽ có prefix là /api
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5002/api", // Update fallback to include full backend URL
   headers: {
     "Content-Type": "application/json",
   },

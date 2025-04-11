@@ -62,6 +62,7 @@ import SprintFormDialog from "../../components/sprints/SprintFormDialog";
 import MemberSelection from "../../components/common/MemberSelection";
 import MemberItem from "../../components/common/MemberItem";
 import ProjectMemberSelector from "../../components/projects/ProjectMemberSelector";
+import ProjectForm from "../../components/projects/ProjectForm";
 
 const ProjectDetails = () => {
   const { projectId } = useParams();
@@ -101,18 +102,9 @@ const ProjectDetails = () => {
     role: ROLES.MEMBER,
     method: "direct", // "direct" or "email"
   });
-  const [editForm, setEditForm] = useState({
-    name: "",
-    description: "",
-    status: "",
-  });
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [editFormErrors, setEditFormErrors] = useState({
-    name: "",
-    description: "",
-  });
 
   // Kiểm tra xác thực khi mount và khi thay đổi user
   useEffect(() => {
@@ -143,11 +135,6 @@ const ProjectDetails = () => {
       const response = await getProjectById(projectId);
       if (response?.success && response?.data) {
         setProject(response.data);
-        setEditForm({
-          name: response.data.name,
-          description: response.data.description,
-          status: response.data.status || "Active",
-        });
         setMembers(response.data.members);
       }
     } catch (err) {
@@ -184,7 +171,7 @@ const ProjectDetails = () => {
     }
   };
 
-  const handleEditProject = async () => {
+  const handleEditProject = async (projectData) => {
     try {
       if (!canEditProject(project)) {
         enqueueSnackbar("Bạn không có quyền chỉnh sửa dự án này", {
@@ -195,12 +182,8 @@ const ProjectDetails = () => {
         return;
       }
 
-      // Validate form trước khi submit
-      if (!validateEditForm()) {
-        return;
-      }
-
-      const response = await updateProject(projectId, editForm);
+      setLoading(true);
+      const response = await updateProject(projectId, projectData);
       if (response?.success) {
         setProject(response.data);
         setEditDialogOpen(false);
@@ -218,6 +201,8 @@ const ProjectDetails = () => {
           autoHideDuration: 5000,
         }
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -580,39 +565,6 @@ const ProjectDetails = () => {
     });
   };
 
-  // Validate dữ liệu form chỉnh sửa
-  const validateEditForm = () => {
-    const newErrors = {};
-    let isValid = true;
-    
-    // Validate name (3-100 ký tự)
-    if (!editForm.name) {
-      newErrors.name = "Tên dự án là bắt buộc";
-      isValid = false;
-    } else if (editForm.name.trim().length < 3) {
-      newErrors.name = "Tên dự án phải có ít nhất 3 ký tự";
-      isValid = false;
-    } else if (editForm.name.trim().length > 100) {
-      newErrors.name = "Tên dự án không được quá 100 ký tự";
-      isValid = false;
-    }
-    
-    // Validate description (5-2000 ký tự)
-    if (!editForm.description) {
-      newErrors.description = "Mô tả dự án là bắt buộc";
-      isValid = false;
-    } else if (editForm.description.trim().length < 5) {
-      newErrors.description = "Mô tả dự án phải có ít nhất 5 ký tự";
-      isValid = false;
-    } else if (editForm.description.trim().length > 2000) {
-      newErrors.description = "Mô tả dự án không được quá 2000 ký tự";
-      isValid = false;
-    }
-    
-    setEditFormErrors(newErrors);
-    return isValid;
-  };
-
   if (authLoading || loading) {
     return (
       <Box
@@ -738,6 +690,7 @@ const ProjectDetails = () => {
                   variant="outlined"
                   color="success"
                   onClick={() => setRestoreDialogOpen(true)}
+                  disabled={!canArchiveProject(project)}
                 >
                   Khôi phục
                 </Button>
@@ -755,6 +708,7 @@ const ProjectDetails = () => {
                   variant="outlined"
                   color="warning"
                   onClick={() => setArchiveDialogOpen(true)}
+                  disabled={!canArchiveProject(project)}
                 >
                   Lưu trữ
                 </Button>
@@ -1044,73 +998,14 @@ const ProjectDetails = () => {
           <Dialog
             open={editDialogOpen}
             onClose={() => setEditDialogOpen(false)}
-            maxWidth="sm"
+            maxWidth="md"
             fullWidth
           >
-            <DialogTitle>Chỉnh sửa dự án</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} sx={{ mt: 2 }}>
-                <TextField
-                  label="Tên dự án"
-                  fullWidth
-                  value={editForm.name}
-                  onChange={(e) => {
-                    setEditForm({ ...editForm, name: e.target.value });
-                    // Xóa lỗi khi người dùng nhập
-                    if (editFormErrors.name) {
-                      setEditFormErrors(prev => ({
-                        ...prev,
-                        name: ""
-                      }));
-                    }
-                  }}
-                  error={Boolean(editFormErrors.name)}
-                  helperText={editFormErrors.name}
-                />
-                <TextField
-                  label="Mô tả"
-                  fullWidth
-                  multiline
-                  rows={4}
-                  value={editForm.description}
-                  onChange={(e) => {
-                    setEditForm({ ...editForm, description: e.target.value });
-                    // Xóa lỗi khi người dùng nhập
-                    if (editFormErrors.description) {
-                      setEditFormErrors(prev => ({
-                        ...prev,
-                        description: ""
-                      }));
-                    }
-                  }}
-                  error={Boolean(editFormErrors.description)}
-                  helperText={editFormErrors.description}
-                />
-                <TextField
-                  select
-                  label="Trạng thái"
-                  fullWidth
-                  value={editForm.status}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, status: e.target.value })
-                  }
-                >
-                  <MenuItem value="Đang hoạt động">Đang hoạt động</MenuItem>
-                  <MenuItem value="Hoàn thành">Hoàn thành</MenuItem>
-                  <MenuItem value="Đóng">Đóng</MenuItem>
-                </TextField>
-              </Stack>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setEditDialogOpen(false)}>Hủy</Button>
-              <Button
-                variant="contained"
-                onClick={handleEditProject}
-                disabled={!canEditProject(project) || loading}
-              >
-                {loading ? <CircularProgress size={24} /> : "Lưu thay đổi"}
-              </Button>
-            </DialogActions>
+            <ProjectForm
+              project={project}
+              onSubmit={handleEditProject}
+              onCancel={() => setEditDialogOpen(false)}
+            />
           </Dialog>
 
           {/* Delete Dialog */}

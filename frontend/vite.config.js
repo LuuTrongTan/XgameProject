@@ -18,8 +18,10 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true,
+        rewrite: (path) => path,
       },
     },
+    cors: true
   },
   optimizeDeps: {
     include: ["react-chartjs-2", "chart.js", "@hello-pangea/dnd"],

@@ -99,6 +99,13 @@ const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
       // Gán comments là một mảng rỗng nếu có lỗi
       task.comments = [];
     }
+    
+    // Kiểm tra người dùng có vai trò admin
+    const user = await User.findById(userId).select("role");
+    if (user && user.role === ROLES.ADMIN) {
+      console.log("Admin access granted for task:", taskId);
+      return { task };
+    }
 
     const project = task.project;
     if (!project) return { error: "Dự án không tồn tại" };

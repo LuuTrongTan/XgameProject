@@ -14,22 +14,44 @@ export const getSprints = async (projectId) => {
 
   try {
     const response = await api.get(`/projects/${projectId}/sprints`);
+    if (DEBUG) {
+      console.log('Response data:', response.data);
+    }
     return response.data;
   } catch (error) {
     console.error('Error in getSprints:', error);
     console.error('Error response:', error.response?.data);
-    throw error;
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Không thể lấy danh sách sprints',
+      error: error.message
+    };
   }
 };
 
 // Lấy chi tiết sprint
 export const getSprintById = async (projectId, sprintId) => {
+  if (DEBUG) {
+    console.log('=== DEBUG getSprintById API Call ===');
+    console.log(`Calling GET /projects/${projectId}/sprints/${sprintId}`);
+  }
+
   try {
     const response = await api.get(`/projects/${projectId}/sprints/${sprintId}`);
+    
+    if (DEBUG) {
+      console.log('Response data:', response.data);
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error in getSprintById:', error);
-    throw error;
+    console.error('Error response:', error.response?.data);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Không thể lấy thông tin sprint',
+      error: error.message
+    };
   }
 };
 
@@ -187,6 +209,34 @@ export const getAvailableUsersForSprint = async (projectId, sprintId) => {
       data: null,
       message:
         error.response?.data?.message || "Không thể lấy danh sách người dùng",
+    };
+  }
+};
+
+// Lấy tất cả sprint của người dùng hiện tại
+export const getUserSprints = async () => {
+  if (DEBUG) {
+    console.log('=== DEBUG getUserSprints API Call ===');
+    console.log(`Calling GET /me/sprints`);
+  }
+  
+  try {
+    const response = await api.get(`/me/sprints`);
+    
+    if (DEBUG) {
+      console.log('Response success:', response.data.success);
+      console.log('Response data count:', response.data.data?.length || 0);
+      console.log('First sprint task count:', response.data.data?.[0]?.taskCount);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error in getUserSprints:', error);
+    console.error('Error response:', error.response?.data);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Không thể lấy danh sách sprint',
+      error: error.message
     };
   }
 };

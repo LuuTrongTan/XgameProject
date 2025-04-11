@@ -23,6 +23,7 @@ import {
   Timer as TimerIcon,
   Refresh as RefreshIcon,
   BugReport as BugReportIcon,
+  BarChart as ChartIcon,
 } from "@mui/icons-material";
 import { Line } from "react-chartjs-2";
 import {
@@ -43,6 +44,7 @@ import ProjectProgress from "../components/Dashboard/ProjectProgress";
 import TaskOverview from "../components/Dashboard/TaskOverview";
 import ActivityLog from "../components/Dashboard/ActivityLog";
 import MyTasks from "../components/Dashboard/MyTasks";
+import { Link } from "react-router-dom";
 
 // Đăng ký các components cần thiết cho Chart.js
 ChartJS.register(
@@ -370,7 +372,17 @@ const Dashboard = () => {
             Chào mừng bạn quay trở lại với hệ thống quản lý.
           </Typography>
         </Box>
-        <Box>
+        <Box display="flex" alignItems="center">
+          <Button 
+            component={Link} 
+            to="/reports" 
+            startIcon={<ChartIcon />}
+            variant="outlined"
+            color="primary"
+            sx={{ mr: 2 }}
+          >
+            Báo cáo chi tiết
+          </Button>
           <IconButton 
             color="secondary"
             onClick={toggleDebugMode}
@@ -480,80 +492,6 @@ const Dashboard = () => {
           <ProjectProgress projects={projectsProgress} />
         </Grid>
         
-        {/* Sprint Statistics */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Thống kê Sprint
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Tổng số Sprint
-                  </Typography>
-                  <Typography variant="h4">{stats.totalSprints}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Sprint đang lập kế hoạch
-                  </Typography>
-                  <Typography variant="h4">{stats.planningSprints}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Sprint đang hoạt động
-                  </Typography>
-                  <Typography variant="h4">{stats.activeSprints}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Sprint đã hoàn thành
-                  </Typography>
-                  <Typography variant="h4">{stats.completedSprints}</Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        {/* Task Statistics */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Thống kê công việc
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Tổng công việc
-                  </Typography>
-                  <Typography variant="h4">{stats.totalTasks}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Công việc đang thực hiện
-                  </Typography>
-                  <Typography variant="h4">{stats.inProgressTasks}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Công việc đang chờ
-                  </Typography>
-                  <Typography variant="h4">{stats.pendingTasks}</Typography>
-                </Grid>
-                <Grid item xs={6} md={3}>
-                  <Typography variant="subtitle2" color="textSecondary">
-                    Công việc đã hoàn thành
-                  </Typography>
-                  <Typography variant="h4">{stats.completedTasks}</Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-
         {/* My Tasks */}
         <Grid item xs={12} md={6}>
           <MyTasks tasks={assignedTasks} />

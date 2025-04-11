@@ -26,6 +26,12 @@ const setProjectRole = async (req, res, next) => {
     const { projectId } = req.params;
     const userId = req.user.id;
 
+    // Kiểm tra nếu là admin từ user role
+    if (req.user.role === ROLES.ADMIN) {
+      req.projectRole = ROLES.ADMIN;
+      return next();
+    }
+
     // Tìm project
     const project = await Project.findById(projectId);
     if (!project) {

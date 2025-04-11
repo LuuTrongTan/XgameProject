@@ -357,6 +357,15 @@ const ProjectSprints = () => {
     }
   };
 
+  // Helper để tính tiến độ thời gian
+  const calculateProgress = (startDate, endDate) => {
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime();
+    const now = new Date().getTime();
+    const progress = ((now - start) / (end - start)) * 100;
+    return Math.min(Math.max(progress, 0), 100);
+  };
+
   // Hiển thị loading
   if (loading) {
     return (
@@ -456,125 +465,164 @@ const ProjectSprints = () => {
           </Tooltip>
         </Card>
       ) : (
-        <Grid container spacing={3}>
+        <Grid container spacing={2} sx={{ mt: 2 }}>
           {sprints.map((sprint) => (
-            <Grid item xs={12} md={6} lg={4} key={sprint._id}>
+            <Grid item xs={12} sm={6} md={4} key={sprint._id}>
               <Card
                 sx={{
-                  height: "100%",
                   cursor: "pointer",
-                  transition: "transform 0.2s, box-shadow 0.2s",
+                  transition: "all 0.3s",
                   "&:hover": {
+                    boxShadow: 6,
                     transform: "translateY(-4px)",
-                    boxShadow: 3,
                   },
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "100%",
                 }}
-                onClick={() => handleViewSprintTasks(sprint._id)}
+                onClick={() => navigate(`/projects/${projectId}/sprints/${sprint._id}`)}
               >
-                <CardContent>
+                <CardContent
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    flexGrow: 1,
+                  }}
+                >
+                  {/* Header with status */}
                   <Box
-                    display="flex"
-                    justifyContent="space-between"
-                    alignItems="flex-start"
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 2,
+                    }}
                   >
-                    <Typography variant="h6" gutterBottom>
-                      {sprint.name}
-                    </Typography>
+                    <Chip
+                      label={getStatusLabel(sprint.status)}
+                      color={getStatusColor(sprint.status)}
+                      size="small"
+                    />
                     <Box>
-                      <Chip
-                        label={getStatusLabel(sprint.status)}
-                        size="small"
-                        sx={{
-                          bgcolor: getStatusColor(sprint.status).bg,
-                          color: getStatusColor(sprint.status).color,
-                          fontWeight: 500,
-                        }}
-                      />
+                      <Tooltip title="Chỉnh sửa">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditDialog(sprint);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Xóa">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDeleteDialog(sprint);
+                          }}
+                          color="error"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
                   </Box>
 
+                  {/* Sprint name */}
+                  <Typography variant="h6" gutterBottom>
+                    {sprint.name}
+                  </Typography>
+
+                  {/* Description */}
                   <Typography
                     variant="body2"
                     color="text.secondary"
-                    mb={2}
                     sx={{
+                      mb: 2,
                       display: "-webkit-box",
                       WebkitLineClamp: 3,
                       WebkitBoxOrient: "vertical",
                       overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      height: "60px",
                     }}
                   >
                     {sprint.description}
                   </Typography>
 
-                  <Box display="flex" alignItems="center" mb={1}>
+                  {/* Date range */}
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                     <CalendarIcon
                       fontSize="small"
-                      color="action"
-                      sx={{ mr: 1 }}
+                      sx={{ mr: 1, color: "text.secondary" }}
                     />
                     <Typography variant="body2" color="text.secondary">
-                      {formatDate(sprint.startDate)} -{" "}
-                      {formatDate(sprint.endDate)}
+                      {formatDate(sprint.startDate)} - {formatDate(sprint.endDate)}
                     </Typography>
                   </Box>
 
-                  <Divider sx={{ my: 1.5 }} />
-
-                  <Box mb={1.5}>
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      mb={0.5}
-                    >
-                      <Typography variant="body2">Tiến độ công việc</Typography>
-                      <Typography variant="body2" fontWeight="medium">
-                        {sprint.taskCount?.completed || 0}/
-                        {sprint.taskCount?.total || 0}
-                      </Typography>
+                  <Box sx={{ mt: "auto" }}>
+                    <Divider sx={{ my: 1 }} />
+                    
+                    {/* Tiến độ thời gian */}
+                    <Box sx={{ mb: 2 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          mb: 0.5,
+                        }}
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          Tiến độ thời gian
+                        </Typography>
+                        <Typography variant="body2" fontWeight="medium">
+                          {calculateProgress(sprint.startDate, sprint.endDate)}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={calculateProgress(sprint.startDate, sprint.endDate)}
+                        sx={{ height: 6, borderRadius: 3 }}
+                      />
                     </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={
-                        sprint.taskCount?.total
-                          ? (sprint.taskCount.completed /
-                              sprint.taskCount.total) *
-                            100
-                          : 0
-                      }
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                  </Box>
-
-                  <Divider sx={{ mb: 1.5 }} />
-
-                  <Box display="flex" justifyContent="flex-end">
-                    {canEditProject(project) && (
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenEditDialog(sprint);
+                    
+                    {/* Tiến độ công việc */}
+                    <Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          mb: 0.5,
                         }}
                       >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    )}
-
-                    {canDeleteProject(project) && (
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDeleteDialog(sprint);
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    )}
+                        <Typography variant="body2" color="text.secondary">
+                          Tiến độ sprint
+                        </Typography>
+                        <Typography variant="body2" fontWeight="medium">
+                          {sprint.taskCount?.total > 0
+                            ? Math.round((sprint.taskCount.completed / sprint.taskCount.total) * 100)
+                            : 0}%
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {sprint.taskCount?.completed || 0}/{sprint.taskCount?.total || 0} task hoàn thành
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={
+                          sprint.taskCount?.total > 0
+                            ? (sprint.taskCount.completed / sprint.taskCount.total) * 100
+                            : 0
+                        }
+                        color={sprint.taskCount?.completed === sprint.taskCount?.total && sprint.taskCount?.total > 0 ? "success" : "primary"}
+                        sx={{ height: 6, borderRadius: 3 }}
+                      />
+                    </Box>
                   </Box>
                 </CardContent>
               </Card>

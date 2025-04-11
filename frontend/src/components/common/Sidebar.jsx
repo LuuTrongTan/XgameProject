@@ -24,8 +24,12 @@ import {
   Notifications as NotificationIcon,
   History as HistoryIcon,
   CalendarMonth as CalendarIcon,
+  AdminPanelSettings as AdminIcon,
+  BarChart as ReportIcon,
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
+import { ROLES } from "../../config/constants";
 
 // Cấu hình kích thước cố định
 const NAVBAR_HEIGHT = 64; // Chiều cao của navbar
@@ -42,6 +46,7 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { user } = useAuth();
 
   // Kiểm tra route hiện tại
   const isActive = (path) => {
@@ -71,6 +76,26 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
                 <DashboardIcon />
               </ListItemIcon>
               <ListItemText primary="Dashboard" />
+            </ListItemButton>
+          </ListItem>
+
+          {/* Menu Reports */}
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                navigate("/reports");
+                if (isMobile) onDrawerToggle();
+              }}
+              selected={isActive("/reports")}
+              sx={{
+                borderRadius: 1,
+                mx: 1,
+              }}
+            >
+              <ListItemIcon>
+                <ReportIcon />
+              </ListItemIcon>
+              <ListItemText primary="Báo cáo & Thống kê" />
             </ListItemButton>
           </ListItem>
 
@@ -115,6 +140,31 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
           </ListItem>
 
           <Divider sx={{ my: 1, bgcolor: "rgba(255, 255, 255, 0.12)" }} />
+
+          {/* Admin Menu - only visible for admins */}
+          {user?.role === ROLES.ADMIN && (
+            <>
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => {
+                    navigate("/admin/users");
+                    if (isMobile) onDrawerToggle();
+                  }}
+                  selected={location.pathname.startsWith("/admin")}
+                  sx={{
+                    borderRadius: 1,
+                    mx: 1,
+                  }}
+                >
+                  <ListItemIcon>
+                    <AdminIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Quản trị hệ thống" />
+                </ListItemButton>
+              </ListItem>
+              <Divider sx={{ my: 1, bgcolor: "rgba(255, 255, 255, 0.12)" }} />
+            </>
+          )}
 
           {/* Menu Notifications */}
           <ListItem disablePadding>

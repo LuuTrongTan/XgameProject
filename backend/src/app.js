@@ -42,7 +42,24 @@ const port = process.env.PORT || 5002;
 // Enable CORS for all routes
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: function(origin, callback) {
+      // Allow both production and all local origins
+      const allowedOrigins = [
+        process.env.FRONTEND_URL, 
+        "http://localhost:5173", 
+        "http://localhost:3001", 
+        "http://127.0.0.1:5173", 
+        "http://127.0.0.1:3001"
+      ];
+      
+      // If no origin (like mobile app or Postman) or origin is in whitelist
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("Blocked by CORS:", origin);
+        callback(null, false);
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [

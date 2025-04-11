@@ -4,12 +4,13 @@ import Timelog from "../models/timelog.model.js";
 import User from "../models/user.model.js";
 import Sprint from "../models/sprint.model.js";
 import Activity from "../models/activity.model.js";
+import { isAdmin } from "../middlewares/auth.middleware.js";
 
 // 📌 1. Lấy tổng quan cho admin
 export const getAdminDashboard = async (req, res) => {
   try {
     // Kiểm tra quyền admin
-    if (!req.user.roles.includes("Admin")) {
+    if (!isAdmin(req.user)) {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền truy cập dashboard admin",
@@ -379,77 +380,104 @@ export const getDashboardData = async (req, res) => {
   try {
     const userId = req.user.id;
     // Kiểm tra roles trước khi truy cập để tránh lỗi
-    const userRole = req.user.roles && Array.isArray(req.user.roles) && req.user.roles.length > 0 
+    const userRole = req.user.role || (req.user.roles && Array.isArray(req.user.roles) && req.user.roles.length > 0 
       ? req.user.roles[0] 
-      : 'user'; // Giá trị mặc định nếu không có roles
+      : 'user'); // Giá trị mặc định nếu không có roles
+    
+    const isAdminUser = userRole === 'admin';
+    
+    console.log("=== DEBUG getDashboardData ===");
+    console.log("UserId:", userId);
+    console.log("User Role:", userRole);
+    console.log("Is Admin?:", isAdminUser);
 
-    // Thống kê dự án
+    // Thống kê dự án - Admin thấy tất cả dự án, người dùng khác chỉ thấy dự án liên quan
+    let projectFilter = isAdminUser 
+      ? {} 
+      : { $or: [{ owner: userId }, { "members.user": userId }] };
+    
     const projectStats = {
-      total: await Project.countDocuments({
-        $or: [{ owner: userId }, { "members.user": userId }]
-      }),
+      total: await Project.countDocuments(projectFilter),
       active: await Project.countDocuments({
-        $or: [{ owner: userId }, { "members.user": userId }],
+        ...projectFilter,
         status: "Đang hoạt động"
       }),
       completed: await Project.countDocuments({
-        $or: [{ owner: userId }, { "members.user": userId }],
+        ...projectFilter,
         status: "Hoàn thành"
       }),
       closed: await Project.countDocuments({
-        $or: [{ owner: userId }, { "members.user": userId }],
+        ...projectFilter,
         status: "Đóng"
       }),
       archived: await Project.countDocuments({
-        $or: [{ owner: userId }, { "members.user": userId }],
+        ...projectFilter,
         isArchived: true
       })
     };
+    
+    console.log("Project Stats:", projectStats);
 
-    // Thống kê công việc
+    // Thống kê công việc - Admin thấy tất cả task, người dùng khác chỉ thấy task được gán
+    let taskFilter = isAdminUser 
+      ? {} 
+      : { assignees: userId };
+    
     const taskStats = {
-      total: await Task.countDocuments({ assignees: userId }),
+      total: await Task.countDocuments(taskFilter),
       completed: await Task.countDocuments({
-        assignees: userId,
+        ...taskFilter,
         status: "done"
       }),
       inProgress: await Task.countDocuments({
-        assignees: userId,
+        ...taskFilter,
         status: "inProgress"
       }),
       pending: await Task.countDocuments({
-        assignees: userId,
+        ...taskFilter,
         status: "todo"
       }),
       highPriority: await Task.countDocuments({
-        assignees: userId,
+        ...taskFilter,
         priority: { $in: ["high", "urgent"] }
       }),
       overdue: await Task.countDocuments({
-        assignees: userId,
+        ...taskFilter,
         status: { $ne: "done" },
         dueDate: { $lt: new Date() }
       })
     };
+    
+    console.log("Task Stats:", taskStats);
+
+    // Lấy các projectIds dựa trên quyền
+    let projectIds = [];
+    if (isAdminUser) {
+      projectIds = await Project.find().distinct('_id');
+    } else {
+      projectIds = await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id');
+    }
 
     // Thống kê Sprint
     const sprintStats = {
       total: await Sprint.countDocuments({
-        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') }
+        project: { $in: projectIds }
       }),
       active: await Sprint.countDocuments({
-        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        project: { $in: projectIds },
         status: "active"
       }),
       planning: await Sprint.countDocuments({
-        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        project: { $in: projectIds },
         status: "planning"
       }),
       completed: await Sprint.countDocuments({
-        project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') },
+        project: { $in: projectIds },
         status: "completed"
       })
     };
+    
+    console.log("Sprint Stats:", sprintStats);
 
     // Dữ liệu cho biểu đồ thời gian làm việc
     const today = new Date();
@@ -459,11 +487,14 @@ export const getDashboardData = async (req, res) => {
     // Truy vấn timelogs một cách an toàn
     let timeChartData = [];
     try {
+      // Admin xem tổng thống kê thời gian của tất cả người dùng, người dùng thường chỉ xem của mình
+      const timelogFilter = isAdminUser ? {} : { user: userId };
+      
       // Sử dụng startTime thay vì date để phù hợp với model
       timeChartData = await Timelog.aggregate([
         {
           $match: {
-            user: userId,
+            ...timelogFilter,
             startTime: { $gte: startOfWeek, $lte: today }
           }
         },
@@ -489,14 +520,17 @@ export const getDashboardData = async (req, res) => {
         hours: dayData ? dayData.totalHours : 0
       };
     });
+    
+    console.log("Time Chart Data:", formattedTimeData);
 
     // Lấy dự án active
     let activeProject = null;
     try {
+      // Admin lấy dự án active mới nhất, người dùng lấy dự án liên quan
       activeProject = await Project.findOne({
-        $or: [{ owner: userId }, { "members.user": userId }],
+        ...(isAdminUser ? {} : { $or: [{ owner: userId }, { "members.user": userId }] }),
         status: "Đang hoạt động"
-      });
+      }).sort("-updatedAt");
     } catch (projectError) {
       console.error("Error fetching active project:", projectError);
     }
@@ -530,36 +564,38 @@ export const getDashboardData = async (req, res) => {
       }
     }
 
-    // Lấy tiến độ của các dự án
+    // Lấy tiến độ của các dự án - Admin thấy dự án mới nhất, người dùng thấy dự án liên quan
     const projectsProgress = await Project.find({
-      $or: [{ owner: userId }, { "members.user": userId }],
+      ...(isAdminUser ? {} : { $or: [{ owner: userId }, { "members.user": userId }] }),
       isArchived: false
     })
     .select("name status progress")
     .sort("-updatedAt")
     .limit(5);
+    
+    console.log("Projects Progress count:", projectsProgress.length);
 
-    // Lấy các hoạt động gần đây
-    const recentActivities = await Activity.find({
-      $or: [
-        { project: { $in: await Project.find({ $or: [{ owner: userId }, { "members.user": userId }] }).distinct('_id') } },
-        { user: userId }
-      ]
-    })
-    .populate("user", "name avatar")
-    .populate("project", "name")
-    .sort("-createdAt")
-    .limit(10);
-
-    // Lấy các công việc được giao cho user
-    const assignedTasks = await Task.find({ 
-      assignees: userId,
-      status: { $ne: "done" } 
-    })
-    .select("title status priority dueDate project")
-    .populate("project", "name")
-    .sort("dueDate")
-    .limit(8);
+    // Lấy các hoạt động gần đây - Admin thấy tất cả, người dùng thấy hoạt động liên quan
+    let activityFilter;
+    if (isAdminUser) {
+      activityFilter = {};
+    } else {
+      activityFilter = {
+        $or: [
+          { project: { $in: projectIds } },
+          { user: userId }
+        ]
+      };
+    }
+    
+    const recentActivities = await Activity.find(activityFilter)
+      .populate("user", "name avatar")
+      .populate("project", "name")
+      .sort("-createdAt")
+      .limit(10);
+    
+    console.log("Recent Activities count:", recentActivities.length);
+    console.log("=== END DEBUG getDashboardData ===");
 
     res.json({
       success: true,
@@ -568,24 +604,31 @@ export const getDashboardData = async (req, res) => {
         taskStats,
         sprintStats,
         timeChartData: formattedTimeData,
-        projectsProgress,
-        recentActivities,
-        assignedTasks,
         activeProject: activeProject ? {
-          id: projectId,
-          name: activeProject.name
+          _id: activeProject._id,
+          name: activeProject.name,
+          status: activeProject.status,
+          progress: activeProject.progress
         } : null,
         activeSprint: activeSprint ? {
-          id: sprintId,
-          name: activeSprint.name
-        } : null
-      }
+          _id: activeSprint._id,
+          name: activeSprint.name,
+          status: activeSprint.status,
+          startDate: activeSprint.startDate,
+          endDate: activeSprint.endDate
+        } : null,
+        projectsProgress,
+        recentActivities,
+        projectId,
+        sprintId
+      },
+      message: "Lấy dữ liệu dashboard thành công"
     });
   } catch (error) {
-    console.error('Error in getDashboardData:', error);
+    console.error("Error in getDashboardData:", error);
     res.status(500).json({
       success: false,
-      message: 'Lỗi khi lấy dữ liệu dashboard',
+      message: "Lỗi khi lấy dữ liệu dashboard",
       error: error.message
     });
   }

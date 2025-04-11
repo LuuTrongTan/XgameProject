@@ -542,13 +542,13 @@ const SprintList = () => {
                         </Typography>
                         <LinearProgress 
                           variant="determinate" 
-                          value={sprint.tasks && sprint.tasks.length > 0 ? calculateTaskProgress(sprint.tasks) : 0} 
+                          value={sprint.taskCount?.total > 0 ? (sprint.taskCount.completed / sprint.taskCount.total) * 100 : 0} 
                           color="success"
                           sx={{ height: 8, borderRadius: 4, mb: 0.5 }}
                         />
                         <Typography variant="caption" color="text.secondary" align="right" display="block">
-                          {sprint.tasks && sprint.tasks.length > 0 ? 
-                            `${calculateTaskProgress(sprint.tasks)}% (${sprint.tasks.filter(task => task.status === 'done').length}/${sprint.tasks.length})` : 
+                          {sprint.taskCount?.total > 0 ? 
+                            `${Math.round((sprint.taskCount.completed / sprint.taskCount.total) * 100)}% (${sprint.taskCount.completed}/${sprint.taskCount.total})` : 
                             '0% (0/0)'}
                         </Typography>
                       </Box>

@@ -100,6 +100,26 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
     resetPasswordExpires: Date,
+    receiveAllNotifications: {
+      type: Boolean,
+      default: false,
+    },
+    canAccessAllProjects: {
+      type: Boolean,
+      default: false,
+    },
+    canAccessAllSprints: {
+      type: Boolean,
+      default: false,
+    },
+    canAccessAllTasks: {
+      type: Boolean,
+      default: false,
+    },
+    canManageUsers: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -150,7 +170,15 @@ userSchema.pre("save", function (next) {
   // Set default permissions based on role
   switch (this.role) {
     case ROLES.ADMIN:
+      // Admin có tất cả quyền trong hệ thống, không giới hạn
       this.permissions = Object.values(PERMISSIONS);
+      
+      // Đảm bảo nhận mọi thông báo và truy cập tất cả tính năng
+      this.receiveAllNotifications = true;
+      this.canAccessAllProjects = true;
+      this.canAccessAllSprints = true;
+      this.canAccessAllTasks = true;
+      this.canManageUsers = true;
       break;
     case ROLES.PROJECT_MANAGER:
       this.permissions = [
