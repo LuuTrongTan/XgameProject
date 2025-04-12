@@ -26,6 +26,19 @@ import {
   CalendarMonth as CalendarIcon,
   AdminPanelSettings as AdminIcon,
   BarChart as ReportIcon,
+  Assignment as AssignmentIcon,
+  ListAlt as ListAltIcon,
+  Group as GroupIcon,
+  Settings as SettingsIcon,
+  Folder as FolderIcon,
+  CalendarToday as CalendarTodayIcon,
+  AccountCircle as AccountCircleIcon,
+  Notifications as NotificationsIcon,
+  SupervisorAccount as SupervisorAccountIcon,
+  Assessment as AssessmentIcon,
+  Logout as LogoutIcon,
+  MoreVert as MoreVertIcon,
+  ExpandMore as ExpandMoreIcon,
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -186,6 +199,26 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
             </ListItemButton>
           </ListItem>
 
+          {/* Menu Calendar Settings */}
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                navigate("/settings/calendar");
+                if (isMobile) onDrawerToggle();
+              }}
+              selected={isActive("/settings/calendar")}
+              sx={{
+                borderRadius: 1,
+                mx: 1,
+              }}
+            >
+              <ListItemIcon>
+                <SettingsIcon />
+              </ListItemIcon>
+              <ListItemText primary="Cài đặt lịch" />
+            </ListItemButton>
+          </ListItem>
+
           {/* Menu History */}
           <ListItem disablePadding>
             <ListItemButton
@@ -197,6 +230,16 @@ const Sidebar = ({ mobileOpen, desktopOpen, onDrawerToggle, width }) => {
               sx={{
                 borderRadius: 1,
                 mx: 1,
+                transition: 'all 0.2s',
+                '&.Mui-selected': {
+                  bgcolor: 'primary.light',
+                  '& .MuiListItemIcon-root': {
+                    color: 'primary.main',
+                  },
+                  '&:hover': {
+                    bgcolor: 'primary.light',
+                  },
+                },
               }}
             >
               <ListItemIcon>

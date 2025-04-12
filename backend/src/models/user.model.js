@@ -61,6 +61,8 @@ const userSchema = new mongoose.Schema(
     avatarBase64: {
       type: String,
       default: null,
+      // Store up to 2MB base64 string max (matches controller validation)
+      maxlength: 2 * 1024 * 1024
     },
     position: {
       type: String,
@@ -120,6 +122,44 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    calendarIntegration: {
+      googleCalendar: {
+        connected: {
+          type: Boolean,
+          default: false
+        },
+        refreshToken: {
+          type: String,
+          default: null
+        },
+        accessToken: {
+          type: String,
+          default: null
+        },
+        expiryDate: {
+          type: Date,
+          default: null
+        }
+      },
+      outlookCalendar: {
+        connected: {
+          type: Boolean,
+          default: false
+        },
+        refreshToken: {
+          type: String,
+          default: null
+        },
+        accessToken: {
+          type: String,
+          default: null
+        },
+        expiryDate: {
+          type: Date,
+          default: null
+        }
+      }
+    },
   },
   {
     timestamps: true,
@@ -137,6 +177,16 @@ userSchema.virtual("assignedTasks", {
   ref: "Task",
   localField: "_id",
   foreignField: "assignees",
+});
+
+// Checks before saving
+userSchema.pre("save", function(next) {
+  // Make sure avatarBase64 doesn't exceed max size
+  if (this.avatarBase64 && this.avatarBase64.length > 2 * 1024 * 1024) {
+    console.warn("Avatar too large, setting to null", this._id);
+    this.avatarBase64 = null;
+  }
+  next();
 });
 
 // Hash password before saving

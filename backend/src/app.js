@@ -22,7 +22,7 @@ import authRoutes from "./routes/auth.routes.js";
 import projectRoutes from "./routes/project.routes.js";
 import taskRoutes from "./routes/task.routes.js";
 import commentRoutes from "./routes/comment.routes.js";
-import notificationsRoutes from "./routes/notifications.routes.js";
+import notificationsRoutes from "./routes/notification.routes.js";
 import searchRoutes from "./routes/search.routes.js";
 import timelogsRoutes from "./routes/timelogs.routes.js";
 import reportRoutes from "./routes/report.routes.js";
@@ -33,6 +33,7 @@ import sprintRoutes from "./routes/sprint.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import activityRoutes from "./routes/activity.routes.js";
+import historyRoutes from "./routes/history.routes.js";
 import connectDB from "./config/database.js";
 import taskHistoryRoutes from "./routes/taskHistoryRoutes.js";
 
@@ -245,18 +246,22 @@ app.use(
 app.use("/api/auth", authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api", taskRoutes);
+app.use("/api", sprintRoutes);
 app.use("/api", commentRoutes);
+app.use("/api/tasks", taskRoutes);
+app.use("/api/comments", commentRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/timelogs", timelogsRoutes);
 app.use("/api/reports", reportRoutes);
-app.use("/api/uploads", uploadRoutes);
+app.use("/api/upload", uploadRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/settings", settingsRoutes);
-app.use("/api", sprintRoutes);
+app.use("/api/sprints", sprintRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/activities", activityRoutes);
+app.use("/api/history", historyRoutes);
 app.use('/api', taskHistoryRoutes);
 
 // API test file để kiểm tra nội dung file và quyền truy cập

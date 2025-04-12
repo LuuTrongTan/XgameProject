@@ -545,6 +545,9 @@ const Reports = () => {
         grid: {
           color: alpha(theme.palette.text.primary, 0.05),
           drawBorder: false,
+        },
+        ticks: {
+          precision: 1
         }
       },
       x: {

@@ -1,4 +1,5 @@
 import Activity from "../models/activity.model.js";
+import { isAdmin } from "../middlewares/auth.middleware.js";
 
 /**
  * @desc    Create a new activity
@@ -7,40 +8,42 @@ import Activity from "../models/activity.model.js";
  */
 export const createActivity = async (req, res) => {
   try {
-    const { type, action, title, description, project, task, sprint, metadata } = req.body;
+    const { type, action, title, description, projectId, taskId, sprintId, metadata } = req.body;
     
-    // Validate input
-    if (!type || !action || !title) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Thiếu thông tin bắt buộc" 
-      });
-    }
-    
-    // Tạo activity mới
-    const activity = await Activity.create({
+    const activity = new Activity({
       type,
       action,
       title,
       description,
-      user: req.user._id,
-      project,
-      task,
-      sprint,
+      user: req.user.id,
+      project: projectId,
+      task: taskId,
+      sprint: sprintId,
       metadata
     });
     
-    // Trả về kết quả thành công
+    await activity.save();
+    
+    // Emit socket event
+    const eventTarget = taskId ? `task:${taskId}` : 
+                       projectId ? `project:${projectId}` : 
+                       sprintId ? `sprint:${sprintId}` : null;
+    
+    if (eventTarget) {
+      global.io.to(eventTarget).emit('activity', { activity });
+    }
+    
     res.status(201).json({
       success: true,
-      message: "Activity logged successfully",
-      data: activity
+      data: activity,
+      message: 'Hoạt động đã được ghi lại'
     });
   } catch (error) {
-    console.error("Error creating activity:", error);
-    res.status(500).json({ 
+    console.error('Error in createActivity:', error);
+    res.status(500).json({
       success: false,
-      message: "Lỗi server khi tạo hoạt động" 
+      message: 'Lỗi khi tạo hoạt động',
+      error: error.message
     });
   }
 };
@@ -52,34 +55,44 @@ export const createActivity = async (req, res) => {
  */
 export const getRecentActivities = async (req, res) => {
   try {
-    const { limit = 20, project, task, sprint } = req.query;
+    const { limit = 50, userId, projectId, taskId, sprintId } = req.query;
+
+    // Xây dựng query filter
+    const filter = {};
     
-    // Xây dựng query
-    const query = { user: req.user._id };
+    // Nếu có userId và người dùng là admin hoặc đang xem hoạt động của chính mình
+    if (userId && (isAdmin(req.user) || userId === req.user.id)) {
+      filter.user = userId;
+    } else if (!isAdmin(req.user)) {
+      // Nếu không phải admin, chỉ xem hoạt động của mình
+      filter.user = req.user.id;
+    }
     
-    // Thêm các điều kiện lọc nếu có
-    if (project) query.project = project;
-    if (task) query.task = task;
-    if (sprint) query.sprint = sprint;
+    // Filter theo project, task hoặc sprint nếu có
+    if (projectId) filter.project = projectId;
+    if (taskId) filter.task = taskId;
+    if (sprintId) filter.sprint = sprintId;
     
-    // Lấy danh sách activities
-    const activities = await Activity.find(query)
+    const activities = await Activity.find(filter)
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .populate("user", "name email avatar")
-      .populate("project", "name")
-      .populate("task", "title")
-      .populate("sprint", "name");
+      .populate('user', 'name avatar')
+      .populate('project', 'name')
+      .populate('task', 'title')
+      .populate('sprint', 'name')
+      .lean();
     
     res.json({
       success: true,
-      data: activities
+      data: activities,
+      message: 'Lấy danh sách hoạt động thành công'
     });
   } catch (error) {
-    console.error("Error fetching activities:", error);
-    res.status(500).json({ 
+    console.error('Error in getRecentActivities:', error);
+    res.status(500).json({
       success: false,
-      message: "Lỗi server khi lấy hoạt động gần đây" 
+      message: 'Lỗi khi lấy hoạt động gần đây',
+      error: error.message
     });
   }
 }; 

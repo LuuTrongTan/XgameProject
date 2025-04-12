@@ -372,8 +372,8 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    // Update password
-    user.password = await bcrypt.hash(newPassword, 12);
+    // Update password - không hash ở đây, để pre-save hook trong model xử lý
+    user.password = newPassword;
     await user.save();
 
     res.json({
@@ -436,7 +436,6 @@ export const forgotPassword = async (req, res) => {
 };
 
 // Đặt lại mật khẩu
-
 export const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
@@ -485,8 +484,8 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Hash mật khẩu mới
-    user.password = await bcrypt.hash(password, 12);
+    // Đặt mật khẩu mới - không hash ở đây, để pre-save hook xử lý
+    user.password = password;
 
     // Xóa token sau khi đặt lại mật khẩu
     user.resetPasswordToken = undefined;

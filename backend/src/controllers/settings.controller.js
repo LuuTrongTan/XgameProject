@@ -149,6 +149,34 @@ export const updateCalendarIntegration = async (req, res) => {
       });
     }
 
+    // Khởi tạo calendarIntegration nếu chưa tồn tại
+    if (!user.calendarIntegration) {
+      user.calendarIntegration = {
+        googleCalendar: {
+          connected: false,
+          refreshToken: null,
+          accessToken: null,
+          expiryDate: null
+        },
+        outlookCalendar: {
+          connected: false,
+          refreshToken: null,
+          accessToken: null,
+          expiryDate: null
+        }
+      };
+    }
+
+    // Khởi tạo provider nếu chưa tồn tại
+    if (!user.calendarIntegration[provider]) {
+      user.calendarIntegration[provider] = {
+        connected: false,
+        refreshToken: null,
+        accessToken: null,
+        expiryDate: null
+      };
+    }
+
     // Cập nhật thông tin tích hợp
     user.calendarIntegration[provider] = {
       connected: connected ?? user.calendarIntegration[provider].connected,
@@ -195,6 +223,34 @@ export const disconnectCalendar = async (req, res) => {
         success: false,
         message: "Provider không hợp lệ",
       });
+    }
+
+    // Khởi tạo calendarIntegration nếu chưa tồn tại
+    if (!user.calendarIntegration) {
+      user.calendarIntegration = {
+        googleCalendar: {
+          connected: false,
+          refreshToken: null,
+          accessToken: null,
+          expiryDate: null
+        },
+        outlookCalendar: {
+          connected: false,
+          refreshToken: null,
+          accessToken: null,
+          expiryDate: null
+        }
+      };
+    }
+
+    // Khởi tạo provider nếu chưa tồn tại
+    if (!user.calendarIntegration[provider]) {
+      user.calendarIntegration[provider] = {
+        connected: false,
+        refreshToken: null,
+        accessToken: null,
+        expiryDate: null
+      };
     }
 
     // Reset thông tin tích hợp

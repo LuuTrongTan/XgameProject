@@ -1,133 +1,297 @@
-import React from "react";
+import React, { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   List,
   ListItem,
-  ListItemAvatar,
   ListItemText,
+  ListItemAvatar,
   Avatar,
+  Chip,
   Divider,
+  useTheme,
+  alpha,
+  Paper,
+  Tooltip,
+  IconButton,
+  Button,
+  Menu,
+  MenuItem,
+  CircularProgress
 } from "@mui/material";
 import {
-  Add as AddIcon,
+  History as HistoryIcon,
+  Assignment as AssignmentIcon,
   Edit as EditIcon,
+  Add as AddIcon,
   Delete as DeleteIcon,
   CheckCircle as CheckCircleIcon,
-  Archive as ArchiveIcon,
-  Restore as RestoreIcon,
-  Person as PersonIcon,
   Comment as CommentIcon,
+  Person as PersonIcon,
+  Folder as FolderIcon,
+  Timeline as TimelineIcon,
+  ArrowForward as ArrowForwardIcon,
+  MoreVert as MoreVertIcon,
+  Refresh as RefreshIcon,
+  TaskAlt as TaskIcon,
+  SwapVert as SwapVertIcon,
+  AccessTime as TimeIcon,
+  Settings as SettingsIcon
 } from "@mui/icons-material";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, formatDistance } from "date-fns";
 import { vi } from "date-fns/locale";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
 /**
- * Hiển thị biểu tượng tương ứng với loại hoạt động
+ * Log hoạt động hiển thị trên Dashboard
  */
-const ActivityIcon = ({ action }) => {
-  switch (action) {
-    case "created":
-      return <AddIcon color="success" />;
-    case "updated":
-      return <EditIcon color="primary" />;
-    case "deleted":
-      return <DeleteIcon color="error" />;
-    case "completed":
-      return <CheckCircleIcon color="success" />;
-    case "archived":
-      return <ArchiveIcon color="warning" />;
-    case "restored":
-      return <RestoreIcon color="info" />;
-    case "assigned":
-      return <PersonIcon color="secondary" />;
-    case "commented":
-      return <CommentIcon color="primary" />;
-    default:
-      return <EditIcon color="primary" />;
-  }
-};
+const ActivityLog = ({ activities = [], onRefresh, loading = false }) => {
+  const navigate = useNavigate();
+  const [sortMenuAnchor, setSortMenuAnchor] = useState(null);
+  const [sortOrder, setSortOrder] = useState('newest');
 
-/**
- * Component hiển thị danh sách hoạt động gần đây
- */
-const ActivityLog = ({ activities = [] }) => {
-  if (!activities || activities.length === 0) {
-    return (
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Hoạt động gần đây
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Chưa có hoạt động nào gần đây
-          </Typography>
-        </CardContent>
-      </Card>
-    );
-  }
+  const handleOpenSortMenu = (event) => {
+    setSortMenuAnchor(event.currentTarget);
+  };
+
+  const handleCloseSortMenu = () => {
+    setSortMenuAnchor(null);
+  };
+
+  const handleSort = (order) => {
+    setSortOrder(order);
+    handleCloseSortMenu();
+  };
+
+  const getActivityIcon = (activity) => {
+    const iconStyle = { fontSize: 20 };
+    
+    switch (activity.type) {
+      case 'task':
+        return <TaskIcon color="primary" sx={iconStyle} />;
+      case 'comment':
+        return <CommentIcon color="secondary" sx={iconStyle} />;
+      case 'project':
+        return <AssignmentIcon color="success" sx={iconStyle} />;
+      case 'user':
+        return <PersonIcon color="warning" sx={iconStyle} />;
+      case 'system':
+        return <SettingsIcon color="error" sx={iconStyle} />;
+      default:
+        return <TimeIcon color="info" sx={iconStyle} />;
+    }
+  };
+
+  const getActionLabel = (action) => {
+    switch (action) {
+      case 'created':
+        return 'đã tạo';
+      case 'updated':
+        return 'đã cập nhật';
+      case 'deleted':
+        return 'đã xóa';
+      case 'completed':
+        return 'đã hoàn thành';
+      case 'archived':
+        return 'đã lưu trữ';
+      case 'restored':
+        return 'đã khôi phục';
+      case 'assigned':
+        return 'đã giao';
+      case 'commented':
+        return 'đã bình luận';
+      default:
+        return action;
+    }
+  };
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      return formatDistance(date, new Date(), { addSuffix: true, locale: vi });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
+  const handleActivityClick = (activity) => {
+    if (activity.link) {
+      navigate(activity.link);
+    } else if (activity.task) {
+      // Tìm task và đi đến trang task
+      if (activity.project) {
+        navigate(`/projects/${activity.project._id}/tasks?task=${activity.task._id}`);
+      }
+    } else if (activity.project && !activity.task) {
+      // Đi đến trang project
+      navigate(`/projects/${activity.project._id}`);
+    }
+  };
+
+  // Sort activities by date
+  const sortedActivities = [...activities].sort((a, b) => {
+    const dateA = new Date(a.createdAt);
+    const dateB = new Date(b.createdAt);
+    return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+  });
+
+  console.log("Activities in ActivityLog:", activities);
 
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Hoạt động gần đây
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h6" fontWeight="medium">
+          Hoạt động gần đây của bạn
         </Typography>
-        
-        <List sx={{ p: 0 }}>
-          {activities.map((activity, index) => (
+        <Box>
+          <Tooltip title="Sắp xếp">
+            <IconButton size="small" onClick={handleOpenSortMenu}>
+              <SwapVertIcon />
+            </IconButton>
+          </Tooltip>
+          {onRefresh && (
+            <Tooltip title="Làm mới">
+              <IconButton 
+                size="small" 
+                onClick={onRefresh}
+                disabled={loading}
+                sx={{ ml: 1 }}
+              >
+                {loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+              </IconButton>
+            </Tooltip>
+          )}
+          <Menu
+            anchorEl={sortMenuAnchor}
+            open={Boolean(sortMenuAnchor)}
+            onClose={handleCloseSortMenu}
+          >
+            <MenuItem 
+              selected={sortOrder === 'newest'} 
+              onClick={() => handleSort('newest')}
+            >
+              Mới nhất trước
+            </MenuItem>
+            <MenuItem 
+              selected={sortOrder === 'oldest'} 
+              onClick={() => handleSort('oldest')}
+            >
+              Cũ nhất trước
+            </MenuItem>
+          </Menu>
+        </Box>
+      </Box>
+      
+      {loading ? (
+        <Box display="flex" justifyContent="center" my={4}>
+          <CircularProgress />
+        </Box>
+      ) : sortedActivities.length > 0 ? (
+        <List disablePadding>
+          {sortedActivities.map((activity, index) => (
             <React.Fragment key={activity._id || index}>
-              <ListItem alignItems="flex-start" sx={{ px: 0 }}>
-                <ListItemAvatar>
+              <ListItem 
+                alignItems="flex-start" 
+                sx={{ 
+                  px: 1, 
+                  py: 1.5,
+                  cursor: activity.link || activity.task || activity.project ? 'pointer' : 'default',
+                  '&:hover': {
+                    bgcolor: activity.link || activity.task || activity.project ? 'action.hover' : 'transparent'
+                  }
+                }}
+                onClick={() => handleActivityClick(activity)}
+              >
+                <ListItemAvatar sx={{ minWidth: 40 }}>
                   <Avatar 
                     src={activity.user?.avatar} 
-                    alt={activity.user?.name} 
-                    sx={{ bgcolor: 'primary.main' }}
+                    alt={activity.user?.name || 'User Avatar'} 
+                    sx={{ width: 32, height: 32 }}
                   >
-                    {activity.user?.name?.charAt(0)}
+                    {!activity.user?.avatar && activity.user?.name ? activity.user.name[0] : 'U'}
                   </Avatar>
                 </ListItemAvatar>
                 <ListItemText
                   primary={
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <ActivityIcon action={activity.action} />
-                      <Typography variant="subtitle2" component="span">
-                        {activity.title}
+                    <Box display="flex" alignItems="center" flexWrap="wrap" mb={0.5}>
+                      <Typography
+                        variant="body2"
+                        fontWeight="medium"
+                        component="span"
+                        sx={{ mr: 1 }}
+                      >
+                        {activity.user?.name || 'Hệ thống'}
                       </Typography>
+                      <Typography variant="body2" component="span">
+                        {getActionLabel(activity.action)}
+                      </Typography>
+                      {activity.type && (
+                        <Chip
+                          icon={getActivityIcon(activity)}
+                          label={activity.title || activity.type}
+                          size="small"
+                          sx={{ ml: 1, height: 20, '& .MuiChip-label': { fontSize: '0.7rem' } }}
+                        />
+                      )}
                     </Box>
                   }
                   secondary={
-                    <React.Fragment>
+                    <>
+                      {activity.description && (
+                        <Typography variant="body2" component="span" display="block" mb={0.5}>
+                          {activity.description}
+                        </Typography>
+                      )}
                       <Typography
+                        variant="caption"
+                        color="textSecondary"
                         component="span"
-                        variant="body2"
-                        color="text.primary"
+                        display="flex"
+                        alignItems="center"
                       >
-                        {activity.description}
+                        <TimeIcon sx={{ fontSize: 14, mr: 0.5 }} />
+                        {formatDateTime(activity.createdAt)}
+                        {activity.project && (
+                          <>
+                            <FolderIcon sx={{ fontSize: 14, ml: 1, mr: 0.5 }} />
+                            {activity.project.name}
+                          </>
+                        )}
                       </Typography>
-                      <Box mt={0.5} display="flex" justifyContent="space-between">
-                        <Typography variant="caption" color="text.secondary">
-                          {activity.project?.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {activity.createdAt && formatDistanceToNow(new Date(activity.createdAt), {
-                            addSuffix: true,
-                            locale: vi
-                          })}
-                        </Typography>
-                      </Box>
-                    </React.Fragment>
+                    </>
                   }
                 />
               </ListItem>
-              {index < activities.length - 1 && <Divider />}
+              {index < sortedActivities.length - 1 && (
+                <Divider variant="inset" component="li" />
+              )}
             </React.Fragment>
           ))}
         </List>
-      </CardContent>
-    </Card>
+      ) : (
+        <Box 
+          display="flex" 
+          flexDirection="column" 
+          alignItems="center" 
+          justifyContent="center" 
+          py={5}
+          px={2}
+          textAlign="center"
+        >
+          <HistoryIcon color="disabled" sx={{ fontSize: 40, mb: 2, opacity: 0.5 }} />
+          <Typography variant="body1" color="textSecondary" gutterBottom>
+            Không có hoạt động nào được ghi nhận
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Các hoạt động của bạn như tạo task, dự án, bình luận sẽ xuất hiện ở đây
+          </Typography>
+        </Box>
+      )}
+    </Box>
   );
 };
 

@@ -6,6 +6,7 @@ import "./styles/dragDrop.css";
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import AdminViewProvider from './contexts/AdminViewContext';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { SnackbarProvider } from 'notistack';
 import { LocalizationProvider } from '@mui/x-date-pickers';
@@ -35,11 +36,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Router>
           <SnackbarProvider maxSnack={3}>
             <AuthProvider>
-              <WebSocketProvider>
-                <SocketProvider>
-                  <App />
-                </SocketProvider>
-              </WebSocketProvider>
+              <AdminViewProvider>
+                <WebSocketProvider>
+                  <SocketProvider>
+                    <App />
+                  </SocketProvider>
+                </WebSocketProvider>
+              </AdminViewProvider>
             </AuthProvider>
           </SnackbarProvider>
         </Router>

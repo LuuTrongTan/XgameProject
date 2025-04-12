@@ -169,6 +169,24 @@ const TaskSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    // Calendar synchronization fields
+    syncWithCalendar: {
+      type: Boolean,
+      default: false
+    },
+    calendarType: {
+      type: String,
+      enum: ['google', 'outlook', null],
+      default: null
+    },
+    googleCalendarEventId: {
+      type: String,
+      default: null
+    },
+    outlookCalendarEventId: {
+      type: String,
+      default: null
+    },
   },
   {
     timestamps: true,
@@ -215,6 +233,8 @@ TaskSchema.pre("save", async function (next) {
         (total, log) => total + (log.duration || 0),
         0
       );
+      
+      console.log(`[Task=${this._id}] Updating actualTime from timelogs. Current: ${this.actualTime}, From timelogs: ${timelogsTotal}`);
       
       if (this.isNew || !this.isModified("actualTime")) {
         this.actualTime = timelogsTotal;

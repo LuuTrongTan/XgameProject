@@ -9,6 +9,7 @@ import {
   resetPassword,
   changePassword,
 } from "../controllers/auth.controller.js";
+import { updateProfile, updateAvatar } from "../controllers/user.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
@@ -278,6 +279,73 @@ router.post("/resend-verification", resendVerification);
  *         description: Lỗi server
  */
 router.get("/me", protect, getMe);
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   put:
+ *     tags: [Auth]
+ *     summary: Cập nhật thông tin người dùng hiện tại
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               position:
+ *                 type: string
+ *               department:
+ *                 type: string
+ *               avatar:
+ *                 type: string
+ *                 format: base64
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       500:
+ *         description: Lỗi server
+ */
+router.put("/me", protect, updateProfile);
+
+/**
+ * @swagger
+ * /api/auth/me/avatar:
+ *   put:
+ *     tags: [Auth]
+ *     summary: Cập nhật avatar người dùng
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - avatar
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Cập nhật avatar thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       500:
+ *         description: Lỗi server
+ */
+router.put("/me/avatar", protect, updateAvatar);
 
 /**
  * @swagger

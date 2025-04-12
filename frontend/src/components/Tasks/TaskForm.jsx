@@ -51,6 +51,7 @@ import {
 } from "@mui/icons-material";
 import BackButton from "../common/BackButton";
 import { useWebSocket } from "../../contexts/WebSocketContext";
+import { Link as RouterLink } from "react-router-dom";
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -134,21 +135,24 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         assignees: task.assignees?.map((a) => a._id) || [],
         estimatedTime: task.estimatedTime || 0,
         actualTime: task.actualTime || 0,
-        project: task.project || projectId || project?._id,
-        sprint: task.sprint || sprintId || project?.currentSprint?._id,
+        project: typeof task.project === 'object' ? task.project._id : task.project || projectId || (project?._id ? project._id : project),
+        sprint: typeof task.sprint === 'object' ? task.sprint._id : task.sprint || sprintId || (project?.currentSprint?._id ? project.currentSprint._id : project?.currentSprint),
         tags: task.tags || [],
         syncWithCalendar: task.syncWithCalendar || false,
         calendarType: task.calendarType || "google",
       });
     } else {
       // Reset form when creating new task
-      const projectIdValue = projectId || project?._id;
+      const projectIdValue = typeof project === 'object' ? project._id : projectId || project;
+      const sprintIdValue = typeof project?.currentSprint === 'object' ? project.currentSprint._id : sprintId || project?.currentSprint;
       
       // Kiểm tra và log thông tin
-      console.log('[DEBUG] Reset form with project:', projectIdValue);
-      console.log('[DEBUG] Sprint information:', { 
-        providedSprintId: sprintId, 
-        currentProjectSprint: project?.currentSprint?._id 
+      console.log('[DEBUG] Reset form with values:', { 
+        projectIdValue,
+        sprintIdValue,
+        rawProjectId: projectId,
+        rawProject: project,
+        projectType: typeof project
       });
       
       if (!projectIdValue) {
@@ -166,7 +170,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         estimatedTime: 0,
         actualTime: 0,
         project: projectIdValue,
-        sprint: sprintId || project?.currentSprint?._id,
+        sprint: sprintIdValue,
         tags: [],
         syncWithCalendar: false,
         calendarType: "google",
@@ -205,27 +209,35 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
   }, [open, formData.project, formData.sprint]);
 
   const fetchUsers = async () => {
-    console.log('[DEBUG] fetchUsers CALLED', { sprintId: formData.sprint, projectId: formData.project });
-    
-    // Reset users - để tránh hiển thị dữ liệu cũ
-    setUsers([]);
-    
     try {
-      // Kiểm tra project ID
-      if (!formData.project) {
-        console.error('[ERROR] Missing project ID', { project: formData.project });
-        return; // Thoát sớm nếu thiếu thông tin
+      console.log('[DEBUG] Form data:', formData);
+      
+      // Improved extraction to ensure we always get string IDs, not objects
+      const projectId = formData.project?._id 
+        ? formData.project._id 
+        : (typeof formData.project === 'string' ? formData.project : null);
+      
+      const sprintId = formData.sprint?._id 
+        ? formData.sprint._id 
+        : (typeof formData.sprint === 'string' ? formData.sprint : null);
+      
+      // Log để debug
+      console.log('[DEBUG] Extracted IDs:', { projectId, sprintId });
+      
+      if (!projectId) {
+        console.error('[ERROR] Missing project ID');
+        return;
       }
       
       // Nếu không có sprint, lấy danh sách thành viên project thay vì sprint
       let response;
-      if (!formData.sprint) {
-        console.log(`[DEBUG] No sprint ID, fetching project members: /projects/${formData.project}/members`);
-        response = await API.get(`/projects/${formData.project}/members`);
+      if (!sprintId) {
+        console.log(`[DEBUG] No sprint ID, fetching project members: /projects/${projectId}/members`);
+        response = await API.get(`/projects/${projectId}/members`);
       } else {
         // Gọi API Sprint Members 
-        console.log(`[DEBUG] Fetching sprint members: /projects/${formData.project}/sprints/${formData.sprint}/members`);
-        response = await API.get(`/projects/${formData.project}/sprints/${formData.sprint}/members`);
+        console.log(`[DEBUG] Fetching sprint members: /projects/${projectId}/sprints/${sprintId}/members`);
+        response = await API.get(`/projects/${projectId}/sprints/${sprintId}/members`);
       }
       
       if (!response.data || !response.data.data) {
@@ -553,6 +565,12 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
       console.log("[Task Debug] Tags to save:", formData.tags);
       console.log("[Task Debug] Files to upload:", files.length > 0 ? files.map(f => f.name) : "No files");
       
+      // Trích xuất ID để đảm bảo sử dụng đúng trong URL
+      const projectId = typeof formData.project === 'object' ? formData.project._id : formData.project;
+      const sprintId = typeof formData.sprint === 'object' ? formData.sprint._id : formData.sprint;
+      
+      console.log("[Task Debug] Extracted IDs for API calls:", { projectId, sprintId });
+      
       // Chuẩn bị payload cho task
       const taskPayload = {
         title: formData.title,
@@ -564,7 +582,9 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         assignees: formData.assignees,
         estimatedTime: formData.estimatedTime,
         actualTime: formData.actualTime,
-        tags: formData.tags.filter(tag => tag && tag.trim() !== '') // Đảm bảo lọc bỏ tag rỗng
+        tags: formData.tags.filter(tag => tag && tag.trim() !== ''), // Đảm bảo lọc bỏ tag rỗng
+        project: projectId, // Đảm bảo sử dụng ID
+        sprint: sprintId // Đảm bảo sử dụng ID
       };
       
       let response;
@@ -575,10 +595,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         
         // Tạo endpoint đúng cho việc cập nhật task
         let updateEndpoint;
-        if (formData.sprint) {
-          updateEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${task._id}`;
+        if (sprintId) {
+          updateEndpoint = `/projects/${projectId}/sprints/${sprintId}/tasks/${task._id}`;
         } else {
-          updateEndpoint = `/projects/${formData.project}/tasks/${task._id}`;
+          updateEndpoint = `/projects/${projectId}/tasks/${task._id}`;
         }
         
         console.log("[Task Debug] Using update endpoint:", updateEndpoint);
@@ -593,7 +613,7 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
         if (files.length > 0) {
           try {
             console.log("[Task Debug] Uploading files for existing task");
-            await uploadTaskFiles(task._id, formData.project, formData.sprint);
+            await uploadTaskFiles(task._id, projectId, sprintId);
             enqueueSnackbar("Tệp đính kèm đã được tải lên thành công", { variant: "success" });
           } catch (fileError) {
             console.error("[Task Debug] Error uploading attachments:", fileError);
@@ -601,14 +621,45 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           }
         }
         
+        // Nếu có yêu cầu đồng bộ lịch cho task đã tồn tại
+        if (formData.syncWithCalendar) {
+          try {
+            let syncEndpoint;
+            if (sprintId) {
+              syncEndpoint = `/projects/${projectId}/sprints/${sprintId}/tasks/${task._id}/sync-calendar`;
+            } else {
+              syncEndpoint = `/projects/${projectId}/tasks/${task._id}/sync-calendar`;
+            }
+            
+            console.log("[Task Debug] Syncing calendar for existing task:", syncEndpoint);
+            
+            const syncResponse = await API.post(syncEndpoint, {
+              calendarType: formData.calendarType,
+            });
+            
+            if (syncResponse.data.success) {
+              enqueueSnackbar("Đã đồng bộ task với " + (formData.calendarType === "google" ? "Google Calendar" : "Microsoft Outlook"), { 
+                variant: "success",
+                autoHideDuration: 3000
+              });
+            }
+          } catch (syncError) {
+            console.error("[Task Debug] Calendar sync error:", syncError);
+            enqueueSnackbar(
+              "Không thể đồng bộ với lịch. " + (syncError.response?.data?.message || "Vui lòng kiểm tra kết nối với lịch trong cài đặt."),
+              { variant: "warning" }
+            );
+          }
+        }
+        
         await ActivityService.logTaskUpdated(formData.title);
       } else {
         // Tạo task mới
         let endpoint;
-        if (formData.sprint) {
-          endpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks`;
+        if (sprintId) {
+          endpoint = `/projects/${projectId}/sprints/${sprintId}/tasks`;
         } else {
-          endpoint = `/projects/${formData.project}/tasks`;
+          endpoint = `/projects/${projectId}/tasks`;
         }
         
         console.log(`[DEBUG] Creating task with endpoint: ${endpoint}`);
@@ -693,10 +744,10 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
               
               // Tạo endpoint tải lên tệp đính kèm
               let attachmentEndpoint;
-              if (formData.sprint) {
-                attachmentEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${newTaskId}/attachments`;
+              if (sprintId) {
+                attachmentEndpoint = `/projects/${projectId}/sprints/${sprintId}/tasks/${newTaskId}/attachments`;
               } else {
-                attachmentEndpoint = `/projects/${formData.project}/tasks/${newTaskId}/attachments`;
+                attachmentEndpoint = `/projects/${projectId}/tasks/${newTaskId}/attachments`;
               }
               
               console.log("[Task Debug] Uploading files to endpoint:", attachmentEndpoint);
@@ -742,22 +793,65 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
           }
         }
         
-        await ActivityService.logTaskCreated(formData.title, project?.name);
+        // Trích xuất tên dự án từ phản hồi API hoặc từ dữ liệu dự án đã có
+        let projectName = "unknown";
+        
+        // Ưu tiên 1: Lấy từ response nếu có
+        if (response.data?.data?.project?.name) {
+          projectName = response.data.data.project.name;
+          console.log("[Task Debug] Using project name from response:", projectName);
+        } 
+        // Ưu tiên 2: Lấy từ dự án đã được truyền vào component
+        else if (project?.name) {
+          projectName = project.name;
+          console.log("[Task Debug] Using project name from props:", projectName);
+        } 
+        // Ưu tiên 3: Gọi API để lấy thông tin dự án nếu có projectId
+        else if (projectId) {
+          try {
+            console.log("[Task Debug] Fetching project details for activities log");
+            const projectResponse = await API.get(`/projects/${projectId}`);
+            if (projectResponse.data?.data?.name) {
+              projectName = projectResponse.data.data.name;
+              console.log("[Task Debug] Got project name from API:", projectName);
+            }
+          } catch (projectError) {
+            console.error("[Task Debug] Error fetching project details:", projectError);
+          }
+        }
+        
+        console.log("[Task Debug] Logging task creation with project name:", projectName);
+        await ActivityService.logTaskCreated(formData.title, projectName);
 
         // Nếu có yêu cầu đồng bộ lịch
         if (formData.syncWithCalendar && newTaskId) {
-          let syncEndpoint;
-          if (formData.sprint) {
-            syncEndpoint = `/projects/${formData.project}/sprints/${formData.sprint}/tasks/${newTaskId}/sync-calendar`;
-          } else {
-            syncEndpoint = `/projects/${formData.project}/tasks/${newTaskId}/sync-calendar`;
+          try {
+            let syncEndpoint;
+            if (sprintId) {
+              syncEndpoint = `/projects/${projectId}/sprints/${sprintId}/tasks/${newTaskId}/sync-calendar`;
+            } else {
+              syncEndpoint = `/projects/${projectId}/tasks/${newTaskId}/sync-calendar`;
+            }
+            
+            console.log("[Task Debug] Syncing calendar with endpoint:", syncEndpoint);
+            
+            const syncResponse = await API.post(syncEndpoint, {
+              calendarType: formData.calendarType,
+            });
+            
+            if (syncResponse.data.success) {
+              enqueueSnackbar("Đã đồng bộ task với " + (formData.calendarType === "google" ? "Google Calendar" : "Microsoft Outlook"), { 
+                variant: "success",
+                autoHideDuration: 3000
+              });
+            }
+          } catch (syncError) {
+            console.error("[Task Debug] Calendar sync error:", syncError);
+            enqueueSnackbar(
+              "Không thể đồng bộ với lịch. " + (syncError.response?.data?.message || "Vui lòng kiểm tra kết nối với lịch trong cài đặt."),
+              { variant: "warning" }
+            );
           }
-          
-          console.log("[Task Debug] Syncing calendar with endpoint:", syncEndpoint);
-          
-          await API.post(syncEndpoint, {
-            calendarType: formData.calendarType,
-          });
         }
       }
       
@@ -1355,21 +1449,45 @@ const TaskForm = ({ open, onClose, onSave, task, project, projectId, sprintId })
                         <MenuItem value="google">Google Calendar</MenuItem>
                         <MenuItem value="outlook">Microsoft Outlook</MenuItem>
                       </Select>
-                      <Chip
-                        label={formData.syncWithCalendar ? "Bật" : "Tắt"}
-                        color={formData.syncWithCalendar ? "primary" : "default"}
-                        onClick={() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            syncWithCalendar: !prev.syncWithCalendar,
-                          }))
-                        }
-                        icon={<CalendarIcon />}
-                        clickable
-                        sx={{ ml: 2 }}
-                      />
+                      <Tooltip title="Bạn cần kết nối với Google Calendar trong phần cài đặt trước khi có thể đồng bộ">
+                        <Chip
+                          label={formData.syncWithCalendar ? "Bật" : "Tắt"}
+                          color={formData.syncWithCalendar ? "primary" : "default"}
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              syncWithCalendar: !prev.syncWithCalendar,
+                            }))
+                          }
+                          icon={<CalendarIcon />}
+                          clickable
+                          sx={{ ml: 2 }}
+                        />
+                      </Tooltip>
                     </FormControl>
                   </Box>
+                  {formData.syncWithCalendar && (
+                    <Box sx={{ ml: 2, mb: 1 }}>
+                      <Typography 
+                        variant="caption" 
+                        color="info.main" 
+                        sx={{ display: 'block' }}
+                      >
+                        <b>Lưu ý:</b> Bạn cần kết nối với {formData.calendarType === 'google' ? 'Google Calendar' : 'Outlook'} trong phần cài đặt trước khi có thể đồng bộ task.
+                      </Typography>
+                      <Button
+                        variant="text"
+                        color="primary"
+                        size="small"
+                        component={RouterLink}
+                        to="/settings/calendar"
+                        target="_blank"
+                        sx={{ mt: 0.5, textTransform: 'none', p: 0 }}
+                      >
+                        Đi đến cài đặt lịch
+                      </Button>
+                    </Box>
+                  )}
                 </Grid>
 
                 {errors.submit && (

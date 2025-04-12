@@ -68,81 +68,176 @@ export const createNotification = async (data) => {
 // Lấy danh sách thông báo
 export const getNotifications = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 20,
-      unreadOnly = false,
-      type,
-      priority,
-      startDate,
-      endDate,
-    } = req.query;
-
-    const query = { user: req.user.id };
-
-    // Lọc theo trạng thái đã đọc
-    if (unreadOnly === "true") {
-      query.isRead = false;
+    console.log('getNotifications called');
+    console.log('Request params:', req.params);
+    console.log('Request query:', req.query);
+    
+    // Xác định userId cần lấy thông báo
+    let userId;
+    
+    // Nếu admin đang xem thông báo của người dùng khác (qua query params userId)
+    if (req.user.role === 'admin' && req.query.userId) {
+      userId = req.query.userId;
+      console.log('Admin viewing notifications for user:', userId);
+      
+      // Kiểm tra người dùng tồn tại không
+      const userExists = await User.exists({ _id: userId });
+      if (!userExists) {
+        console.log('User not found:', userId);
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy người dùng'
+        });
+      }
+    } else {
+      // Người dùng đang xem thông báo của chính họ
+      userId = req.user.id;
+      console.log('User viewing own notifications:', userId);
     }
-
-    // Lọc theo loại thông báo
-    if (type) {
-      query.type = type;
+    
+    const { page = 1, limit = 10, unreadOnly = false } = req.query;
+    console.log('Query params:', { page, limit, unreadOnly });
+    
+    // Tạo filter
+    const filter = { user: userId };
+    if (unreadOnly === 'true') {
+      filter.isRead = false;
     }
-
-    // Lọc theo độ ưu tiên
-    if (priority) {
-      query.priority = priority;
-    }
-
-    // Lọc theo thời gian
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) query.createdAt.$lte = new Date(endDate);
-    }
-
-    const notifications = await Notification.find(query)
+    console.log('Using filter:', filter);
+    
+    // Query với phân trang
+    console.log('Finding notifications with skip:', (page - 1) * limit, 'limit:', parseInt(limit));
+    const notifications = await Notification.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit)
-      .populate("task", "title status")
-      .populate("project", "name status")
-      .populate("sender", "name avatar")
-      .populate("comment", "content");
-
-    const total = await Notification.countDocuments(query);
+      .limit(parseInt(limit))
+      .populate('sender', 'name avatar')
+      .lean();
+    
+    console.log('Found notifications:', notifications.length);
+    if (notifications.length > 0) {
+      console.log('First notification type:', notifications[0].type);
+    } else {
+      console.log('No notifications found for user');
+    }
+    
+    // Tính tổng số trang
+    const totalNotifications = await Notification.countDocuments(filter);
+    console.log('Total notifications count:', totalNotifications);
+    const totalPages = Math.ceil(totalNotifications / limit);
+    
+    // Đếm số thông báo chưa đọc
     const unreadCount = await Notification.countDocuments({
-      user: req.user.id,
-      isRead: false,
+      user: userId,
+      isRead: false
     });
-
-    // Thống kê theo loại thông báo
-    const stats = await Notification.aggregate([
-      { $match: { user: req.user._id } },
-      { $group: { _id: "$type", count: { $sum: 1 } } },
-    ]);
-
+    console.log('Unread notifications count:', unreadCount);
+    
     res.json({
       success: true,
       data: {
         notifications,
-        total,
-        unreadCount,
         currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        stats: stats.reduce((acc, curr) => {
-          acc[curr._id] = curr.count;
-          return acc;
-        }, {}),
+        totalPages,
+        totalNotifications,
+        unreadCount
       },
+      message: 'Lấy danh sách thông báo thành công'
     });
   } catch (error) {
-    console.error("Lỗi khi lấy thông báo:", error);
+    console.error('Error in getNotifications:', error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi lấy thông báo",
-      error: error.message,
+      message: 'Lỗi khi lấy danh sách thông báo',
+      error: error.message
+    });
+  }
+};
+
+// Thêm controller mới để admin xem thông báo của người dùng khác
+export const getUserNotifications = async (req, res) => {
+  try {
+    console.log('getUserNotifications called');
+    console.log('Request params:', req.params);
+    console.log('Request query:', req.query);
+    
+    const targetUserId = req.params.userId;
+    console.log('Getting notifications for specific user:', targetUserId); 
+    console.log('Request from admin:', req.user.id);
+    
+    if (!targetUserId) {
+      console.error('User ID not found in request parameters');
+      return res.status(400).json({
+        success: false,
+        message: 'User ID không được cung cấp'
+      });
+    }
+    
+    const { page = 1, limit = 10, unreadOnly = false } = req.query;
+    console.log('Query params:', { page, limit, unreadOnly });
+    
+    // Kiểm tra người dùng tồn tại không
+    const userExists = await User.exists({ _id: targetUserId });
+    if (!userExists) {
+      console.log('User not found:', targetUserId);
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy người dùng'
+      });
+    }
+    
+    // Tạo filter
+    const filter = { user: targetUserId };
+    if (unreadOnly === 'true') {
+      filter.isRead = false;
+    }
+    console.log('Using filter:', filter);
+    
+    // Query với phân trang
+    console.log('Finding notifications with skip:', (page - 1) * limit, 'limit:', parseInt(limit));
+    const notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .populate('sender', 'name avatar')
+      .lean();
+    
+    console.log('Found notifications for specific user:', notifications.length);
+    if (notifications.length > 0) {
+      console.log('First notification:', notifications[0]);
+    } else {
+      console.log('No notifications found for user');
+    }
+    
+    // Tính tổng số trang
+    const totalNotifications = await Notification.countDocuments(filter);
+    console.log('Total notifications count:', totalNotifications);
+    const totalPages = Math.ceil(totalNotifications / limit);
+    
+    // Đếm số thông báo chưa đọc
+    const unreadCount = await Notification.countDocuments({
+      user: targetUserId,
+      isRead: false
+    });
+    console.log('Unread notifications count:', unreadCount);
+    
+    res.json({
+      success: true,
+      data: {
+        notifications,
+        currentPage: parseInt(page),
+        totalPages,
+        totalNotifications,
+        unreadCount
+      },
+      message: `Lấy danh sách thông báo của người dùng ${targetUserId} thành công`
+    });
+  } catch (error) {
+    console.error('Error in getUserNotifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách thông báo',
+      error: error.message
     });
   }
 };
@@ -150,85 +245,148 @@ export const getNotifications = async (req, res) => {
 // Đánh dấu đã đọc
 export const markAsRead = async (req, res) => {
   try {
-    const { notificationIds, all = false } = req.body;
-
-    if (all) {
-      // Đánh dấu tất cả thông báo
-      await Notification.updateMany(
-        { user: req.user.id, isRead: false },
-        { isRead: true }
-      );
-    } else if (notificationIds && Array.isArray(notificationIds)) {
-      // Đánh dấu các thông báo cụ thể
-      await Notification.updateMany(
-        {
-          _id: { $in: notificationIds },
-          user: req.user.id,
-        },
-        { isRead: true }
-      );
+    console.log('markAsRead called');
+    console.log('Request body:', req.body);
+    
+    // Xác định userId cần đánh dấu thông báo
+    let userId;
+    
+    // Nếu admin đang thao tác trên thông báo của người dùng khác
+    if (req.user.role === 'admin' && req.body.userId) {
+      userId = req.body.userId;
+      console.log('Admin marking notifications as read for user:', userId);
+      
+      // Kiểm tra người dùng tồn tại không
+      const userExists = await User.exists({ _id: userId });
+      if (!userExists) {
+        console.log('User not found:', userId);
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy người dùng'
+        });
+      }
     } else {
-      return res.status(400).json({
+      // Người dùng đang đánh dấu thông báo của chính họ
+      userId = req.user.id;
+      console.log('User marking own notifications as read:', userId);
+    }
+    
+    const { all = false, notificationIds = [] } = req.body;
+    
+    let updateResult;
+    if (all) {
+      // Đánh dấu tất cả thông báo là đã đọc
+      updateResult = await Notification.updateMany(
+        { user: userId, isRead: false },
+        { isRead: true }
+      );
+      
+      console.log('Marked all notifications as read for user:', userId, 'Count:', updateResult.modifiedCount);
+      
+      res.json({
+        success: true,
+        data: { modifiedCount: updateResult.modifiedCount },
+        message: 'Đã đánh dấu tất cả thông báo là đã đọc'
+      });
+    } else if (notificationIds && notificationIds.length > 0) {
+      // Đánh dấu các thông báo cụ thể là đã đọc
+      updateResult = await Notification.updateMany(
+        { _id: { $in: notificationIds }, user: userId },
+        { isRead: true }
+      );
+      
+      console.log('Marked specific notifications as read for user:', userId, 'Count:', updateResult.modifiedCount);
+      
+      res.json({
+        success: true,
+        data: { modifiedCount: updateResult.modifiedCount },
+        message: 'Đã đánh dấu các thông báo được chọn là đã đọc'
+      });
+    } else {
+      res.status(400).json({
         success: false,
-        message: "Vui lòng chọn thông báo cần đánh dấu",
+        message: 'Yêu cầu không hợp lệ. Vui lòng cung cấp notificationIds hoặc all=true'
       });
     }
-
-    // Gửi event cập nhật badge count
-    const unreadCount = await Notification.countDocuments({
-      user: req.user.id,
-      isRead: false,
-    });
-    global.io.to(req.user.id.toString()).emit("notifications_updated", {
-      unreadCount,
-    });
-
-    res.json({
-      success: true,
-      message: "Đã đánh dấu thông báo là đã đọc",
-      data: { unreadCount },
-    });
   } catch (error) {
-    console.error("Lỗi khi đánh dấu thông báo:", error);
+    console.error('Error in markAsRead:', error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi đánh dấu thông báo",
-      error: error.message,
+      message: 'Lỗi khi đánh dấu thông báo đã đọc',
+      error: error.message
     });
   }
 };
 
 // Xóa thông báo
-export const deleteNotification = async (req, res) => {
+export const deleteNotifications = async (req, res) => {
   try {
-    const { notificationIds, all = false } = req.body;
-
+    console.log('deleteNotifications called');
+    console.log('Request body:', req.body);
+    
+    // Xác định userId cần xóa thông báo
+    let userId;
+    
+    // Nếu admin đang thao tác trên thông báo của người dùng khác
+    if (req.user.role === 'admin' && req.body.userId) {
+      userId = req.body.userId;
+      console.log('Admin deleting notifications for user:', userId);
+      
+      // Kiểm tra người dùng tồn tại không
+      const userExists = await User.exists({ _id: userId });
+      if (!userExists) {
+        console.log('User not found:', userId);
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy người dùng'
+        });
+      }
+    } else {
+      // Người dùng đang xóa thông báo của chính họ
+      userId = req.user.id;
+      console.log('User deleting own notifications:', userId);
+    }
+    
+    const { all = false, notificationIds = [] } = req.body;
+    
+    let deleteResult;
     if (all) {
       // Xóa tất cả thông báo
-      await Notification.deleteMany({ user: req.user.id });
-    } else if (!notificationIds || !Array.isArray(notificationIds)) {
-      return res.status(400).json({
-        success: false,
-        message: "Vui lòng chọn thông báo cần xóa",
+      deleteResult = await Notification.deleteMany({ user: userId });
+      
+      console.log('Deleted all notifications for user:', userId, 'Count:', deleteResult.deletedCount);
+      
+      res.json({
+        success: true,
+        data: { deletedCount: deleteResult.deletedCount },
+        message: 'Đã xóa tất cả thông báo'
+      });
+    } else if (notificationIds && notificationIds.length > 0) {
+      // Xóa các thông báo cụ thể
+      deleteResult = await Notification.deleteMany({
+        _id: { $in: notificationIds },
+        user: userId
+      });
+      
+      console.log('Deleted specific notifications for user:', userId, 'Count:', deleteResult.deletedCount);
+      
+      res.json({
+        success: true,
+        data: { deletedCount: deleteResult.deletedCount },
+        message: 'Đã xóa các thông báo được chọn'
       });
     } else {
-      // Xóa các thông báo được chọn
-      await Notification.deleteMany({
-        _id: { $in: notificationIds },
-        user: req.user.id,
+      res.status(400).json({
+        success: false,
+        message: 'Yêu cầu không hợp lệ. Vui lòng cung cấp notificationIds hoặc all=true'
       });
     }
-
-    res.json({
-      success: true,
-      message: "Đã xóa thông báo thành công",
-    });
   } catch (error) {
-    console.error("Lỗi khi xóa thông báo:", error);
+    console.error('Error in deleteNotifications:', error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi xóa thông báo",
-      error: error.message,
+      message: 'Lỗi khi xóa thông báo',
+      error: error.message
     });
   }
 };
@@ -408,4 +566,56 @@ const getEmailTemplate = (type, data) => {
   `;
 
   return baseTemplate;
+};
+
+// Lấy số lượng thông báo chưa đọc
+export const getUnreadCount = async (req, res) => {
+  try {
+    console.log('getUnreadCount called');
+    console.log('Request params:', req.params);
+    console.log('Request query:', req.query);
+    
+    // Xác định userId cần lấy số lượng thông báo chưa đọc
+    let userId;
+    
+    // Nếu admin đang xem thông báo của người dùng khác
+    if (req.user.role === 'admin' && req.query.userId) {
+      userId = req.query.userId;
+      console.log('Admin getting unread count for user:', userId);
+      
+      // Kiểm tra người dùng tồn tại không
+      const userExists = await User.exists({ _id: userId });
+      if (!userExists) {
+        console.log('User not found:', userId);
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy người dùng'
+        });
+      }
+    } else {
+      // Người dùng đang xem thông báo của chính họ
+      userId = req.user.id;
+      console.log('User getting own unread count:', userId);
+    }
+    
+    const unreadCount = await Notification.countDocuments({
+      user: userId,
+      isRead: false
+    });
+    
+    console.log('Unread count for user', userId, ':', unreadCount);
+    
+    res.json({
+      success: true,
+      data: { unreadCount },
+      message: 'Lấy số lượng thông báo chưa đọc thành công'
+    });
+  } catch (error) {
+    console.error('Error in getUnreadCount:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy số lượng thông báo chưa đọc',
+      error: error.message
+    });
+  }
 };

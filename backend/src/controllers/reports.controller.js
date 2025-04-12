@@ -10,8 +10,8 @@ import mongoose from "mongoose";
 const checkReportPermission = async (projectId, userId, userRole) => {
   // Admin có quyền truy cập tất cả báo cáo
   if (userRole === 'admin') {
-    const project = await Project.findById(projectId);
-    if (!project) return { error: "Dự án không tồn tại" };
+  const project = await Project.findById(projectId);
+  if (!project) return { error: "Dự án không tồn tại" };
     return { project };
   }
   
@@ -67,16 +67,16 @@ export const getProjectOverview = async (req, res) => {
 
     // Kiểm tra quyền truy cập, bỏ qua nếu là admin
     if (!isAdmin) {
-      const isMember = project.members.some(
+    const isMember = project.members.some(
         (member) => member.user && member.user.toString() === req.user.id.toString()
-      );
+    );
       const isOwner = project.owner && project.owner.toString() === req.user.id.toString();
       
       if (!isMember && !isOwner) {
-        return res.status(403).json({
-          success: false,
-          message: "Bạn không có quyền xem báo cáo của dự án này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xem báo cáo của dự án này",
+      });
       }
     }
 
@@ -394,8 +394,9 @@ export const getTimeReport = async (req, res) => {
     }
 
     // Nếu có sprintId, kiểm tra sprint tồn tại
+    let sprint = null;
     if (sprintId) {
-      const sprint = await Sprint.findOne({
+      sprint = await Sprint.findOne({
         _id: sprintId,
         project: projectId,
       });
@@ -415,177 +416,113 @@ export const getTimeReport = async (req, res) => {
       month: "%Y-%m",
     }[groupBy];
 
-    // Xây dựng điều kiện match cho timelogs
-    const matchCondition = {
-      project: new mongoose.Types.ObjectId(projectId),
-    };
-
     // Tạo điều kiện cho tasks
-    const taskMatchCondition = {
+    const taskQuery = {
       project: projectId,
     };
 
     // Thêm điều kiện sprint nếu có
     if (sprintId) {
-      const sprintTasks = await Task.find({ sprint: sprintId }).select('_id');
-      const taskIds = sprintTasks.map(task => task._id);
-      matchCondition.task = { $in: taskIds };
-      taskMatchCondition.sprint = sprintId;
+      taskQuery.sprint = sprintId;
     }
 
-    // Thêm điều kiện thời gian
-    if (startDate || endDate) {
-      matchCondition.startTime = {};
-      if (startDate) matchCondition.startTime.$gte = new Date(startDate);
-      if (endDate) matchCondition.startTime.$lte = new Date(endDate);
-    }
-
-    console.log("Match Condition:", matchCondition);
-
-    // Lấy danh sách tasks để tính estimated time
-    const tasks = await Task.find(taskMatchCondition);
+    // Lấy tất cả tasks của dự án/sprint
+    const tasks = await Task.find(taskQuery);
     console.log(`Found ${tasks.length} tasks for time report`);
 
-    // Tính tổng estimated time từ tất cả tasks
+    // Tính tổng thời gian ước tính và thực tế từ tất cả tasks
     const totalEstimatedHours = tasks.reduce((sum, task) => sum + (task.estimatedTime || 0), 0);
-    console.log("Total estimated hours:", totalEstimatedHours);
-
-    // Tổng actual time từ tất cả tasks
     const totalActualHours = tasks.reduce((sum, task) => sum + (task.actualTime || 0), 0);
-    console.log("Total actual hours from tasks:", totalActualHours);
+    console.log("Total hours from tasks:", {
+      estimated: totalEstimatedHours,
+      actual: totalActualHours
+    });
 
-    // Thống kê thời gian theo nhóm
-    const timeStats = await Timelog.aggregate([
-      {
-        $match: matchCondition
-      },
-      {
-        $group: {
-          _id: {
-            period: {
-              $dateToString: { format: dateFormat, date: "$startTime" },
-            },
-            user: "$user",
-          },
-          totalTime: { $sum: "$duration" },
-          taskCount: { $addToSet: "$task" },
-        },
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id.user",
-          foreignField: "_id",
-          as: "userInfo",
-        },
-      },
-      { $sort: { "_id.period": 1 } },
-    ]);
+    // Khởi tạo tổng hợp dữ liệu theo ngày
+    const timeByDay = {};
+    
+    // Xác định ngày bắt đầu và kết thúc để hiển thị
+    let reportStartDate, reportEndDate;
+    
+    if (sprint && sprint.startDate && sprint.endDate) {
+      // Nếu có sprint, lấy ngày bắt đầu và kết thúc của sprint
+      reportStartDate = new Date(sprint.startDate);
+      reportEndDate = new Date(sprint.endDate);
+    } else {
+      // Nếu không có sprint, sử dụng ngày hiện tại và 6 ngày trước đó
+      reportEndDate = new Date();
+      reportStartDate = new Date();
+      reportStartDate.setDate(reportStartDate.getDate() - 6);
+    }
+    
+    // Đảm bảo reportStartDate.getTime() <= reportEndDate.getTime()
+    if (reportStartDate.getTime() > reportEndDate.getTime()) {
+      [reportStartDate, reportEndDate] = [reportEndDate, reportStartDate];
+    }
+    
+    // Tạo danh sách các ngày trong khoảng thời gian
+    const dateRange = [];
+    const currentDate = new Date(reportStartDate);
+    
+    while (currentDate <= reportEndDate) {
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}`;
+      
+      dateRange.push(formattedDate);
+      
+      // Tạo cấu trúc dữ liệu ban đầu cho mỗi ngày
+      timeByDay[formattedDate] = {
+          totalTime: 0,
+        estimatedTime: 0,
+        tasks: [],
+        users: []
+      };
+      
+      // Chuyển sang ngày tiếp theo
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    console.log("Date range for report:", dateRange);
+    
+    // Phân bổ thời gian ước tính và thực tế vào các ngày
+    if (tasks.length > 0) {
+      // Chia thời gian ước tính đều cho các ngày
+      const estimatedTimePerDay = totalEstimatedHours / dateRange.length;
+      
+      // Cập nhật giá trị ước tính cho mỗi ngày
+      dateRange.forEach(date => {
+        timeByDay[date].estimatedTime = estimatedTimePerDay * 60; // Chuyển sang phút
+      });
+      
+      // Phân bổ thời gian thực tế cho mỗi ngày
+      // Giả định thời gian được phân bổ đều cho các ngày
+      const actualTimePerDay = totalActualHours / dateRange.length;
+      
+      dateRange.forEach(date => {
+        timeByDay[date].totalTime = actualTimePerDay * 60; // Chuyển sang phút
+      });
+    }
 
-    console.log("Time Stats Count:", timeStats.length);
-
-    // Tổng hợp dữ liệu
+    // Tạo cấu trúc dữ liệu cho phản hồi API
     const timeReport = {
-      byPeriod: {},
+      byPeriod: timeByDay,
       byUser: {},
       total: {
-        time: 0,
-        estimatedTime: totalEstimatedHours * 60, // Chuyển giờ sang phút
-        actualTime: totalActualHours * 60, // Chuyển giờ sang phút
-        tasks: new Set(),
+        time: totalActualHours * 60, // Chuyển sang phút
+        estimatedTime: totalEstimatedHours * 60, // Chuyển sang phút
+        actualTime: totalActualHours * 60, // Chuyển sang phút
+        tasks: tasks.length,
       },
     };
 
-    // Tạo dữ liệu về thời gian ước tính cho mỗi ngày
-    // Chia thời gian ước tính đều cho mỗi ngày trong khoảng thời gian
-    let uniquePeriods = new Set();
-    timeStats.forEach(stat => uniquePeriods.add(stat._id.period));
-    const periodCount = Math.max(1, uniquePeriods.size);
-    const estimatedTimePerPeriod = (totalEstimatedHours * 60) / periodCount; // Phút
-    
-    console.log("Estimated time allocation:", {
-      totalEstimatedHours,
-      periodCount,
-      estimatedTimePerPeriod,
-      uniquePeriods: Array.from(uniquePeriods)
-    });
-
-    // Tạo danh sách ngày có công việc trước
-    const periodsWithEstimatedTime = {};
-    Array.from(uniquePeriods).forEach(period => {
-      periodsWithEstimatedTime[period] = estimatedTimePerPeriod;
-    });
-    
-    console.log("Periods with estimated time:", periodsWithEstimatedTime);
-
-    timeStats.forEach((stat) => {
-      const period = stat._id.period;
-      
-      // Kiểm tra userInfo tồn tại
-      if (!stat.userInfo || stat.userInfo.length === 0) {
-        console.log("Missing userInfo for stat:", stat);
-        return; // Bỏ qua stat này nếu không có userInfo
-      }
-      
-      const user = stat.userInfo[0];
-
-      // Thống kê theo thời gian
-      if (!timeReport.byPeriod[period]) {
-        timeReport.byPeriod[period] = {
-          totalTime: 0,
-          estimatedTime: periodsWithEstimatedTime[period] || estimatedTimePerPeriod,
-          users: [],
-        };
-      }
-      timeReport.byPeriod[period].totalTime += stat.totalTime;
-      timeReport.byPeriod[period].users.push({
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          avatar: user.avatar,
-        },
-        time: stat.totalTime,
-        taskCount: stat.taskCount.length,
-      });
-
-      // Thống kê theo user
-      if (!timeReport.byUser[user._id]) {
-        timeReport.byUser[user._id] = {
-          user: {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            avatar: user.avatar,
-          },
-          totalTime: 0,
-          taskCount: new Set(),
-        };
-      }
-      timeReport.byUser[user._id].totalTime += stat.totalTime;
-      stat.taskCount.forEach((taskId) =>
-        timeReport.byUser[user._id].taskCount.add(taskId.toString())
-      );
-
-      // Tổng thống kê
-      timeReport.total.time += stat.totalTime;
-      stat.taskCount.forEach((taskId) =>
-        timeReport.total.tasks.add(taskId.toString())
-      );
-    });
-
     // Kiểm tra lại dữ liệu đã tạo
-    console.log("Final byPeriod data contains estimatedTime:", Object.keys(timeReport.byPeriod).map(period => ({
+    console.log("Final byPeriod data sample:", Object.keys(timeReport.byPeriod).slice(0, 2).map(period => ({
       period,
-      hasEstimatedTime: typeof timeReport.byPeriod[period].estimatedTime === 'number',
-      estimatedTimeValue: timeReport.byPeriod[period].estimatedTime
+      totalTime: timeReport.byPeriod[period].totalTime,
+      estimatedTime: timeReport.byPeriod[period].estimatedTime
     })));
-
-    // Chuyển Set thành số lượng
-    Object.values(timeReport.byUser).forEach((userStat) => {
-      userStat.taskCount = userStat.taskCount.size;
-    });
-    timeReport.total.tasks = timeReport.total.tasks.size;
 
     console.log("Report Generated Successfully");
     console.log("=== END DEBUG getTimeReport ===");
@@ -609,7 +546,7 @@ export const getReportOverview = async (req, res) => {
   try {
     const { projectId } = req.params;
     const { sprint: sprintId } = req.query;
-    
+
     // Kiểm tra quyền truy cập
     const isAdmin = req.user.role === 'admin';
     
@@ -623,16 +560,16 @@ export const getReportOverview = async (req, res) => {
 
     // Kiểm tra quyền truy cập, bỏ qua nếu là admin
     if (!isAdmin) {
-      const isMember = project.members.some(
+    const isMember = project.members.some(
         (member) => member.user && member.user.toString() === req.user.id.toString()
-      );
+    );
       const isOwner = project.owner && project.owner.toString() === req.user.id.toString();
       
       if (!isMember && !isOwner) {
-        return res.status(403).json({
-          success: false,
-          message: "Bạn không có quyền xem báo cáo của dự án này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xem báo cáo của dự án này",
+      });
       }
     }
 
@@ -653,7 +590,7 @@ export const getReportOverview = async (req, res) => {
     
     // Lấy thời gian làm việc thực tế từ timelogs
     const timelogsQuery = { 
-      project: projectId,
+        project: projectId,
       isActive: false // Chỉ lấy timelogs đã hoàn thành
     };
     
@@ -1056,16 +993,16 @@ export const getMemberPerformance = async (req, res) => {
 
     // Kiểm tra quyền truy cập, bỏ qua nếu là admin
     if (!isAdmin) {
-      const isMember = project.members.some(
+    const isMember = project.members.some(
         (member) => member.user && member.user._id.toString() === req.user.id.toString()
-      );
+    );
       const isOwner = project.owner && project.owner.toString() === req.user.id.toString();
       
       if (!isMember && !isOwner) {
-        return res.status(403).json({
-          success: false,
-          message: "Bạn không có quyền xem báo cáo của dự án này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xem báo cáo của dự án này",
+      });
       }
     }
 
@@ -1073,7 +1010,7 @@ export const getMemberPerformance = async (req, res) => {
     if (sprintId) {
       const sprint = await Sprint.findOne({
         _id: sprintId,
-            project: projectId,
+          project: projectId,
       });
 
       if (!sprint) {

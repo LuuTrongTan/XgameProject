@@ -29,6 +29,7 @@ import {
 import { profileApi } from "../../api";
 import CustomAvatar from "../../components/common/Avatar";
 import FileUpload from "../../components/common/FileUpload";
+import { useAuth } from "../../contexts/AuthContext";
 
 const Profile = () => {
   const [profileData, setProfileData] = useState({
@@ -46,6 +47,15 @@ const Profile = () => {
     severity: "success",
   });
   const [formData, setFormData] = useState({});
+  const [isAvatarLoading, setIsAvatarLoading] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isPasswordChanging, setIsPasswordChanging] = useState(false);
+  const { user: authUser, updateUserAvatar } = useAuth();
 
   // Fetch profile data
   useEffect(() => {
@@ -84,8 +94,19 @@ const Profile = () => {
 
   const handleSave = async () => {
     try {
-      await profileApi.updateProfile(editData);
-      setProfileData(editData);
+      // Only update the name field, not email
+      const updateData = {
+        fullName: editData.fullName
+      };
+      
+      await profileApi.updateProfile(updateData);
+      
+      // Update local profile data but preserve the email
+      setProfileData(prev => ({
+        ...prev,
+        fullName: editData.fullName
+      }));
+      
       setIsEditing(false);
       showSnackbar("Cập nhật hồ sơ thành công!");
     } catch (error) {
@@ -96,10 +117,56 @@ const Profile = () => {
 
   // Handle avatar upload
   const handleFileSelect = (base64String) => {
+    console.log("Avatar selected, type:", typeof base64String);
     setFormData((prev) => ({
       ...prev,
       avatar: base64String,
     }));
+  };
+
+  // Handle save avatar
+  const handleSaveAvatar = async () => {
+    if (!formData.avatar) {
+      showSnackbar("Vui lòng chọn ảnh đại diện", "error");
+      return;
+    }
+    
+    setIsAvatarLoading(true);
+    try {
+      console.log("Saving avatar, data type:", typeof formData.avatar);
+      console.log("Avatar data length:", formData.avatar.length);
+      console.log("Avatar data starts with:", formData.avatar.substring(0, 30) + "...");
+      
+      // Đảm bảo avatar là string
+      if (typeof formData.avatar !== 'string') {
+        throw new Error("Avatar data is not a string");
+      }
+      
+      // Đảm bảo avatar có định dạng đúng
+      if (!formData.avatar.startsWith('data:image/')) {
+        throw new Error("Invalid image format");
+      }
+      
+      // Sử dụng updateUserAvatar từ AuthContext để cập nhật avatar trong toàn bộ hệ thống
+      const updatedUser = await updateUserAvatar(formData.avatar);
+      
+      // Cập nhật profileData với dữ liệu mới từ context
+      setProfileData(prev => ({
+        ...prev,
+        ...updatedUser,
+        avatarBase64: updatedUser.avatarBase64 // Đảm bảo hiển thị avatar mới ngay lập tức
+      }));
+      
+      // Reset form data
+      setFormData({});
+      
+      showSnackbar("Cập nhật avatar thành công!");
+    } catch (error) {
+      console.error("Error updating avatar:", error);
+      showSnackbar("Không thể cập nhật avatar", "error");
+    } finally {
+      setIsAvatarLoading(false);
+    }
   };
 
   // Snackbar
@@ -143,6 +210,24 @@ const Profile = () => {
     } catch (error) {
       console.error("Error formatting datetime:", error);
       return "N/A";
+    }
+  };
+
+  const handleChangePassword = async () => {
+    try {
+      await profileApi.updatePassword(passwordData.currentPassword, passwordData.newPassword);
+      setIsChangingPassword(false);
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      showSnackbar("Cập nhật mật khẩu thành công!");
+    } catch (error) {
+      console.error("Error updating password:", error);
+      showSnackbar("Không thể cập nhật mật khẩu", "error");
+    } finally {
+      setIsPasswordChanging(false);
     }
   };
 
@@ -205,7 +290,27 @@ const Profile = () => {
                     maxSize={5 * 1024 * 1024} // 5MB
                   />
                 </Box>
-                <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+                
+                {/* Hiển thị nút lưu avatar khi có avatar được chọn */}
+                {formData.avatar && (
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleSaveAvatar}
+                    disabled={isAvatarLoading}
+                    startIcon={<SaveIcon />}
+                    sx={{ 
+                      mt: 2,
+                      borderRadius: 2,
+                      boxShadow: "0 2px 8px 0 rgba(26,115,232,0.3)",
+                      background: "linear-gradient(135deg, #1a73e8 0%, #3f51b5 100%)"
+                    }}
+                  >
+                    {isAvatarLoading ? "Đang lưu..." : "Lưu avatar"}
+                  </Button>
+                )}
+                
+                <Typography variant="h6" sx={{ mb: 1, fontWeight: 600, mt: 2 }}>
                   {profileData.fullName}
                 </Typography>
                 <Typography
@@ -233,55 +338,36 @@ const Profile = () => {
             </CardContent>
           </Card>
 
-          <Stack spacing={1}>
-            <Button
-              startIcon={<PersonIcon />}
-              sx={{
-                justifyContent: "flex-start",
-                px: 3,
-                py: 1.5,
-                bgcolor: "rgba(25, 118, 210, 0.08)",
-                color: "#1a73e8",
-                borderRadius: 2,
-                fontWeight: 500,
-                "&:hover": {
-                  bgcolor: "rgba(25, 118, 210, 0.16)",
-                },
-              }}
-            >
-              Thông tin cá nhân
-            </Button>
-            <Button
-              startIcon={<TimelineIcon />}
-              sx={{
-                justifyContent: "flex-start",
-                px: 3,
-                py: 1.5,
-                color: "text.secondary",
-                borderRadius: 2,
-                "&:hover": {
-                  bgcolor: "rgba(0, 0, 0, 0.04)",
-                },
-              }}
-            >
-              Hoạt động gần đây
-            </Button>
-            <Button
-              startIcon={<BarChartIcon />}
-              sx={{
-                justifyContent: "flex-start",
-                px: 3,
-                py: 1.5,
-                color: "text.secondary",
-                borderRadius: 2,
-                "&:hover": {
-                  bgcolor: "rgba(0, 0, 0, 0.04)",
-                },
-              }}
-            >
-              Thống kê
-            </Button>
-          </Stack>
+          {/* Thay thế menu cũ bằng nút đổi mật khẩu */}
+          <Card
+            sx={{
+              borderRadius: 2,
+              boxShadow: "0 2px 12px 0 rgba(0,0,0,0.1)",
+              background: "linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)",
+              overflow: "hidden",
+            }}
+          >
+            <CardContent sx={{ p: 2 }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                color="primary"
+                onClick={() => setIsChangingPassword(true)}
+                sx={{
+                  justifyContent: "center",
+                  py: 1,
+                  borderRadius: 2,
+                  borderColor: "rgba(25, 118, 210, 0.5)",
+                  "&:hover": {
+                    borderColor: "primary.main",
+                    bgcolor: "rgba(25, 118, 210, 0.04)",
+                  },
+                }}
+              >
+                Đổi mật khẩu
+              </Button>
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* Right Column - Profile Info */}
@@ -458,14 +544,22 @@ const Profile = () => {
                 label="Họ và tên"
                 value={editData.fullName || ""}
                 onChange={handleChange("fullName")}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Email"
-                value={editData.email || ""}
-                onChange={handleChange("email")}
+                variant="outlined"
+                margin="normal"
+                sx={{ 
+                  mt: 1,
+                  mb: 2,
+                  '& .MuiInputBase-root': {
+                    height: '56px'
+                  }
+                }}
+                InputProps={{
+                  sx: { 
+                    fontSize: '1rem', 
+                    py: 1.5,
+                    px: 2
+                  }
+                }}
               />
             </Grid>
           </Grid>
@@ -491,6 +585,91 @@ const Profile = () => {
             }}
           >
             Lưu thay đổi
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog đổi mật khẩu */}
+      <Dialog 
+        open={isChangingPassword || false} 
+        onClose={() => setIsChangingPassword(false)}
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            Đổi mật khẩu
+            <IconButton onClick={() => setIsChangingPassword(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pb: 0, pt: 2 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Mật khẩu hiện tại"
+                type="password"
+                value={passwordData.currentPassword || ""}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Mật khẩu mới"
+                type="password"
+                value={passwordData.newPassword || ""}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                helperText="Mật khẩu phải có ít nhất 6 ký tự"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Xác nhận mật khẩu mới"
+                type="password"
+                value={passwordData.confirmPassword || ""}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                error={passwordData.newPassword !== passwordData.confirmPassword && passwordData.confirmPassword}
+                helperText={passwordData.newPassword !== passwordData.confirmPassword && passwordData.confirmPassword ? "Mật khẩu không khớp" : ""}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5 }}>
+          <Button
+            onClick={() => setIsChangingPassword(false)}
+            variant="outlined"
+            color="inherit"
+            sx={{ borderRadius: 2 }}
+          >
+            Hủy
+          </Button>
+          <Button
+            onClick={handleChangePassword}
+            variant="contained"
+            disabled={isPasswordChanging || 
+              !passwordData.currentPassword || 
+              !passwordData.newPassword || 
+              passwordData.newPassword !== passwordData.confirmPassword ||
+              passwordData.newPassword.length < 6}
+            sx={{
+              borderRadius: 2,
+              background: "linear-gradient(135deg, #1a73e8 0%, #3f51b5 100%)",
+              "&:hover": {
+                background: "linear-gradient(135deg, #1557b0 0%, #2c387e 100%)",
+              },
+            }}
+          >
+            {isPasswordChanging ? "Đang xử lý..." : "Đổi mật khẩu"}
           </Button>
         </DialogActions>
       </Dialog>

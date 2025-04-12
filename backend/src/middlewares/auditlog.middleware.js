@@ -78,13 +78,17 @@ export const logAction = (entityType, action, getEntityId, getDetails = null, ge
                 console.error('[Audit Log] Error getting changes:', changesError);
               }
               
+              // Make sure projectId and sprintId are explicitly extracted from request params
+              const projectId = req.params.projectId || details.projectId;
+              const sprintId = req.params.sprintId || details.sprintId;
+              
               const logData = {
                 entityId,
                 entityType,
                 action,
                 userId: req.user.id,
-                projectId: req.params.projectId,
-                sprintId: req.params.sprintId,
+                projectId,
+                sprintId,
                 details,
                 changes,
               };
@@ -135,18 +139,61 @@ export const logTaskCreate = logAction(
   'Task', 
   'create',
   (req, res) => res.data?.task?._id || res.data?._id,
-  (req, res) => ({ 
-    title: req.body.title,
-    description: req.body.description,
-    status: req.body.status || 'todo',
-    priority: req.body.priority,
-    assignees: req.body.assignees,
-    dueDate: req.body.dueDate,
-    estimatedTime: req.body.estimatedTime,
-    tags: req.body.tags,
-    createdBy: req.user.name,
-    createdAt: new Date().toISOString()
-  })
+  (req, res) => {
+    // Lấy thông tin dự án từ request params hoặc response
+    const projectId = req.params.projectId;
+    const sprintId = req.params.sprintId;
+    let projectName = 'unknown';
+    
+    // Thử lấy tên dự án từ nhiều nguồn
+    try {
+      // 1. Từ req.project nếu đã được populate bởi middleware trước đó
+      if (req.project && req.project.name) {
+        projectName = req.project.name;
+        console.log(`[Audit Log] Using project name from req.project: ${projectName}`);
+      }
+      // 2. Từ project đã được populate trong response
+      else if (res.data?.project?.name) {
+        projectName = res.data.project.name;
+        console.log(`[Audit Log] Using project name from response data: ${projectName}`);
+      }
+      // 3. Từ data.task.project nếu task đã được populate
+      else if (res.data?.task?.project?.name) {
+        projectName = res.data.task.project.name;
+        console.log(`[Audit Log] Using project name from task.project: ${projectName}`);
+      }
+    } catch (error) {
+      console.error('[Audit Log] Error getting project name:', error);
+    }
+    
+    // Ghi log chi tiết để debug
+    console.log('[Audit Log Task Create] Project and Sprint details:', {
+      projectId,
+      sprintId,
+      projectName,
+      hasProjectInReq: !!req.project,
+      projectInReqName: req.project?.name,
+      hasProjectInRes: !!res.data?.project,
+      projectInResName: res.data?.project?.name
+    });
+    
+    // Trả về chi tiết về task được tạo
+    return { 
+      title: req.body.title,
+      description: req.body.description,
+      status: req.body.status || 'todo',
+      priority: req.body.priority,
+      assignees: req.body.assignees,
+      dueDate: req.body.dueDate,
+      estimatedTime: req.body.estimatedTime,
+      tags: req.body.tags,
+      createdBy: req.user.name,
+      createdAt: new Date().toISOString(),
+      projectId,    // Thêm projectId vào details
+      sprintId,     // Thêm sprintId vào details
+      projectName   // Thêm projectName vào details
+    };
+  }
 );
 
 /**

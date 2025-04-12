@@ -1070,13 +1070,13 @@ const getRecentActivities = async (projectId) => {
   const recentComments = await Comment.find({ project: projectId })
     .sort({ createdAt: -1 })
     .limit(5)
-    .populate("author", "name");
+    .populate("user", "name");
 
   recentComments.forEach((comment) => {
     activities.push({
       type: "comment_added",
       content: comment.content,
-      user: comment.author.name,
+      user: comment.user.name,
       date: comment.createdAt,
     });
   });

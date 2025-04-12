@@ -274,11 +274,15 @@ const TaskDetailView = ({
                   <Typography variant="subtitle1" fontWeight="600" gutterBottom color="text.primary">
                     Mô tả
                   </Typography>
-                  <Typography variant="body1" sx={{ 
-                    whiteSpace: 'pre-wrap',
-                    color: task.description ? 'text.primary' : 'text.secondary',
-                    lineHeight: 1.6
-                  }}>
+                  <Typography 
+                    variant="body1" 
+                    component="div" 
+                    sx={{ 
+                      whiteSpace: 'pre-wrap',
+                      color: task.description ? 'text.primary' : 'text.secondary',
+                      lineHeight: 1.6
+                    }}
+                  >
                     {task.description || "Không có mô tả"}
                   </Typography>
                 </Box>

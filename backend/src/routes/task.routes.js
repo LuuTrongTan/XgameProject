@@ -45,6 +45,7 @@ import {
   logTaskTime,
   logTaskAssignee
 } from "../middlewares/auditlog.middleware.js";
+import Project from "../models/project.model.js";
 
 const router = express.Router();
 
@@ -235,7 +236,39 @@ router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId", protect, logT
  *                 type: string
  *                 format: date
  */
-router.post("/projects/:projectId/sprints/:sprintId/tasks", protect, checkPermission(PERMISSIONS.CREATE_TASK), logTaskCreate, createTask);
+router.post("/projects/:projectId/sprints/:sprintId/tasks", 
+  protect, 
+  checkPermission(PERMISSIONS.CREATE_TASK), 
+  // Middleware để trích xuất thông tin dự án trước khi ghi log
+  async (req, res, next) => {
+    try {
+      console.log('[Pre-Task-Create] Fetching project info for projectId:', req.params.projectId);
+      const projectId = req.params.projectId;
+      
+      if (!projectId) {
+        console.log('[Pre-Task-Create] No projectId in request params');
+        return next();
+      }
+      
+      const project = await Project.findById(projectId).select('name owner');
+      
+      if (project) {
+        // Lưu thông tin dự án vào request để middleware logTaskCreate có thể sử dụng
+        req.project = project;
+        console.log(`[Pre-Task-Create] Found project: ${project.name} (${project._id})`);
+      } else {
+        console.log(`[Pre-Task-Create] Project ${projectId} not found`);
+      }
+      
+      next();
+    } catch (error) {
+      console.error('[Pre-Task-Create] Error loading project:', error);
+      next(); // Vẫn tiếp tục middleware chain
+    }
+  },
+  logTaskCreate, 
+  createTask
+);
 
 /**
  * @swagger

@@ -609,7 +609,22 @@ const TaskCard = ({
       });
       
       const result = await getTaskHistory(taskProjectId, taskSprintId, enhancedTask._id);
-      if (result.success) {
+      
+      // Check if result is directly the data array or an object with success property
+      if (Array.isArray(result)) {
+        // If result is already the data array
+        setHistory(result);
+        
+        // Lưu history vào localStorage
+        if (result.length > 0) {
+          try {
+            localStorage.setItem(`task_history_${enhancedTask._id}`, JSON.stringify(result));
+          } catch (error) {
+            console.error("Error saving fetched history to localStorage:", error);
+          }
+        }
+      } else if (result && (result.success || result.data)) {
+        // If result is an object with success or data property
         const fetchedHistory = result.data || [];
         setHistory(fetchedHistory);
         
@@ -622,7 +637,7 @@ const TaskCard = ({
           }
         }
       } else {
-        console.error("Error in fetchHistory:", result.message);
+        console.error("Error in fetchHistory: Unexpected result format", result);
       }
     } catch (error) {
       console.error("Error fetching history:", error);

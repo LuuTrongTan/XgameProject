@@ -19,13 +19,13 @@ API.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Log request khi bắt đầu gửi
-    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
+    // Log request details for debugging
+    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`, config.params || {});
     
     return config;
   },
   (error) => {
-    console.error("[API Request Error]", error);
+    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -33,79 +33,26 @@ API.interceptors.request.use(
 // Interceptor cho responses
 API.interceptors.response.use(
   (response) => {
-    console.log("[API Response]", `${response.config.method.toUpperCase()} ${response.config.url}:`, response.data);
+    // Handle successful responses
+    console.log(`[API Response] ${response.config.method.toUpperCase()} ${response.config.url} - Status: ${response.status}`);
     return response;
   },
-  async (error) => {
-    // Kiểm tra lỗi để hiển thị log có ý nghĩa
+  (error) => {
+    // Handle error responses
+    console.error(`[API Error] ${error.config?.method?.toUpperCase() || 'UNKNOWN'} ${error.config?.url || 'UNKNOWN'} - ${error.message}`);
+    
     if (error.response) {
-      // Lỗi có phản hồi từ server (status code không phải 2xx)
-      console.error(
-        "[API Error]", 
-        `${error.config?.method?.toUpperCase() || 'UNKNOWN'} ${error.config?.url || 'UNKNOWN'} (${error.response.status}):`, 
-        error.response.data
-      );
-      
-      // Xử lý các loại lỗi cụ thể dựa trên mã status
-      switch (error.response.status) {
-        case 400:
-          console.error("Bad Request - Check data format:", error.response.data);
-          break;
-        case 401:
-          console.error("Unauthorized - Token invalid or expired");
-          try {
-            // Thử refresh token
-            const newToken = await refreshToken();
-            if (newToken) {
-              // Thử lại request với token mới
-              error.config.headers.Authorization = `Bearer ${newToken}`;
-              return API(error.config);
-            } else {
-              // Nếu không refresh được, logout
-              logout();
-              window.location.href = "/login";
-            }
-          } catch (e) {
-            // Lỗi khi refresh token, logout
-            console.error("Token refresh failed:", e);
-            logout();
-            window.location.href = "/login";
-          }
-          break;
-        case 403:
-          console.error("Forbidden - Not enough permissions");
-          break;
-        case 404:
-          console.error("Not Found - Resource doesn't exist");
-          break;
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          console.error("Server Error:", error.response.data);
-          break;
-      }
-    } else if (error.request) {
-      // Lỗi không nhận được phản hồi từ server
-      console.error("[API Network Error]", `${error.config?.method?.toUpperCase() || 'UNKNOWN'} ${error.config?.url || 'UNKNOWN'}:`, "No response received");
-      
-      // Check specifically for timeout
-      if (error.code === 'ECONNABORTED') {
-        console.error("Request timed out");
-      }
-    } else {
-      // Lỗi khi thiết lập request
-      console.error("[API Config Error]", error.message);
+      console.error('API Error Response:', error.response.status, error.response.data);
     }
-
-    // Trả về lỗi chi tiết hơn cho client xử lý
-    return Promise.reject({
-      ...error,
-      isNetworkError: !error.response,
-      isTimeout: error.code === 'ECONNABORTED',
-      isServerError: error.response && error.response.status >= 500,
-      customMessage: getErrorMessage(error)
-    });
+    
+    // Xử lý 401 Unauthorized
+    if (error.response && error.response.status === 401) {
+      console.log('Unauthorized access, redirecting to login');
+      localStorage.removeItem('token');
+      window.location = '/login';
+    }
+    
+    return Promise.reject(error);
   }
 );
 

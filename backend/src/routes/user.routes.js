@@ -4,7 +4,8 @@ import {
   getUserById,
   updateUser,
   deleteUser,
-  changeUserRole
+  changeUserRole,
+  getUserHistory
 } from "../controllers/user.controller.js";
 import { checkPermission, protect, admin } from "../middlewares/auth.middleware.js";
 import { PERMISSIONS } from "../constants/permissions.js";
@@ -28,5 +29,8 @@ router.delete("/:id", checkPermission(PERMISSIONS.DELETE_USERS), deleteUser);
 
 // Change user role - admin only
 router.put("/:userId/role", admin, changeUserRole);
+
+// Lấy lịch sử hoạt động của người dùng hiện tại
+router.get("/me/history", getUserHistory);
 
 export default router;

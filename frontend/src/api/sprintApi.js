@@ -9,11 +9,11 @@ export { getProjectById };
 export const getSprints = async (projectId) => {
   if (DEBUG) {
     console.log('=== DEBUG getSprints API Call ===');
-    console.log(`Calling GET /projects/${projectId}/sprints`);
+    console.log(`Calling GET /sprints/projects/${projectId}/sprints`);
   }
 
   try {
-    const response = await api.get(`/projects/${projectId}/sprints`);
+    const response = await api.get(`/sprints/projects/${projectId}/sprints`);
     if (DEBUG) {
       console.log('Response data:', response.data);
     }
@@ -33,11 +33,11 @@ export const getSprints = async (projectId) => {
 export const getSprintById = async (projectId, sprintId) => {
   if (DEBUG) {
     console.log('=== DEBUG getSprintById API Call ===');
-    console.log(`Calling GET /projects/${projectId}/sprints/${sprintId}`);
+    console.log(`Calling GET /sprints/projects/${projectId}/sprints/${sprintId}`);
   }
 
   try {
-    const response = await api.get(`/projects/${projectId}/sprints/${sprintId}`);
+    const response = await api.get(`/sprints/projects/${projectId}/sprints/${sprintId}`);
     
     if (DEBUG) {
       console.log('Response data:', response.data);
@@ -64,7 +64,7 @@ export const createSprint = async (projectId, sprintData) => {
       membersCount: sprintData.members?.length || 0
     });
     
-    const response = await api.post(`/projects/${projectId}/sprints`, sprintData);
+    const response = await api.post(`/sprints/projects/${projectId}/sprints`, sprintData);
     return response.data;
   } catch (error) {
     console.error('Error in createSprint:', error);
@@ -75,7 +75,7 @@ export const createSprint = async (projectId, sprintData) => {
 // Cập nhật sprint
 export const updateSprint = async (projectId, sprintId, sprintData) => {
   try {
-    const response = await api.put(`/projects/${projectId}/sprints/${sprintId}`, sprintData);
+    const response = await api.put(`/sprints/projects/${projectId}/sprints/${sprintId}`, sprintData);
     return response.data;
   } catch (error) {
     console.error('Error in updateSprint:', error);
@@ -86,7 +86,7 @@ export const updateSprint = async (projectId, sprintId, sprintData) => {
 // Xóa sprint
 export const deleteSprint = async (projectId, sprintId) => {
   try {
-    const response = await api.delete(`/projects/${projectId}/sprints/${sprintId}`);
+    const response = await api.delete(`/sprints/projects/${projectId}/sprints/${sprintId}`);
     return response.data;
   } catch (error) {
     console.error('Error in deleteSprint:', error);
@@ -98,7 +98,7 @@ export const deleteSprint = async (projectId, sprintId) => {
 export const addTaskToSprint = async (projectId, sprintId, taskId) => {
   try {
     const response = await api.post(
-      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`
+      `/sprints/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`
     );
 
     return {
@@ -120,7 +120,7 @@ export const addTaskToSprint = async (projectId, sprintId, taskId) => {
 export const removeTaskFromSprint = async (projectId, sprintId, taskId) => {
   try {
     const response = await api.delete(
-      `/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`
+      `/sprints/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`
     );
 
     return {
@@ -140,7 +140,7 @@ export const removeTaskFromSprint = async (projectId, sprintId, taskId) => {
 // Lấy danh sách thành viên của sprint
 export const getSprintMembers = async (projectId, sprintId) => {
   try {
-    const response = await api.get(`/projects/${projectId}/sprints/${sprintId}/members`);
+    const response = await api.get(`/sprints/projects/${projectId}/sprints/${sprintId}/members`);
     return {
       success: true,
       data: response.data.data || [],
@@ -160,7 +160,7 @@ export const getSprintMembers = async (projectId, sprintId) => {
 export const addMemberToSprint = async (projectId, sprintId, memberData) => {
   try {
     console.log("API call - Adding member to sprint:", { projectId, sprintId, memberData });
-    const response = await api.post(`/projects/${projectId}/sprints/${sprintId}/members`, memberData);
+    const response = await api.post(`/sprints/projects/${projectId}/sprints/${sprintId}/members`, memberData);
     console.log("API response - Add member:", response.data);
     
     return {
@@ -181,7 +181,7 @@ export const addMemberToSprint = async (projectId, sprintId, memberData) => {
 // Xóa thành viên khỏi sprint
 export const removeMemberFromSprint = async (projectId, sprintId, memberId) => {
   try {
-    const response = await api.delete(`/projects/${projectId}/sprints/${sprintId}/members/${memberId}`);
+    const response = await api.delete(`/sprints/projects/${projectId}/sprints/${sprintId}/members/${memberId}`);
     return response.data;
   } catch (error) {
     console.error('Error in removeMemberFromSprint:', error);
@@ -217,11 +217,11 @@ export const getAvailableUsersForSprint = async (projectId, sprintId) => {
 export const getUserSprints = async () => {
   if (DEBUG) {
     console.log('=== DEBUG getUserSprints API Call ===');
-    console.log(`Calling GET /me/sprints`);
+    console.log(`Calling GET /sprints/user`);
   }
   
   try {
-    const response = await api.get(`/me/sprints`);
+    const response = await api.get(`/sprints/user`);
     
     if (DEBUG) {
       console.log('Response success:', response.data.success);

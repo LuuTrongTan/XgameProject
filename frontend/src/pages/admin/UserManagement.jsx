@@ -37,6 +37,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { getAllUsers, changeUserRole, deleteUser } from "../../api/userApi";
 import { ROLES, getRoleName } from "../../config/constants";
 import { useSnackbar } from "notistack";
+import { useTheme } from "@mui/material/styles";
 
 const UserManagement = () => {
   const { user } = useAuth();
@@ -52,6 +53,7 @@ const UserManagement = () => {
   const [newRole, setNewRole] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const theme = useTheme();
 
   // Chỉ admin mới có thể truy cập trang này
   useEffect(() => {
@@ -175,6 +177,14 @@ const UserManagement = () => {
           startIcon={<RefreshIcon />} 
           onClick={fetchUsers}
           disabled={loading}
+          variant="outlined"
+          color="primary"
+          size="medium"
+          sx={{ 
+            borderRadius: 2, 
+            boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+            '&:hover': { boxShadow: '0 4px 8px rgba(0,0,0,0.1)' } 
+          }}
         >
           Làm mới
         </Button>
@@ -193,11 +203,21 @@ const UserManagement = () => {
         variant="outlined"
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        sx={{ mb: 3 }}
+        sx={{ 
+          mb: 3,
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 2,
+            '&:hover': {
+              '& > fieldset': {
+                borderColor: theme => theme.palette.primary.main,
+              },
+            },
+          }
+        }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <SearchIcon />
+              <SearchIcon color="action" />
             </InputAdornment>
           ),
         }}

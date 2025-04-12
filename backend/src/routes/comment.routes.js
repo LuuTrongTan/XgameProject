@@ -8,6 +8,7 @@ import {
   addReply,
 } from "../controllers/comment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
+import Comment from "../models/comment.model.js";
 
 const router = express.Router();
 
@@ -82,6 +83,59 @@ router.post("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", pro
  *         description: Danh sách bình luận
  */
 router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments", protect, getComments);
+
+/**
+ * @swagger
+ * /projects/{projectId}/sprints/{sprintId}/tasks/{taskId}/comments/count:
+ *   get:
+ *     summary: Lấy số lượng bình luận của task
+ *     tags: [Comments]
+ *     parameters:
+ *       - in: path
+ *         name: projectId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: sprintId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Số lượng bình luận
+ */
+router.get("/projects/:projectId/sprints/:sprintId/tasks/:taskId/comments/count", protect, async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        message: "TaskId là bắt buộc"
+      });
+    }
+    
+    const count = await Comment.countDocuments({ task: taskId });
+    
+    res.json({
+      success: true,
+      count
+    });
+  } catch (error) {
+    console.error("Error counting comments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi đếm số lượng bình luận",
+      error: error.message
+    });
+  }
+});
 
 /**
  * @swagger

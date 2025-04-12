@@ -20,6 +20,8 @@ import Calendar from "./pages/Calendar";
 import SprintList from "./pages/sprint/SprintList";
 import SprintDetail from "./pages/sprint/SprintDetail";
 import NotificationsPage from "./pages/notifications/NotificationsPage";
+import HistoryPage from "./pages/history/HistoryPage";
+import CalendarIntegration from "./pages/settings/CalendarIntegration";
 
 // Admin pages
 import UserManagement from "./pages/admin/UserManagement";
@@ -80,6 +82,8 @@ const App = () => {
         { path: "task-debug", element: <TaskDebug /> },
         { path: "profile", element: <Profile /> },
         { path: "notifications", element: <NotificationsPage /> },
+        { path: "history", element: <HistoryPage /> },
+        { path: "settings/calendar", element: <CalendarIntegration /> },
         { path: "*", element: <NotFound /> },
       ],
     },

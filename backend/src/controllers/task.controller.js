@@ -70,15 +70,41 @@ const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
         populate: { path: "members" },
       })
       .populate("sprint", "name startDate endDate")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
+      .populate("createdBy", "name email avatar avatarBase64 role")
       .populate("parent", "title status")
       .populate("subtasks", "title status progress")
       .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar")
+      .populate("watchers", "name email avatar avatarBase64")
       .populate({
         path: "dependencies.task",
         select: "title status",
+      })
+      .populate({
+        path: "comments",
+        match: { status: "active", parentComment: null },
+        populate: [
+          {
+            path: "user",
+            select: "name email avatar avatarBase64",
+          },
+          {
+            path: "replies",
+            match: { status: "active" },
+            populate: {
+              path: "user",
+              select: "name email avatar avatarBase64",
+            },
+          },
+        ],
+      })
+      .populate({
+        path: "reporter",
+        select: "name email avatar avatarBase64 role position department",
+      })
+      .populate({
+        path: "updatedBy",
+        select: "name email avatar avatarBase64 role",
       });
 
     if (!task) return { error: "Công việc không tồn tại" };
@@ -88,8 +114,8 @@ const checkTaskPermission = async (taskId, userId, requiredRoles = []) => {
       await task.populate({
         path: "comments",
         populate: { 
-          path: "author", 
-          select: "name email avatar",
+          path: "user", 
+          select: "name email avatar avatarBase64",
           strictPopulate: false 
         }
       });
@@ -223,12 +249,12 @@ export const getTasks = async (req, res) => {
     tasks = await Task.find(query)
       .populate("project", "name status")
       .populate("sprint", "name startDate endDate")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
+      .populate("createdBy", "name email avatar avatarBase64 role")
       .populate("parent", "title status")
       .populate("subtasks", "title status progress")
       .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar")
+      .populate("watchers", "name email avatar avatarBase64")
       .sort({ createdAt: -1 });
       
     console.log("Found", tasks.length, "tasks");
@@ -335,20 +361,21 @@ export const getTaskById = async (req, res) => {
       const commentsResult = await Comment.find({ task: task._id })
         .sort({ createdAt: -1 })
         .populate({
-          path: 'author',
-          select: 'name email avatar',
+          path: 'user',
+          select: 'name email avatar avatarBase64',
           strictPopulate: false
         });
       
       // Chuyển đổi kết quả thành các object và thêm author mặc định cho comment nếu author không tìm thấy
       comments = commentsResult.map(comment => {
         const commentObj = comment.toObject();
-        if (!commentObj.author) {
-          commentObj.author = {
+        if (!commentObj.user) {
+          commentObj.user = {
             _id: 'deleted',
             name: 'Người dùng đã xóa',
             email: '',
-            avatar: ''
+            avatar: '',
+            avatarBase64: ''
           };
         }
         return commentObj;
@@ -447,9 +474,30 @@ export const createTask = async (req, res) => {
     
     const newPosition = maxPositionTask ? maxPositionTask.position + 1 : 0;
     
-    // Create task
+    // Sanitize assignees array to ensure they are valid ObjectIds
+    let sanitizedAssignees = [];
+    if (req.body.assignees && Array.isArray(req.body.assignees)) {
+      // Process each assignee to extract valid ObjectId
+      sanitizedAssignees = req.body.assignees
+        .filter(assignee => assignee) // Filter out null/undefined values
+        .map(assignee => {
+          // If assignee is an object with _id or id field, extract that
+          if (typeof assignee === 'object' && assignee !== null) {
+            return assignee._id || assignee.id || assignee.userId || null;
+          }
+          // If assignee is already a string, use it directly
+          return typeof assignee === 'string' ? assignee : null;
+        })
+        .filter(id => id && mongoose.Types.ObjectId.isValid(id)); // Keep only valid ObjectIds
+      
+      console.log("Original assignees:", req.body.assignees);
+      console.log("Sanitized assignees:", sanitizedAssignees);
+    }
+    
+    // Create task with sanitized assignees
     const task = new Task({
       ...req.body,
+      assignees: sanitizedAssignees, // Use the sanitized array
       project: projectId,
       sprint: sprintId,
       createdBy: req.user.id,
@@ -467,10 +515,29 @@ export const createTask = async (req, res) => {
 
     // Populate task data
     const populatedTask = await Task.findById(task._id)
-      .populate("createdBy", "name email avatar")
-      .populate("assignees", "name email avatar")
-      .populate("project", "name")
-      .populate("sprint", "name");
+      .populate("createdBy", "name email avatar avatarBase64 role")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
+      .populate({
+        path: "project",
+        select: "name description status owner members",
+        populate: { path: "owner", select: "name email avatar avatarBase64" }
+      })
+      .populate("sprint", "name startDate endDate");
+
+    console.log("[Task Controller] Populated task for response:", 
+      JSON.stringify({
+        id: populatedTask._id,
+        title: populatedTask.title,
+        project: {
+          id: populatedTask.project?._id,
+          name: populatedTask.project?.name
+        },
+        sprint: {
+          id: populatedTask.sprint?._id,
+          name: populatedTask.sprint?.name
+        }
+      })
+    );
 
     // Gửi thông báo real-time qua socket
     // 1. Emit to project room
@@ -504,10 +571,13 @@ export const createTask = async (req, res) => {
       });
     }
 
-    res.json({
+    // Thêm projectId và sprintId vào response để đảm bảo audit log có thể truy cập
+    res.status(201).json({
       success: true,
       message: "Tạo công việc thành công",
-      data: task,
+      data: populatedTask,
+      projectId,
+      sprintId
     });
   } catch (error) {
     console.error("Lỗi khi tạo công việc:", error);
@@ -642,12 +712,12 @@ export const updateTask = async (req, res) => {
 
     const populatedTask = await Task.findById(task._id)
       .populate("project", "name status")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
+      .populate("createdBy", "name email avatar avatarBase64 role")
       .populate("parent", "title status")
       .populate("subtasks", "title status progress")
       .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar");
+      .populate("watchers", "name email avatar avatarBase64");
 
     // Gửi thông báo cập nhật
     global.io.emit("task_updated", {
@@ -709,12 +779,12 @@ export const updateStatus = async (req, res) => {
 
     const populatedTask = await Task.findById(task._id)
       .populate("project", "name status")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
+      .populate("createdBy", "name email avatar avatarBase64 role")
       .populate("parent", "title status")
       .populate("subtasks", "title status progress")
       .populate("milestone", "name dueDate")
-      .populate("watchers", "name email avatar");
+      .populate("watchers", "name email avatar avatarBase64");
 
     // Gửi thông báo cập nhật
     global.io.emit("task_updated", {
@@ -852,72 +922,196 @@ export const toggleDependency = async (req, res) => {
 // Đồng bộ với Google Calendar
 export const syncWithGoogleCalendar = async (req, res) => {
   try {
-    const { task, error } = await checkTaskPermission(
-      req.params.id,
-      req.user.id
-    );
-    if (error) {
-      return res.status(403).json({
-        success: false,
-        message: error,
-      });
-    }
-
-    const user = await User.findById(req.user.id).populate(
-      "calendarIntegration.googleCalendar"
-    );
-
-    if (!user.calendarIntegration?.googleCalendar?.connected) {
+    const { taskId } = req.params;
+    const { calendarType } = req.body;
+    
+    // Validate taskId parameter
+    if (!taskId) {
       return res.status(400).json({
         success: false,
-        message: "Bạn chưa kết nối Google Calendar",
+        message: "Task ID không hợp lệ hoặc bị thiếu",
       });
     }
+    
+    // Tìm task để đồng bộ
+    const task = await Task.findById(taskId);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy task",
+      });
+    }
+    
+    // Kiểm tra quyền truy cập
+    if (task.createdBy.toString() !== req.user.id && 
+        !task.assignees.includes(req.user.id)) {
+      const userRole = await getUserRoleInProject(task.project, req.user.id);
+      if (userRole !== ROLES.ADMIN && userRole !== ROLES.PROJECT_MANAGER) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền đồng bộ task này với lịch",
+        });
+      }
+    }
+    
+    // Xác định loại calendar để đồng bộ
+    if (calendarType === "google") {
+      // Tìm thông tin user để lấy kết nối Google Calendar
+      const user = await User.findById(req.user.id);
 
-    // Tạo sự kiện trong Google Calendar
-    const event = {
-      summary: task.title,
-      description: task.description,
-      start: {
-        dateTime: task.startDate || new Date(),
-        timeZone: "Asia/Ho_Chi_Minh",
-      },
-      end: {
-        dateTime: task.dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
-        timeZone: "Asia/Ho_Chi_Minh",
-      },
-    };
+      // Kiểm tra calendarIntegration có được thiết lập chưa
+      if (!user.calendarIntegration) {
+        return res.status(400).json({
+          success: false,
+          message: "Bạn chưa kết nối Google Calendar. Vui lòng thiết lập kết nối trong phần cài đặt.",
+        });
+      }
+      
+      // Kiểm tra googleCalendar có tồn tại và đã connected chưa
+      if (!user.calendarIntegration.googleCalendar || 
+          !user.calendarIntegration.googleCalendar.connected ||
+          !user.calendarIntegration.googleCalendar.accessToken) {
+        return res.status(400).json({
+          success: false,
+          message: "Bạn chưa kết nối Google Calendar hoặc thiếu thông tin xác thực. Vui lòng kết nối lại trong phần cài đặt.",
+        });
+      }
 
-    const response = await calendar.events.insert({
-      calendarId: "primary",
-      resource: event,
-    });
+      try {
+        // Thiết lập credentials cho Google API
+        console.log('[DEBUG] Setting Google credentials with:', {
+          hasAccessToken: !!user.calendarIntegration.googleCalendar.accessToken,
+          hasRefreshToken: !!user.calendarIntegration.googleCalendar.refreshToken,
+          expiryDate: user.calendarIntegration.googleCalendar.expiryDate
+        });
+        
+        const tokens = {
+          access_token: user.calendarIntegration.googleCalendar.accessToken,
+          refresh_token: user.calendarIntegration.googleCalendar.refreshToken,
+          expiry_date: user.calendarIntegration.googleCalendar.expiryDate
+        };
+        
+        // Thiết lập credentials cho OAuth2 client
+        const credentialsSet = setGoogleCredentials(tokens);
+        
+        if (!credentialsSet) {
+          throw new Error('Không thể thiết lập thông tin xác thực Google API');
+        }
+        
+        // Tạo sự kiện trong Google Calendar
+        const event = {
+          summary: task.title,
+          description: task.description || "Công việc từ QLX",
+          start: {
+            dateTime: task.startDate || new Date(),
+            timeZone: "Asia/Ho_Chi_Minh",
+          },
+          end: {
+            dateTime: task.dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
+            timeZone: "Asia/Ho_Chi_Minh",
+          },
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'email', minutes: 24 * 60 }, // 1 day
+              { method: 'popup', minutes: 60 } // 1 hour
+            ]
+          },
+          colorId: task.priority === 'high' ? '11' : // Red for high priority
+                  task.priority === 'medium' ? '5' : // Yellow for medium priority  
+                  '9', // Green for low priority
+        };
+        
+        // Nếu task đã có googleCalendarEventId, cập nhật sự kiện thay vì tạo mới
+        let response;
+        if (task.googleCalendarEventId) {
+          try {
+            response = await calendar.events.update({
+              calendarId: "primary",
+              eventId: task.googleCalendarEventId,
+              resource: event,
+            });
+            console.log(`Đã cập nhật sự kiện Google Calendar ${task.googleCalendarEventId}`);
+          } catch (updateError) {
+            console.error("Lỗi khi cập nhật sự kiện Google Calendar:", updateError);
+            // Nếu không cập nhật được, có thể sự kiện đã bị xóa, tạo mới
+            response = await calendar.events.insert({
+              calendarId: "primary",
+              resource: event,
+            });
+            console.log("Đã tạo sự kiện Google Calendar mới thay vì cập nhật");
+          }
+        } else {
+          // Tạo sự kiện mới
+          response = await calendar.events.insert({
+            calendarId: "primary",
+            resource: event,
+          });
+          console.log("Đã tạo sự kiện Google Calendar mới");
+        }
 
-    // Lưu ID sự kiện vào task
-    task.googleCalendarEventId = response.data.id;
-    await task.save();
+        // Lưu ID sự kiện vào task
+        task.googleCalendarEventId = response.data.id;
+        task.syncWithCalendar = true;
+        task.calendarType = "google";
+        await task.save();
+        
+        await auditLogService.log({
+          action: 'CALENDAR_SYNC',
+          userId: req.user.id, 
+          resourceType: 'TASK',
+          resourceId: task._id,
+          details: `Đã đồng bộ task "${task.title}" với Google Calendar`,
+          metadata: {
+            taskId: task._id,
+            eventId: response.data.id,
+            calendarType: "google"
+          }
+        });
 
-    // Gửi thông báo realtime
-    global.io.emit("task_calendar_synced", {
-      taskId: task._id,
-      calendarType: "google",
-      eventId: response.data.id,
-      syncedBy: req.user.name,
-    });
+        // Gửi thông báo realtime
+        global.io.emit("task_calendar_synced", {
+          taskId: task._id,
+          calendarType: "google",
+          eventId: response.data.id,
+          syncedBy: req.user.name,
+        });
 
-    res.json({
-      success: true,
-      message: "Đã đồng bộ với Google Calendar",
-      data: {
-        eventId: response.data.id,
-        eventLink: response.data.htmlLink,
-      },
-    });
+        return res.json({
+          success: true,
+          message: "Đã đồng bộ với Google Calendar",
+          data: {
+            eventId: response.data.id,
+            eventLink: response.data.htmlLink,
+          },
+        });
+      } catch (error) {
+        console.error("Lỗi khi đồng bộ với Calendar:", error);
+        res.status(500).json({
+          success: false,
+          message: "Lỗi khi đồng bộ với Calendar",
+          error: error.message,
+        });
+      }
+    }
+    else if (calendarType === "outlook") {
+      // Đồng bộ với Microsoft Outlook Calendar - placeholder for future implementation
+      return res.status(501).json({
+        success: false,
+        message: "Tính năng đồng bộ với Outlook Calendar đang được phát triển",
+      });
+    }
+    else {
+      return res.status(400).json({
+        success: false,
+        message: "Loại lịch không được hỗ trợ. Hiện tại chỉ hỗ trợ Google Calendar.",
+      });
+    }
   } catch (error) {
-    console.error("Lỗi khi đồng bộ với Google Calendar:", error);
+    console.error("Lỗi khi đồng bộ với Calendar:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi đồng bộ với Google Calendar",
+      message: "Lỗi khi đồng bộ với Calendar",
       error: error.message,
     });
   }
@@ -990,7 +1184,7 @@ export const getTaskTimeStats = async (req, res) => {
 
     // Lấy tất cả timelogs của task
     const timelogs = await Timelog.find({ task: task._id })
-      .populate("user", "name email avatar")
+      .populate("user", "name email avatar avatarBase64")
       .sort({ startTime: -1 });
 
     // Tính toán thống kê
@@ -1260,7 +1454,7 @@ export const assignTask = async (req, res) => {
     await task.save();
 
     const populatedTask = await Task.findById(task._id)
-      .populate("assignees", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64 role position department")
       .populate("project", "name");
 
     // Gửi thông báo cho những người được gán mới
@@ -1299,9 +1493,9 @@ export const deleteTask = async (req, res) => {
 
     // Kiểm tra task tồn tại
     const task = await Task.findById(taskId)
-      .populate("assignees", "name email avatar") // Populate assignees để gửi thông báo
-      .populate("watchers", "name email avatar") // Populate watchers để gửi thông báo
-      .populate("createdBy", "name email avatar") // Populate createdBy để gửi thông báo
+      .populate("assignees", "name email avatar avatarBase64") // Populate assignees để gửi thông báo
+      .populate("watchers", "name email avatar avatarBase64") // Populate watchers để gửi thông báo
+      .populate("createdBy", "name email avatar avatarBase64") // Populate createdBy để gửi thông báo
       .populate("project", "name"); // Populate project để thêm context vào thông báo
     
     if (!task) {
@@ -1567,8 +1761,8 @@ export const getUpcomingTasks = async (req, res) => {
       status: { $ne: "done" },
     })
       .populate("project", "name status")
-      .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar")
+      .populate("assignees", "name email avatar avatarBase64")
+      .populate("createdBy", "name email avatar avatarBase64")
       .sort({ dueDate: 1 });
 
     // Thêm thống kê cho mỗi task
@@ -1631,7 +1825,7 @@ export const getTaskHistory = async (req, res) => {
           entityId: taskId,
           entityType: 'Task',
           action: 'create',
-          user: await User.findById(task.createdBy).select('name email avatar'),
+          user: await User.findById(task.createdBy).select('name email avatar avatarBase64'),
           details: { 
             title: task.title, 
             status: task.status,
@@ -1663,7 +1857,7 @@ export const getTaskHistory = async (req, res) => {
         entityId: taskId,
         entityType: 'Task',
         action: 'create',
-        user: await User.findById(task.createdBy).select('name email avatar'),
+        user: await User.findById(task.createdBy).select('name email avatar avatarBase64'),
         details: { title: task.title, status: task.status },
         createdAt: task.createdAt,
       }];
@@ -1746,7 +1940,7 @@ export const updateAssignees = asyncHandler(async (req, res) => {
         { new: true }
       ).populate('project', 'name')
         .populate('sprint', 'name')
-        .populate('assignees', 'name email avatar');
+        .populate('assignees', 'name email avatar avatarBase64');
     } else {
       return res.status(400).json({
         success: false,
@@ -1761,7 +1955,7 @@ export const updateAssignees = asyncHandler(async (req, res) => {
       { new: true }
     ).populate('project', 'name')
       .populate('sprint', 'name')
-      .populate('assignees', 'name email avatar');
+      .populate('assignees', 'name email avatar avatarBase64');
   } else {
     return res.status(400).json({
       success: false,

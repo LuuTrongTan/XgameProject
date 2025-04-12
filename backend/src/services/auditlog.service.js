@@ -40,6 +40,56 @@ const auditLogService = {
         throw new Error(`Validation errors: ${validationErrors.join(', ')}`);
       }
       
+      // Nếu có projectId nhưng chưa có projectName trong details, thử lấy thông tin project
+      if (logData.projectId && 
+          (!logData.details.projectName || logData.details.projectName === 'unknown')) {
+        try {
+          console.log(`[AuditLog Service] Fetching project info for ID: ${logData.projectId}`);
+          // Import Project model trực tiếp ở đây để tránh circular dependency
+          const Project = await import('../models/project.model.js').then(m => m.default);
+          const project = await Project.findById(logData.projectId).select('name').exec();
+          
+          if (project && project.name) {
+            console.log(`[AuditLog Service] Found project name: ${project.name}`);
+            // Đảm bảo details đã được khởi tạo
+            if (!logData.details) {
+              logData.details = {};
+            }
+            // Cập nhật projectName trong details
+            logData.details.projectName = project.name;
+          } else {
+            console.log(`[AuditLog Service] Project not found or has no name`);
+          }
+        } catch (projectError) {
+          console.error(`[AuditLog Service] Error fetching project:`, projectError);
+        }
+      }
+      
+      // Nếu có sprintId nhưng chưa có sprintName trong details, thử lấy thông tin sprint
+      if (logData.sprintId && 
+          (!logData.details.sprintName || logData.details.sprintName === 'unknown')) {
+        try {
+          console.log(`[AuditLog Service] Fetching sprint info for ID: ${logData.sprintId}`);
+          // Import Sprint model trực tiếp ở đây
+          const Sprint = await import('../models/sprint.model.js').then(m => m.default);
+          const sprint = await Sprint.findById(logData.sprintId).select('name').exec();
+          
+          if (sprint && sprint.name) {
+            console.log(`[AuditLog Service] Found sprint name: ${sprint.name}`);
+            // Đảm bảo details đã được khởi tạo
+            if (!logData.details) {
+              logData.details = {};
+            }
+            // Cập nhật sprintName trong details
+            logData.details.sprintName = sprint.name;
+          } else {
+            console.log(`[AuditLog Service] Sprint not found or has no name`);
+          }
+        } catch (sprintError) {
+          console.error(`[AuditLog Service] Error fetching sprint:`, sprintError);
+        }
+      }
+      
       const newLog = new AuditLog({
         entityId: logData.entityId,
         entityType: logData.entityType,

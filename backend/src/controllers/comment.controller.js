@@ -164,11 +164,11 @@ export const addTaskComment = async (req, res) => {
 
     // Lấy thông tin đầy đủ của comment
     const populatedComment = await Comment.findById(comment._id)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar")
+      .populate("user", "name email avatar avatarBase64")
+      .populate("mentions", "name email avatar avatarBase64")
       .populate({
         path: "parentComment",
-        populate: { path: "user", select: "name email avatar" },
+        populate: { path: "user", select: "name email avatar avatarBase64" },
       });
 
     // Gửi thông báo real-time qua socket
@@ -291,14 +291,14 @@ export const getComments = async (req, res) => {
       .sort(sortOptions[sort] || sortOptions.newest)
       .skip((page - 1) * limit)
       .limit(limit)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar")
+      .populate("user", "name email avatar avatarBase64")
+      .populate("mentions", "name email avatar avatarBase64")
       .populate({
         path: "replies",
         match: { status: "active" },
         populate: [
-          { path: "user", select: "name email avatar" },
-          { path: "mentions", select: "name email avatar" },
+          { path: "user", select: "name email avatar avatarBase64" },
+          { path: "mentions", select: "name email avatar avatarBase64" },
         ],
         options: { sort: { createdAt: 1 } },
       });
@@ -312,7 +312,7 @@ export const getComments = async (req, res) => {
         commentObj.reactions = await Promise.all(commentObj.reactions.map(async (reaction) => {
           if (reaction.user) {
             try {
-              const user = await User.findById(reaction.user).select('name email avatar');
+              const user = await User.findById(reaction.user).select('name email avatar avatarBase64');
               return {
                 ...reaction,
                 user: user ? user : { _id: reaction.user, name: 'Unknown User' }
@@ -333,7 +333,7 @@ export const getComments = async (req, res) => {
             reply.reactions = await Promise.all(reply.reactions.map(async (reaction) => {
               if (reaction.user) {
                 try {
-                  const user = await User.findById(reaction.user).select('name email avatar');
+                  const user = await User.findById(reaction.user).select('name email avatar avatarBase64');
                   return {
                     ...reaction,
                     user: user ? user : { _id: reaction.user, name: 'Unknown User' }
@@ -514,14 +514,14 @@ export const toggleReaction = async (req, res) => {
 
     // Trả về comment đã được cập nhật với thông tin người dùng đầy đủ
     const updatedComment = await Comment.findById(commentId)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar")
+      .populate("user", "name email avatar avatarBase64")
+      .populate("mentions", "name email avatar avatarBase64")
       .populate({
         path: "replies",
         match: { status: "active" },
         populate: [
-          { path: "user", select: "name email avatar" },
-          { path: "mentions", select: "name email avatar" },
+          { path: "user", select: "name email avatar avatarBase64" },
+          { path: "mentions", select: "name email avatar avatarBase64" },
         ],
         });
 
@@ -531,7 +531,7 @@ export const toggleReaction = async (req, res) => {
       commentObj.reactions = await Promise.all(commentObj.reactions.map(async (reaction) => {
         if (reaction.user) {
           try {
-            const user = await User.findById(reaction.user).select('name email avatar');
+            const user = await User.findById(reaction.user).select('name email avatar avatarBase64');
             return {
               ...reaction,
               user: user ? user : { _id: reaction.user, name: 'Unknown User' }
@@ -601,8 +601,8 @@ export const addReply = async (req, res) => {
     await parentComment.save();
 
     const populatedReply = await Comment.findById(reply._id)
-      .populate("user", "name email avatar")
-      .populate("mentions", "name email avatar");
+      .populate("user", "name email avatar avatarBase64")
+      .populate("mentions", "name email avatar avatarBase64");
 
     // Gửi thông báo cho người liên quan
     const task = await Task.findById(parentComment.task);

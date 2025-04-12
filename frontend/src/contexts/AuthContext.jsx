@@ -304,6 +304,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Thêm phương thức cập nhật avatar 
+  const updateUserAvatar = async (avatarBase64) => {
+    try {
+      setLoading(true);
+      console.log("Đang cập nhật avatar trong AuthContext...");
+      
+      const requestData = { avatar: avatarBase64 };
+      const response = await axios.put("/api/auth/me/avatar", requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.data?.success && response.data?.data) {
+        // Cập nhật thông tin user trong context với dữ liệu mới, đặc biệt là avatarBase64
+        const updatedUser = { 
+          ...user, 
+          avatarBase64: response.data.data.avatarBase64
+        };
+        
+        console.log("Avatar đã được cập nhật trong AuthContext:", !!updatedUser.avatarBase64);
+        
+        // Lưu vào localStorage và cập nhật state
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        
+        return updatedUser;
+      } else {
+        throw new Error("Không nhận được dữ liệu hợp lệ từ server");
+      }
+    } catch (error) {
+      console.error("Lỗi cập nhật avatar:", error);
+      throw new Error(
+        error.response?.data?.message || "Cập nhật avatar thất bại"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -313,6 +353,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     updateUserProfile,
+    updateUserAvatar,
     checkAuth,
   };
 

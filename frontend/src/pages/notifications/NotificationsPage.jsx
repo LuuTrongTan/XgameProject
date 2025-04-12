@@ -25,20 +25,27 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Checkbox
+  Checkbox,
+  Alert
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
   CheckCircle as CheckCircleIcon,
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
-  FilterList as FilterListIcon
+  FilterList as FilterListIcon,
+  Person
 } from '@mui/icons-material';
 import { getNotifications, markAsRead, deleteNotifications } from '../../api/notificationApi';
 import { useNavigate } from 'react-router-dom';
+import { useAdminView } from '../../contexts/AdminViewContext';
+import { useAuth } from '../../contexts/AuthContext';
+import UserSelector from '../../components/admin/UserSelector';
 
 const NotificationsPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { selectedUser, isAdminView } = useAdminView();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -56,7 +63,7 @@ const NotificationsPage = () => {
 
   useEffect(() => {
     fetchNotifications();
-  }, [page, filter, selectedType]);
+  }, [page, filter, selectedType, selectedUser]);
 
   const fetchNotifications = async () => {
     try {
@@ -73,16 +80,37 @@ const NotificationsPage = () => {
         params.type = selectedType;
       }
       
+      // Add userId if admin is viewing specific user
+      let requestConfig = {};
+      if (isAdminView && selectedUser) {
+        console.log(`[Notifications] Fetching notifications for selected user: ${selectedUser.name} (${selectedUser._id})`);
+        // Kiểm tra nếu API sử dụng endpoint khác hoặc cần params userId
+        if (selectedUser._id) {
+          params.userId = selectedUser._id;
+          requestConfig = { params };
+        }
+      } else {
+        console.log(`[Notifications] Fetching notifications for current user: ${user.name} (${user.id})`);
+        requestConfig = { params };
+      }
+      
+      console.log('[Notifications] Request params:', params);
+      
       const result = await getNotifications(params);
       
+      console.log(`[Notifications] API Response:`, result);
+      
       if (result.success) {
+        console.log(`[Notifications] Received ${result.data.notifications?.length || 0} notifications`);
         setNotifications(result.data.notifications);
         setTotalPages(result.data.totalPages);
         setUnreadCount(result.data.unreadCount);
         setNotificationStats(result.data.stats || {});
+      } else {
+        console.error('[Notifications] API error:', result.message);
       }
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('[Notifications] Error fetching notifications:', error);
     } finally {
       setLoading(false);
     }
@@ -105,7 +133,14 @@ const NotificationsPage = () => {
     
     // Mark this notification as read if not already
     if (!notification.isRead) {
-      markAsRead({ notificationIds: [notification._id] })
+      const data = { notificationIds: [notification._id] };
+      
+      // Add userId if admin is viewing specific user
+      if (isAdminView && selectedUser) {
+        data.userId = selectedUser._id;
+      }
+      
+      markAsRead(data)
         .then(result => {
           if (result.success) {
             setNotifications(prev => 
@@ -164,7 +199,14 @@ const NotificationsPage = () => {
   };
 
   const handleMarkAllAsRead = () => {
-    markAsRead({ all: true })
+    const data = { all: true };
+    
+    // Add userId if admin is viewing specific user
+    if (isAdminView && selectedUser) {
+      data.userId = selectedUser._id;
+    }
+    
+    markAsRead(data)
       .then(result => {
         if (result.success) {
           setNotifications(prev => 
@@ -179,8 +221,14 @@ const NotificationsPage = () => {
 
   const handleMarkSelectedAsRead = () => {
     const notificationIds = selectedNotifications.map(n => n._id);
+    const data = { notificationIds };
     
-    markAsRead({ notificationIds })
+    // Add userId if admin is viewing specific user
+    if (isAdminView && selectedUser) {
+      data.userId = selectedUser._id;
+    }
+    
+    markAsRead(data)
       .then(result => {
         if (result.success) {
           setNotifications(prev => 
@@ -198,7 +246,14 @@ const NotificationsPage = () => {
   };
 
   const handleDeleteAll = () => {
-    deleteNotifications({ all: true })
+    const data = { all: true };
+    
+    // Add userId if admin is viewing specific user
+    if (isAdminView && selectedUser) {
+      data.userId = selectedUser._id;
+    }
+    
+    deleteNotifications(data)
       .then(result => {
         if (result.success) {
           setNotifications([]);
@@ -212,8 +267,14 @@ const NotificationsPage = () => {
 
   const handleDeleteSelected = () => {
     const notificationIds = selectedNotifications.map(n => n._id);
+    const data = { notificationIds };
     
-    deleteNotifications({ notificationIds })
+    // Add userId if admin is viewing specific user
+    if (isAdminView && selectedUser) {
+      data.userId = selectedUser._id;
+    }
+    
+    deleteNotifications(data)
       .then(result => {
         if (result.success) {
           setNotifications(prev => 
@@ -282,28 +343,82 @@ const NotificationsPage = () => {
   const notificationTypes = Object.keys(notificationStats).sort();
 
   return (
-    <Container maxWidth="md">
-      <Paper sx={{ mt: 3, mb: 4, borderRadius: 2, overflow: 'hidden' }}>
-        <Box sx={{ p: 3, pb: 2, borderBottom: '1px solid rgba(0, 0, 0, 0.08)' }}>
+    <Container maxWidth="md" sx={{ mt: 4, mb: 8 }}>
+      <Typography variant="h4" gutterBottom fontWeight="bold" color="primary">
+        Thông báo
+      </Typography>
+
+      {isAdminView && (
+        <Box sx={{ mb: 3 }}>
+          <UserSelector />
+        </Box>
+      )}
+      
+      {isAdminView && selectedUser && (
+        <Alert 
+          severity="info" 
+          sx={{ mb: 3, borderRadius: 2 }}
+          icon={<Person />}
+        >
+          Đang xem thông báo của người dùng: <strong>{selectedUser.name || selectedUser.email}</strong>
+        </Alert>
+      )}
+
+      <Paper sx={{ 
+        mt: 3, 
+        mb: 4, 
+        borderRadius: 2, 
+        overflow: 'hidden',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+      }}>
+        <Box sx={{ 
+          p: 3, 
+          pb: 2, 
+          borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
+          background: 'linear-gradient(to right, #f7f9fc, #edf2f7)'
+        }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50' }}>
               Thông báo
               {unreadCount > 0 && (
                 <Chip 
                   label={unreadCount} 
                   size="small" 
                   color="error" 
-                  sx={{ ml: 1, height: 20, fontSize: '0.75rem' }} 
+                  sx={{ 
+                    ml: 1, 
+                    height: 20, 
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold' 
+                  }} 
                 />
               )}
             </Typography>
             
             <Box>
-              <IconButton onClick={handleRefresh} title="Làm mới">
+              <IconButton 
+                onClick={handleRefresh} 
+                title="Làm mới"
+                sx={{ 
+                  color: '#3182ce',
+                  '&:hover': { 
+                    backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                  } 
+                }}
+              >
                 <RefreshIcon />
               </IconButton>
               
-              <IconButton onClick={handleFilterMenuOpen} title="Lọc theo loại">
+              <IconButton 
+                onClick={handleFilterMenuOpen} 
+                title="Lọc theo loại"
+                sx={{ 
+                  color: '#3182ce',
+                  '&:hover': { 
+                    backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                  } 
+                }}
+              >
                 <FilterListIcon />
               </IconButton>
               
@@ -311,13 +426,34 @@ const NotificationsPage = () => {
                 anchorEl={filterMenuAnchorEl}
                 open={Boolean(filterMenuAnchorEl)}
                 onClose={handleFilterMenuClose}
+                PaperProps={{
+                  sx: {
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',
+                    borderRadius: 2
+                  }
+                }}
               >
-                <MenuItem onClick={() => handleTypeClick('all')}>
+                <MenuItem 
+                  onClick={() => handleTypeClick('all')}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                    }
+                  }}
+                >
                   <Typography>Tất cả thông báo</Typography>
                 </MenuItem>
                 <Divider />
                 {notificationTypes.map(type => (
-                  <MenuItem key={type} onClick={() => handleTypeClick(type)}>
+                  <MenuItem 
+                    key={type} 
+                    onClick={() => handleTypeClick(type)}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                      }
+                    }}
+                  >
                     <ListItemText 
                       primary={getNotificationTypeLabel(type)} 
                       secondary={`${notificationStats[type] || 0} thông báo`}
@@ -330,6 +466,15 @@ const NotificationsPage = () => {
                 onClick={handleMenuOpen} 
                 title="Tùy chọn khác"
                 disabled={loading || notifications.length === 0}
+                sx={{ 
+                  color: '#3182ce',
+                  '&:hover': { 
+                    backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                  },
+                  '&.Mui-disabled': {
+                    color: 'rgba(0, 0, 0, 0.26)'
+                  }
+                }}
               >
                 <MoreVertIcon />
               </IconButton>
@@ -338,34 +483,69 @@ const NotificationsPage = () => {
                 anchorEl={menuAnchorEl}
                 open={Boolean(menuAnchorEl)}
                 onClose={handleMenuClose}
+                PaperProps={{
+                  sx: {
+                    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',
+                    borderRadius: 2,
+                    width: 230
+                  }
+                }}
               >
                 {unreadCount > 0 && (
-                  <MenuItem onClick={handleMarkAllAsRead}>
+                  <MenuItem 
+                    onClick={handleMarkAllAsRead}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                      }
+                    }}
+                  >
                     <ListItemAvatar sx={{ minWidth: 36 }}>
-                      <CheckCircleIcon fontSize="small" />
+                      <CheckCircleIcon fontSize="small" color="primary" />
                     </ListItemAvatar>
                     <ListItemText primary="Đánh dấu tất cả đã đọc" />
                   </MenuItem>
                 )}
                 
                 {selectedNotifications.length > 0 && (
-                  <MenuItem onClick={handleMarkSelectedAsRead}>
+                  <MenuItem 
+                    onClick={handleMarkSelectedAsRead}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                      }
+                    }}
+                  >
                     <ListItemAvatar sx={{ minWidth: 36 }}>
-                      <CheckCircleIcon fontSize="small" />
+                      <CheckCircleIcon fontSize="small" color="primary" />
                     </ListItemAvatar>
                     <ListItemText primary="Đánh dấu đã đọc đã chọn" />
                   </MenuItem>
                 )}
                 
-                <MenuItem onClick={handleOpenDeleteDialog}>
+                <MenuItem 
+                  onClick={handleOpenDeleteDialog}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(229, 62, 62, 0.08)'
+                    }
+                  }}
+                >
                   <ListItemAvatar sx={{ minWidth: 36 }}>
-                    <DeleteIcon fontSize="small" />
+                    <DeleteIcon fontSize="small" color="error" />
                   </ListItemAvatar>
                   <ListItemText primary={selectedNotifications.length > 0 ? "Xóa thông báo đã chọn" : "Xóa tất cả thông báo"} />
                 </MenuItem>
                 
                 {selectedNotifications.length > 0 && (
-                  <MenuItem onClick={() => setSelectedNotifications([])}>
+                  <MenuItem 
+                    onClick={() => setSelectedNotifications([])}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(49, 130, 206, 0.08)'
+                      }
+                    }}
+                  >
                     <ListItemText primary="Bỏ chọn tất cả" />
                   </MenuItem>
                 )}
@@ -378,12 +558,26 @@ const NotificationsPage = () => {
             onChange={handleFilterChange}
             sx={{ 
               minHeight: 40, 
-              '& .MuiTab-root': { minHeight: 40, py: 0 } 
+              '& .MuiTab-root': { 
+                minHeight: 40, 
+                py: 0,
+                fontWeight: 500,
+                transition: 'all 0.2s ease',
+                '&.Mui-selected': {
+                  color: '#3182ce',
+                  fontWeight: 600
+                }
+              },
+              '& .MuiTabs-indicator': {
+                backgroundColor: '#3182ce',
+                height: 3,
+                borderRadius: '3px 3px 0 0'
+              }
             }}
           >
             <Tab label="Tất cả" value="all" />
             <Tab 
-              label="Chưa đọc" 
+              label={`Chưa đọc${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
               value="unread" 
               disabled={unreadCount === 0}
             />
@@ -412,7 +606,7 @@ const NotificationsPage = () => {
           </Box>
         ) : notifications.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
-            <Typography variant="body1">Không có thông báo nào</Typography>
+            <Typography variant="body1" color="text.secondary">Không có thông báo nào</Typography>
           </Box>
         ) : (
           <>
@@ -427,27 +621,49 @@ const NotificationsPage = () => {
                       sx={{ 
                         py: 2,
                         px: 3,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
                         backgroundColor: isSelected 
-                          ? 'rgba(25, 118, 210, 0.08)'
+                          ? 'rgba(49, 130, 206, 0.08)'
                           : notification.isRead 
                             ? 'transparent' 
-                            : 'rgba(25, 118, 210, 0.04)',
+                            : 'rgba(49, 130, 206, 0.04)',
                         '&:hover': {
                           backgroundColor: isSelected 
-                            ? 'rgba(25, 118, 210, 0.12)'
+                            ? 'rgba(49, 130, 206, 0.12)'
                             : 'rgba(0, 0, 0, 0.04)'
-                        }
+                        },
+                        position: 'relative',
+                        ...(notification.isRead ? {} : {
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 4,
+                            backgroundColor: '#3182ce',
+                            borderRadius: '0 2px 2px 0'
+                          }
+                        })
                       }}
                       secondaryAction={
                         <IconButton 
                           edge="end" 
                           aria-label="select"
-                          onClick={() => handleNotificationSelect(notification)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNotificationSelect(notification);
+                          }}
+                          sx={{
+                            color: isSelected ? '#3182ce' : 'rgba(0, 0, 0, 0.54)'
+                          }}
                         >
                           <Checkbox
                             checked={isSelected}
                             onChange={() => {}}
                             inputProps={{ 'aria-label': 'select notification' }}
+                            color="primary"
                           />
                         </IconButton>
                       }
@@ -457,7 +673,10 @@ const NotificationsPage = () => {
                         <Avatar 
                           src={notification.sender?.avatar} 
                           alt={notification.sender?.name || 'User'}
-                          sx={{ bgcolor: notification.isRead ? 'grey.300' : 'primary.main' }}
+                          sx={{ 
+                            bgcolor: notification.isRead ? 'grey.300' : '#3182ce',
+                            boxShadow: notification.isRead ? 'none' : '0 2px 5px rgba(49, 130, 206, 0.3)'
+                          }}
                         >
                           {notification.sender?.name?.[0] || 'U'}
                         </Avatar>
@@ -469,7 +688,8 @@ const NotificationsPage = () => {
                               variant="subtitle1" 
                               sx={{ 
                                 fontWeight: notification.isRead ? 400 : 600,
-                                mb: 0.5
+                                mb: 0.5,
+                                color: notification.isRead ? '#2d3748' : '#1a202c'
                               }}
                             >
                               {notification.message}
@@ -489,7 +709,10 @@ const NotificationsPage = () => {
                               sx={{ 
                                 fontSize: '0.7rem', 
                                 height: 24,
-                                backgroundColor: 'rgba(0, 0, 0, 0.06)'
+                                backgroundColor: notification.isRead 
+                                  ? 'rgba(0, 0, 0, 0.06)' 
+                                  : 'rgba(49, 130, 206, 0.08)',
+                                borderRadius: '4px'
                               }}
                             />
                           </Box>
@@ -508,6 +731,15 @@ const NotificationsPage = () => {
                 page={page} 
                 onChange={handlePageChange} 
                 color="primary"
+                sx={{
+                  '& .MuiPaginationItem-root': {
+                    borderRadius: '8px',
+                    '&.Mui-selected': {
+                      fontWeight: 600,
+                      boxShadow: '0 2px 5px rgba(49, 130, 206, 0.2)'
+                    }
+                  }
+                }}
               />
             </Box>
           </>
@@ -517,8 +749,14 @@ const NotificationsPage = () => {
       <Dialog
         open={deleteDialogOpen}
         onClose={handleCloseDeleteDialog}
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)'
+          }
+        }}
       >
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 600 }}>
           {selectedNotifications.length > 0 
             ? "Xóa thông báo đã chọn" 
             : "Xóa tất cả thông báo"}
@@ -530,11 +768,27 @@ const NotificationsPage = () => {
               : "Bạn có chắc chắn muốn xóa tất cả thông báo không?"}
           </DialogContentText>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDeleteDialog}>Hủy</Button>
+        <DialogActions sx={{ pb: 2, px: 3 }}>
+          <Button 
+            onClick={handleCloseDeleteDialog} 
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600
+            }}
+          >
+            Hủy
+          </Button>
           <Button 
             onClick={selectedNotifications.length > 0 ? handleDeleteSelected : handleDeleteAll} 
             color="error"
+            variant="contained"
+            sx={{ 
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              px: 3
+            }}
           >
             Xóa
           </Button>

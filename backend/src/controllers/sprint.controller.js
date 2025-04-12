@@ -199,13 +199,16 @@ export const getSprints = async (req, res) => {
 
     // Admin, Project Manager và Owner có thể xem tất cả sprint
     // Member chỉ có thể xem những sprint mà họ là thành viên
-    const filteredSprints = isSystemAdmin || req.projectRole === 'owner' || req.projectRole === ROLES.PROJECT_MANAGER
-      ? sprints
-      : sprints.filter((sprint) =>
-          sprint.members.some(
-            (member) => member.user._id.toString() === req.user.id.toString()
-          )
-        );
+    let filteredSprints = sprints;
+    
+    // Chỉ lọc sprints nếu người dùng KHÔNG phải là admin, project manager hoặc owner
+    if (!isSystemAdmin && req.projectRole !== 'owner' && req.projectRole !== ROLES.PROJECT_MANAGER) {
+      filteredSprints = sprints.filter((sprint) =>
+        sprint.members.some(
+          (member) => member.user._id.toString() === req.user.id.toString()
+        )
+      );
+    }
 
     console.log("Filtered Sprints:", filteredSprints.length);
     console.log("=== END DEBUG getSprints Controller ===");
@@ -279,6 +282,7 @@ export const getSprintById = async (req, res) => {
 
     // Kiểm tra quyền truy cập dự án - bỏ qua nếu là admin
     if (!isSystemAdmin) {
+      // Kiểm tra quyền với dự án
       const { error } = await checkProjectPermission(projectId, req.user.id);
       if (error) {
         console.log("Project Permission Error:", error);
@@ -286,6 +290,25 @@ export const getSprintById = async (req, res) => {
           success: false,
           message: error,
         });
+      }
+      
+      // Nếu không phải project owner hoặc project manager, kiểm tra xem có phải là thành viên của sprint không
+      const isProjectOwner = req.projectRole === 'owner';
+      const isProjectManager = req.projectRole === ROLES.PROJECT_MANAGER;
+      
+      if (!isProjectOwner && !isProjectManager) {
+        // Kiểm tra người dùng có phải là thành viên của sprint
+        const isSprintMember = sprint.members.some(
+          member => member.user._id.toString() === req.user.id.toString()
+        );
+        
+        if (!isSprintMember) {
+          console.log("User is not a member of this sprint");
+          return res.status(403).json({
+            success: false,
+            message: "Bạn không phải là thành viên của sprint này",
+          });
+        }
       }
     }
 
