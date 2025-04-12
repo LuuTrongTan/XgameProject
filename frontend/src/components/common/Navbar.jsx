@@ -44,7 +44,7 @@ import WebSocketIndicator from "./WebSocketIndicator";
 import { getNotifications, markAsRead } from "../../api/notificationApi";
 
 // Socket
-import { useSocket } from "../../contexts/SocketContext";
+import { useWebSocket } from "../../contexts/WebSocketContext";
 
 /**
  * @param {Object} props - Component props
@@ -54,7 +54,7 @@ const Navbar = ({ onDrawerToggle }) => {
   // Hooks và state management
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { socket } = useSocket();
+  const { socket } = useWebSocket();
   const [anchorEl, setAnchorEl] = useState(null); // State cho user menu
   const [notificationEl, setNotificationEl] = useState(null); // State cho notification menu
   const [notificationCount, setNotificationCount] = useState(0); // Số lượng thông báo chưa đọc

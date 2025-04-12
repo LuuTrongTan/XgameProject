@@ -11,12 +11,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 
 // Lấy __dirname từ ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
+
+// Đảm bảo JWT_SECRET luôn được định nghĩa
+const JWT_SECRET = process.env.JWT_SECRET || 'ql_xgame_secure_jwt_secret_key_2024';
+console.log('[Server] JWT_SECRET đã được khởi tạo', JWT_SECRET ? 'thành công' : 'thất bại');
+
 // Import các routes
 import authRoutes from "./routes/auth.routes.js";
 import projectRoutes from "./routes/project.routes.js";
@@ -36,6 +42,7 @@ import activityRoutes from "./routes/activity.routes.js";
 import historyRoutes from "./routes/history.routes.js";
 import connectDB from "./config/database.js";
 import taskHistoryRoutes from "./routes/taskHistoryRoutes.js";
+import User from "./models/user.model.js";
 
 const app = express();
 const port = process.env.PORT || 5002;
@@ -168,32 +175,98 @@ const io = new Server(server, {
   },
 });
 
+// Middleware xác thực WebSocket
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+      console.log(`[WebSocket] Từ chối kết nối - Không có token từ client ${socket.id}`);
+      return next(new Error('Unauthorized: No token provided'));
+    }
+    
+    // In phần đầu của token để debug (không hiển thị toàn bộ token)
+    console.log(`[WebSocket] Token nhận được từ client ${socket.id}: ${token.substring(0, 10)}...`);
+    
+    try {
+      // Xác thực token
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Kiểm tra xem user có tồn tại không
+      const user = await User.findById(decoded.id).select('_id name role status');
+      
+      if (!user) {
+        console.log(`[WebSocket] Từ chối kết nối - Không tìm thấy user từ token, client ${socket.id}`);
+        return next(new Error('Unauthorized: User not found'));
+      }
+      
+      // Lưu thông tin user vào socket
+      socket.user = user;
+      socket.userId = user._id.toString();
+      
+      console.log(`[WebSocket] Xác thực thành công cho user ${user.name} (${user._id}), client ${socket.id}`);
+      next();
+    } catch (jwtError) {
+      console.error(`[WebSocket] Lỗi xác thực JWT: ${jwtError.message}, client ${socket.id}`);
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new Error('Unauthorized: Token expired'));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        return next(new Error('Unauthorized: Invalid token'));
+      }
+      return next(new Error(`Unauthorized: ${jwtError.message}`));
+    }
+  } catch (error) {
+    console.error(`[WebSocket] Lỗi xác thực chung: ${error.message}, client ${socket.id}`);
+    next(new Error(`Unauthorized: Server error - ${error.message}`));
+  }
+});
+
+// ping-pong để giữ kết nối sống
+setInterval(() => {
+  if (io) {
+    io.emit('ping', Date.now());
+  }
+}, 25000);
+
 global.io = io;
 
 // Quản lý kết nối WebSocket
 io.on("connection", (socket) => {
-  console.log(`🔗 [Socket] User connected: ${socket.id}`);
+  console.log(`🔗 [Socket] User connected: ${socket.id}, userId: ${socket.userId}`);
+
+  // Tự động join vào phòng riêng của user
+  if (socket.userId) {
+    socket.join(socket.userId);
+    console.log(`✅ [Socket] User ${socket.userId} joined their private room`);
+  }
 
   // Tham gia phòng cá nhân của người dùng
   socket.on("join", (userId) => {
-    socket.join(userId);
-    console.log(`✅ [Socket] User ${userId} joined their private room`);
+    if (socket.userId && socket.userId.toString() === userId.toString()) {
+      socket.join(userId);
+      console.log(`✅ [Socket] User ${userId} joined their private room`);
+    } else {
+      console.warn(`⚠️ [Socket] Unauthorized attempt to join user room: ${userId}`);
+    }
   });
 
   // Tham gia phòng theo project
   socket.on("join_project", (projectId) => {
+    // TODO: Kiểm tra quyền truy cập vào project
     socket.join(`project:${projectId}`);
     console.log(`✅ [Socket] Socket ${socket.id} joined project room: ${projectId}`);
   });
 
   // Tham gia phòng theo sprint
   socket.on("join_sprint", (sprintId) => {
+    // TODO: Kiểm tra quyền truy cập vào sprint
     socket.join(`sprint:${sprintId}`);
     console.log(`✅ [Socket] Socket ${socket.id} joined sprint room: ${sprintId}`);
   });
 
   // Tham gia phòng theo task
   socket.on("join_task", (taskId) => {
+    // TODO: Kiểm tra quyền truy cập vào task
     socket.join(`task:${taskId}`);
     console.log(`✅ [Socket] Socket ${socket.id} joined task room: ${taskId}`);
   });
@@ -215,9 +288,10 @@ io.on("connection", (socket) => {
     socket.leave(`task:${taskId}`);
     console.log(`❌ [Socket] Socket ${socket.id} left task room: ${taskId}`);
   });
-
+  
+  // Xử lý ngắt kết nối
   socket.on("disconnect", () => {
-    console.log("❌ [Socket] User disconnected");
+    console.log(`❌ [Socket] User disconnected: ${socket.id}, userId: ${socket.userId}`);
   });
 });
 

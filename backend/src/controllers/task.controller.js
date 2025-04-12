@@ -720,13 +720,13 @@ export const updateTask = async (req, res) => {
       .populate("watchers", "name email avatar avatarBase64");
 
     // Gửi thông báo cập nhật
-    global.io.emit("task_updated", {
+    emitTaskEvent("task_updated", {
       task: populatedTask,
       updater: {
         id: req.user._id,
         name: req.user.name,
       },
-    });
+    }, populatedTask._id, populatedTask.project?._id, populatedTask.sprint);
 
     res.json({
       success: true,
@@ -787,13 +787,13 @@ export const updateStatus = async (req, res) => {
       .populate("watchers", "name email avatar avatarBase64");
 
     // Gửi thông báo cập nhật
-    global.io.emit("task_updated", {
+    emitTaskEvent("task_updated", {
       task: populatedTask,
       updater: {
         id: req.user._id,
         name: req.user.name,
       },
-    });
+    }, populatedTask._id, populatedTask.project?._id, populatedTask.sprint);
 
     // Đặt oldStatus như một trường riêng biệt, không phải nested object để dễ truy cập
     return res.json({
@@ -1144,14 +1144,14 @@ export const updateEstimatedTime = async (req, res) => {
     await task.save();
 
     // Gửi thông báo cập nhật
-    global.io.emit("task_time_updated", {
+    emitTaskEvent("task_time_updated", {
       taskId: task._id,
       estimatedTime,
       updater: {
         id: req.user.id,
         name: req.user.name,
       },
-    });
+    }, task._id, task.project, task.sprint);
 
     res.json({
       success: true,
@@ -1274,7 +1274,7 @@ export const updateProgress = async (req, res) => {
     await task.save();
 
     // Gửi thông báo cập nhật
-    global.io.emit("task_progress_updated", {
+    emitTaskEvent("task_progress_updated", {
       taskId: task._id,
       progress,
       status: task.status,
@@ -1282,7 +1282,7 @@ export const updateProgress = async (req, res) => {
         id: req.user.id,
         name: req.user.name,
       },
-    });
+    }, task._id, task.project, task.sprint);
 
     res.json({
       success: true,
@@ -1333,7 +1333,7 @@ export const addTag = async (req, res) => {
     await task.save();
 
     // Gửi thông báo realtime
-    global.io.emit("task_updated", {
+    emitTaskEvent("task_updated", {
       taskId: task._id,
       type: "tag_added",
       data: { tag },
@@ -1341,7 +1341,7 @@ export const addTag = async (req, res) => {
         id: req.user.id,
         name: req.user.name,
       },
-    });
+    }, task._id, task.project, task.sprint);
 
     res.json({
       success: true,
@@ -1384,7 +1384,7 @@ export const removeTag = async (req, res) => {
     await task.save();
 
     // Gửi thông báo realtime
-    global.io.emit("task_updated", {
+    emitTaskEvent("task_updated", {
       taskId: task._id,
       type: "tag_removed",
       data: { tag: tagToRemove },
@@ -1392,7 +1392,7 @@ export const removeTag = async (req, res) => {
         id: req.user.id,
         name: req.user.name,
       },
-    });
+    }, task._id, task.project, task.sprint);
 
     res.json({
       success: true,
@@ -1460,7 +1460,7 @@ export const assignTask = async (req, res) => {
     // Gửi thông báo cho những người được gán mới
     const newAssignees = assignees.filter((id) => !task.assignees.includes(id));
     for (const assigneeId of newAssignees) {
-      global.io.emit("task_assigned", {
+      emitTaskEvent("task_assigned", {
         taskId: task._id,
         projectId: task.project,
         assigneeId: assigneeId,
@@ -1468,7 +1468,7 @@ export const assignTask = async (req, res) => {
           id: req.user.id,
           name: req.user.name,
         },
-      });
+      }, task._id, task.project, task.sprint);
     }
 
     res.json({
@@ -1976,3 +1976,27 @@ export const updateAssignees = asyncHandler(async (req, res) => {
     message: action === 'assign' ? "Gán người thực hiện thành công" : "Hủy gán người thực hiện thành công"
   });
 });
+
+// Chuẩn hóa cách phát sự kiện
+const emitTaskEvent = (eventName, data, taskId, projectId, sprintId) => {
+  // Gửi sự kiện đến phòng task cụ thể (chi tiết nhất)
+  if (taskId) {
+    global.io.to(`task:${taskId}`).emit(eventName, data);
+  }
+  
+  // Gửi sự kiện đến phòng sprint nếu task thuộc về sprint
+  if (sprintId) {
+    global.io.to(`sprint:${sprintId}`).emit(`sprint_${eventName}`, {
+      ...data,
+      sprintId
+    });
+  }
+  
+  // Gửi sự kiện đến phòng project nếu task thuộc về project
+  if (projectId) {
+    global.io.to(`project:${projectId}`).emit(`project_${eventName}`, {
+      ...data,
+      projectId
+    });
+  }
+};

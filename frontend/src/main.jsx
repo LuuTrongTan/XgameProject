@@ -4,7 +4,6 @@ import App from "./App";
 import "./styles/index.css";
 import "./styles/dragDrop.css";
 import { AuthProvider } from './contexts/AuthContext';
-import { SocketProvider } from './contexts/SocketContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import AdminViewProvider from './contexts/AdminViewContext';
 import { BrowserRouter as Router } from 'react-router-dom';
@@ -38,9 +37,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             <AuthProvider>
               <AdminViewProvider>
                 <WebSocketProvider>
-                  <SocketProvider>
-                    <App />
-                  </SocketProvider>
+                  <App />
                 </WebSocketProvider>
               </AdminViewProvider>
             </AuthProvider>

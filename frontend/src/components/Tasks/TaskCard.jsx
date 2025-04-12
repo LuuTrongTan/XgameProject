@@ -83,6 +83,7 @@ import FileUploader from "./FileUploader";
 import AttachmentsList from "./AttachmentsList";
 import TaskAuditLog from "./TaskAuditLog";
 import TaskInteractions from './TaskInteractions';
+import useWebSocketEvents from "../../hooks/useWebSocketEvents";
 
 // Styled components
 const TaskCardContainer = styled(Card)(({ theme, status }) => {
@@ -278,6 +279,7 @@ const TaskCard = ({
   onDragStart,
   onDragEnd,
   onViewDetail,
+  onUpdate,
 }) => {
   const { user } = useAuth();
   const { canDeleteTask } = usePermissions();
@@ -692,6 +694,35 @@ const TaskCard = ({
       }
     }
   };
+
+  // Đăng ký các handlers cho sự kiện WebSocket
+  useWebSocketEvents({
+    // Cập nhật task khi có thay đổi
+    task_updated: (data) => {
+      if (data.task && data.task._id === task._id) {
+        console.log("[WebSocket] Received task update:", data);
+        // Refresh task data or merge changes
+        // option: call onUpdate from props if provided
+        if (onUpdate) onUpdate(data.task);
+      }
+    },
+    
+    // Cập nhật danh sách comments khi có comment mới
+    new_comment: (data) => {
+      if (data.taskId === task._id) {
+        console.log("[WebSocket] New comment added:", data);
+        fetchComments();
+      }
+    },
+    
+    // Cập nhật attachments khi có file mới
+    attachments_added: (data) => {
+      if (data.taskId === task._id) {
+        console.log("[WebSocket] Attachments added:", data);
+        fetchAttachments();
+      }
+    }
+  }, [task._id]);
 
   return (
     <TaskCardContainer
