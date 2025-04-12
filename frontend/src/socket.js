@@ -5,9 +5,9 @@ let socket;
 
 try {
   // Lấy URL từ biến môi trường hoặc mặc định
-  // Xử lý để loại bỏ '/api' nếu có trong VITE_API_URL
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5002/api';
-  const socketUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
+  // Đảm bảo không có /api trong URL socket
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+  const socketUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
   console.log('Connecting to socket server at:', socketUrl);
   
   // Khởi tạo kết nối Socket.IO với server
