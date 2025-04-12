@@ -57,9 +57,7 @@ app.use(
         "http://localhost:5173", 
         "http://localhost:3001", 
         "http://127.0.0.1:5173", 
-        "http://127.0.0.1:3001",
-        "https://illustrious-faun-e7d11f.netlify.app",
-        "https://xgame-ql.netlify.app"
+        "http://127.0.0.1:3001"
       ];
       
       // If no origin (like mobile app or Postman) or origin is in whitelist
